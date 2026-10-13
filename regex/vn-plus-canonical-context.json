@@ -1,0 +1,15 @@
+{
+  "id": "56222908-72b9-4057-a4fb-107bb5f164e1",
+  "scriptName": "VN+ · Canonical model context only",
+  "findRegex": "/^([\\s\\S]*?)^\\/{5}(?:\\r?\\n|$)[\\s\\S]*$/m",
+  "replaceString": "$1",
+  "trimStrings": [],
+  "placement": [2],
+  "disabled": false,
+  "markdownOnly": false,
+  "promptOnly": true,
+  "runOnEdit": true,
+  "substituteRegex": 0,
+  "minDepth": null,
+  "maxDepth": null
+}

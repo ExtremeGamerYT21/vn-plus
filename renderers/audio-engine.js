@@ -1,0 +1,70 @@
+const clamp = value => Math.max(0, Math.min(1, Number(value) || 0));
+
+export class AudioEngine {
+    constructor(resolver, settings, report = () => {}, audioFactory = () => new Audio()) {
+        this.resolver = resolver; this.settings = settings; this.report = report; this.audioFactory = audioFactory;
+        this.channels = { music: {}, ambient: {} }; this.sources = new Set(); this.musicSources = new Set(); this.timers = new Map(); this.unlocked = false; this.epoch = 0; this.sfxEpoch = 0;
+    }
+    async unlock() {
+        this.unlocked = true;
+        for (const channel of Object.values(this.channels)) if (channel.audio?.paused) await this.play(channel.audio);
+    }
+    async play(audio) {
+        if (!this.unlocked) return;
+        try { await audio.play(); } catch (error) { this.report(`Audio waiting for browser permission: ${error.message}`); }
+    }
+    stop(audio) { if (!audio) return; clearInterval(this.timers.get(audio)); this.timers.delete(audio); audio.pause(); audio.removeAttribute?.('src'); audio.load?.(); this.sources.delete(audio); this.musicSources.delete(audio); }
+    setMusicMuted(muted) {
+        this.settings.musicMuted = !!muted;
+        // Also silence fading tracks; volume ramps continue normally underneath.
+        for (const audio of this.musicSources) audio.muted = !!muted;
+    }
+    fade(audio, target, duration, remove = false) {
+        clearInterval(this.timers.get(audio)); this.timers.delete(audio);
+        if (!duration) { audio.volume = target; if (remove) this.stop(audio); return; }
+        const start = performance.now(), initial = audio.volume;
+        const timer = setInterval(() => {
+            const fraction = Math.min(1, (performance.now() - start) / duration);
+            audio.volume = clamp(initial + (target - initial) * fraction);
+            if (fraction === 1) { clearInterval(timer); this.timers.delete(audio); if (remove) this.stop(audio); }
+        }, 25);
+        this.timers.set(audio, timer);
+    }
+    sync(state) { return Promise.all([this.setChannel('music', state.music), this.setChannel('ambient', state.ambient)]); }
+    async setChannel(kind, track) {
+        const channel = this.channels[kind], key = track ? `${track.name}:${track.rate}` : '';
+        if (kind === 'music') this.setMusicMuted(this.settings.musicMuted);
+        const volume = clamp(this.settings[`${kind}Volume`]);
+        if (key === channel.key) {
+            if (channel.volume !== volume && channel.audio) this.fade(channel.audio, volume, this.settings.crossfadeDuration);
+            channel.volume = volume; return;
+        }
+        // Rate-only changes never restart a track.
+        if (track && channel.loadedName === track.name && channel.audio) { channel.key = key; channel.track = track; channel.audio.playbackRate = track.rate; return; }
+        channel.key = key; channel.track = track; channel.volume = volume; const request = (channel.request || 0) + 1; channel.request = request;
+        if (!track) { if (channel.audio) this.fade(channel.audio, 0, this.settings.crossfadeDuration, true); channel.audio = null; return; }
+        const epoch = this.epoch, url = await this.resolver.audio(kind, track.name);
+        if (epoch !== this.epoch || request !== channel.request || key !== channel.key) return;
+        if (!url) { if (channel.audio) this.fade(channel.audio, 0, this.settings.crossfadeDuration, true); channel.audio = null; this.report(`Missing ${kind}: ${track.name}`); return; }
+        const previous = channel.audio, audio = this.audioFactory();
+        audio.src = url; audio.loop = true; audio.volume = 0; audio.playbackRate = track.rate;
+        audio.muted = kind === 'music' && !!this.settings.musicMuted;
+        if (kind === 'music') this.musicSources.add(audio);
+        audio.preservesPitch = false; channel.audio = audio; channel.loadedName = track.name; this.sources.add(audio);
+        // Keep at most current + fading source per channel during rapid navigation.
+        if (channel.fading && channel.fading !== previous) this.stop(channel.fading);
+        channel.fading = previous;
+        if (previous) this.fade(previous, 0, this.settings.crossfadeDuration, true);
+        void this.play(audio); this.fade(audio, clamp(this.settings[`${kind}Volume`]), this.settings.crossfadeDuration);
+    }
+    async sfx(name, character = null) {
+        const epoch = this.sfxEpoch;
+        const url = character ? await this.resolver.voice(character, name) : await this.resolver.audio('sfx', name);
+        if (epoch !== this.sfxEpoch || !url || !this.unlocked || this.sources.size > 32) return;
+        const audio = this.audioFactory(); audio.src = url; audio.volume = clamp(this.settings.sfxVolume); this.sources.add(audio);
+        audio.onended = () => this.stop(audio); audio.onerror = () => this.stop(audio);
+        try { await audio.play(); } catch { this.stop(audio); }
+    }
+    cancelOneShots() { this.sfxEpoch++; for (const audio of [...this.sources]) if (!audio.loop) this.stop(audio); }
+    close() { this.epoch++; this.sfxEpoch++; for (const audio of [...this.sources]) this.stop(audio); this.channels = { music: {}, ambient: {} }; }
+}

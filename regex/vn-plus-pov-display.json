@@ -1,0 +1,15 @@
+{
+  "id": "f5f6a744-ef33-4b6d-8d34-36f937c86f05",
+  "scriptName": "VN+ · POV display only",
+  "findRegex": "/^(?:[\\s\\S]*?^\\/{5}(?:\\r?\\n|$)([\\s\\S]*)|[\\s\\S]*)$/m",
+  "replaceString": "$1",
+  "trimStrings": [],
+  "placement": [2],
+  "disabled": false,
+  "markdownOnly": true,
+  "promptOnly": false,
+  "runOnEdit": true,
+  "substituteRegex": 0,
+  "minDepth": null,
+  "maxDepth": null
+}

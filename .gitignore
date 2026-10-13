@@ -1,0 +1,14 @@
+node_modules/
+assets.local.json
+.env
+.env.*
+*.log
+*.zip
+*-preview.png
+.DS_Store
+Thumbs.db
+/.tooling/
+/environments/*/
+!/environments/coffin-of-andy-and-leyley/
+!/environments/harry-potter/
+!/environments/re-zero/

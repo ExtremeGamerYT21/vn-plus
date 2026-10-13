@@ -1,0 +1,8 @@
+{
+  "name": "visual-novel-plus",
+  "version": "2.3.1",
+  "private": true,
+  "type": "module",
+  "repository": { "type": "git", "url": "https://github.com/ExtremeGamerYT21/vn-plus.git" },
+  "scripts": { "test": "node --test tests/*.test.js", "inventory": "node tools/build-inventory.js", "inventory:release": "node tools/build-inventory.js --release", "preview": "node tools/preview-server.js" }
+}

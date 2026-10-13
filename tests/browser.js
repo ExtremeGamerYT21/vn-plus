@@ -1,0 +1,312 @@
+import { VNController } from '../controller.js';
+import { createHost } from '../integration.js';
+import { DEFAULT_SETTINGS } from '../ui/settings.js';
+import { isolatedDocument } from '../renderers/html-renderer.js';
+import { SpriteMeshRenderer, breathingConfig } from '../renderers/sprite-mesh.js';
+import { DEFAULT_ENVIRONMENT } from '../core/content-environments.js';
+const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+const assert = (value, message = 'Assertion failed') => { if (!value) throw new Error(message); };
+const equal = (a, b) => assert(JSON.stringify(a) === JSON.stringify(b), `${JSON.stringify(a)} != ${JSON.stringify(b)}`);
+const eventually = async (predicate, message = 'State did not become ready') => { for (let i = 0; i < 200; i++) { if (predicate()) return; await pause(20); } throw new Error(message); };
+const inventory = await fetch('../assets.json').then(response => response.json());
+const listeners = new Map(), events = ['GENERATION_STARTED','GENERATION_ENDED','GENERATION_STOPPED','MESSAGE_RECEIVED','MESSAGE_SWIPED','MESSAGE_UPDATED','MESSAGE_EDITED','MESSAGE_SWIPE_DELETED','CHARACTER_MESSAGE_RENDERED','MESSAGE_DELETED','CHAT_CHANGED','CHAT_LOADED','MORE_MESSAGES_LOADED','APP_READY'];
+let sends = 0, retries = 0;
+const initial = `SECRET_CANONICAL_DO_NOT_RENDER\n#BACKGROUND secret\n/////\n#BACKGROUND kitchen\n#MUSIC buzz\n#AMBIENT outside_noise\n#ENTER Jason\n#ENTER Ashley\n#ENTER Nina\n#ENTER Leyley\nASHLEY: "Hello." [smug]\n#BACKGROUND street\n#SFX door\nNINA: "Ready?" [excited]\n\`\`\`html\n<div><h1>Letter</h1><script>parent.document.body.dataset.compromised='yes'</script></div>\n\`\`\`\nNARRATION\nAfter artifact`;
+const context = {
+    characterId: 0, chatId: 'A', chat: [{ mes: initial, swipe_id: 0 }, { mes: 'User', is_user: true }],
+    extensionSettings: { visual_novel_plus: { ...structuredClone(DEFAULT_SETTINGS), typewriterEffect: false, characterSounds: false, reducedMotion: true, characters: { jason: { assetFolder: 'andrew', color: '#78c976' } } } },
+    eventTypes: Object.fromEntries(events.map(name => [name, name])), saveSettingsDebounced() {},
+    eventSource: { on(name, callback) { const set = listeners.get(name) || new Set(); set.add(callback); listeners.set(name, set); }, removeListener(name, callback) { listeners.get(name)?.delete(callback); } },
+    async generate(type) { assert(type === 'regenerate'); retries++; },
+};
+const emit = (name, ...args) => { for (const callback of [...(listeners.get(name) || [])]) callback(...args); };
+document.querySelector('#send_but').addEventListener('click', () => { sends++; document.querySelector('#send_textarea').value = ''; });
+function mountChat() { document.querySelector('#chat').innerHTML = context.chat.map((message, index) => `<div class="mes" mesid="${index}"><div class="mes_block"><div class="mes_buttons"></div></div></div>`).join(''); }
+mountChat();
+let controller = new VNController(createHost(() => context), new URL('../', import.meta.url), inventory);
+class FakeAudio { constructor() { this.volume = 1; this.paused = true; } async play() { this.paused = false; } pause() { this.paused = true; } removeAttribute() {} load() {} }
+controller.audio.audioFactory = () => new FakeAudio();
+let failures = 0, passes = 0;
+async function check(name, run) {
+    const row = document.createElement('li');
+    try { await run(); passes++; row.className = 'pass'; row.textContent = `PASS · ${name}`; }
+    catch (error) { failures++; row.className = 'fail'; row.textContent = `FAIL · ${name}: ${error.message}`; console.error(name, error); }
+    document.querySelector('#test-results').append(row);
+}
+await check('POV privacy and four characters from one scenario', async () => {
+    await controller.open(0); await pause(200);
+    assert(!controller.root.textContent.includes('SECRET_CANONICAL'));
+    equal(controller.root.querySelectorAll('.vn-character').length, 4);
+    equal(controller.playback.restore().beat.state.characters.jason.slot, 0);
+    assert(controller.root.querySelector('[data-character="ashley"] img').src.includes('/ashley/'));
+    equal(controller.root.querySelector('.vn-dialogue').style.getPropertyValue('--vn-accent'), controller.registry.get('ashley').color);
+    const widths = [...controller.root.querySelectorAll('.vn-character')].map(node => node.style.width); assert(widths.every(width => width === widths[0]));
+});
+await check('backward restores background, expression and audio state', async () => {
+    const first = structuredClone(controller.playback.restore().beat.state);
+    await controller.action('next'); await pause(100);
+    assert(controller.root.querySelector('.vn-background').style.backgroundImage.includes('street'));
+    assert(controller.root.querySelector('[data-character="nina"] img').src.includes('/excited.webp'));
+    await controller.action('back'); await pause(100);
+    equal(controller.playback.restore().beat.state, first);
+    assert(controller.root.querySelector('.vn-background').style.backgroundImage.includes('kitchen'));
+    equal(controller.audio.channels.music.track.name, 'buzz'); equal(controller.audio.channels.ambient.track.name, 'outside_noise');
+});
+await check('grouped rows keep the player left and rear busts smaller and higher', async () => {
+    const jason = controller.root.querySelector('[data-character="jason"]'), ashley = controller.root.querySelector('[data-character="ashley"]');
+    const nina = controller.root.querySelector('[data-character="nina"]'), leyley = controller.root.querySelector('[data-character="leyley"]');
+    equal(jason.dataset.side, 'left'); equal(ashley.dataset.side, 'right'); equal(nina.dataset.depth, '1'); equal(leyley.dataset.depth, '1');
+    assert(parseFloat(nina.style.left) > parseFloat(jason.style.left)); assert(parseFloat(leyley.style.left) < parseFloat(ashley.style.left));
+    assert(parseFloat(nina.style.bottom) > parseFloat(jason.style.bottom)); assert(Number(nina.style.zIndex) < Number(jason.style.zIndex));
+    equal(Number(nina.style.getPropertyValue('--vn-scale')), (controller.registry.get('nina').bustScale || 1) * .95);
+});
+await check('VN music mute button preserves selection and leaves ambience independent', async () => {
+    const music = controller.audio.channels.music.audio, ambient = controller.audio.channels.ambient.audio;
+    controller.root.querySelector('[data-action="mute-music"]').click(); assert(music.muted); assert(!ambient.muted);
+    equal(controller.audio.channels.music.audio, music); equal(controller.audio.channels.music.track.name, 'buzz');
+    equal(controller.root.querySelector('[data-action="mute-music"]').textContent, 'Unmute music');
+    equal(controller.root.querySelector('[data-action="mute-music"]').getAttribute('aria-pressed'), 'true');
+    controller.root.querySelector('[data-action="mute-music"]').click(); assert(!music.muted);
+});
+await check('both layout selectors synchronize and switch live without restarting the scene', async () => {
+    const picker = controller.root.querySelector('[data-layout-picker]'), settingsPicker = document.querySelector('[data-setting="layout"]');
+    equal([...picker.options].map(option => option.textContent), ['Left and right groups', 'Four separate busts']);
+    const cursor = controller.playback.cursor, music = controller.audio.channels.music.audio;
+    const nodes = [...controller.stage.nodes.values()];
+    picker.value = 'separate'; picker.dispatchEvent(new Event('change', { bubbles: true })); await pause(50);
+    equal(controller.settings.layout, 'separate'); equal(settingsPicker.value, 'separate'); equal(context.extensionSettings.visual_novel_plus.layout, 'separate');
+    equal([...controller.stage.nodes.values()].map(node => parseFloat(node.style.left)).sort((a,b)=>a-b), [12.5,37.5,62.5,87.5]);
+    assert([...controller.stage.nodes.values()].every(node => node.style.bottom === '0vh' && node.dataset.depth === '0'));
+    equal(controller.playback.cursor, cursor); assert(controller.audio.channels.music.audio === music);
+    assert([...controller.stage.nodes.values()].every((node,index)=>node === nodes[index]));
+    settingsPicker.value = 'rows'; settingsPicker.dispatchEvent(new Event('change', { bubbles: true })); await pause(50);
+    equal(picker.value, 'rows'); assert(controller.root.querySelector('[data-character="nina"]').style.bottom !== '0vh');
+    equal(controller.playback.cursor, cursor); assert(controller.audio.channels.music.audio === music);
+});
+await check('environment selectors isolate content/profiles and preserve the selected paragraph', async () => {
+    const picker = controller.root.querySelector('[data-environment-picker]'), settingsPicker = controller.settingsPanel.querySelector('[data-setting="environment"]');
+    equal([...picker.options].map(option => option.textContent), ['The Coffin of Andy and Leyley', 'Harry Potter', 'Re:Zero']);
+    const originalChat = JSON.stringify(context.chat), oldMusic = controller.audio.channels.music.audio;
+    controller.settings.characters.nina = { breathing: { centerX: .3, centerY: .6 } }; controller.settingsChanged('breathingCenter');
+    await controller.action('next'); equal(controller.playback.position, 1);
+    picker.value = 'harry-potter'; picker.dispatchEvent(new Event('change', { bubbles: true }));
+    await eventually(() => controller.environment.id === 'harry-potter' && controller.playback?.position === 1);
+    await Promise.all([...controller.stage.sprites.records.values()].map(record => record.pending));
+    equal(settingsPicker.value, 'harry-potter'); equal(context.extensionSettings.visual_novel_plus.environment, 'harry-potter');
+    equal(controller.root.querySelectorAll('.vn-character img').length, 0); equal(controller.root.querySelector('.vn-background').style.backgroundImage, '');
+    assert(oldMusic.paused); equal(controller.audio.sources.size, 0); assert(controller.resolver.base.href.endsWith('/environments/harry-potter/'));
+    equal(controller.registry.get('nina').boxTexture, undefined); equal(controller.root.querySelector('.vn-dialogue').style.backgroundImage, '');
+    assert(controller.root.querySelector('.vn-text').style.fontFamily.includes('vn-harry-potter-'));
+    equal(JSON.parse(controller.settingsPanel.querySelector('[aria-label="Character registry JSON"]').value), {});
+    const editor = controller.settingsPanel.querySelector('[aria-label="Character registry JSON"]');
+    editor.value = JSON.stringify({ nina: { color: '#abcdef', breathing: { centerX: .8 } } });
+    [...controller.settingsPanel.querySelectorAll('button')].find(button => button.textContent === 'Apply registry').click();
+    await eventually(() => controller.playback?.position === 0); await controller.action('next');
+    settingsPicker.value = 're-zero'; settingsPicker.dispatchEvent(new Event('change', { bubbles: true }));
+    await eventually(() => controller.environment.id === 're-zero' && controller.playback?.position === 1);
+    equal(controller.settings.characters, {}); equal(picker.value, 're-zero');
+    picker.value = DEFAULT_ENVIRONMENT; picker.dispatchEvent(new Event('change', { bubbles: true }));
+    await eventually(() => controller.environment.id === DEFAULT_ENVIRONMENT && controller.playback?.position === 1);
+    await eventually(() => controller.root.querySelector('[data-character="nina"] img')?.src.includes('/excited.webp'));
+    equal(controller.registry.get('nina').breathing.centerX, .3); equal(controller.settings.environmentProfiles['harry-potter'].characters.nina.color, '#abcdef');
+    assert(controller.root.querySelector('.vn-text').style.fontFamily.includes(`vn-${DEFAULT_ENVIRONMENT}-`));
+    await eventually(() => controller.audio.channels.music.audio?.src.includes(`/environments/${DEFAULT_ENVIRONMENT}/`));
+    assert(controller.audio.channels.music.audio !== oldMusic); equal(JSON.stringify(context.chat), originalChat);
+    delete controller.settings.characters.nina; controller.settingsChanged('breathingCenter'); await controller.action('back');
+});
+await check('environment switching cancels old sprite, preview and audio loads', async () => {
+    const oldResolver = controller.resolver, pendingSprites = [];
+    const oldSpriteURL = oldResolver.url('characters/nina/default.webp'), oldMusicURL = oldResolver.url('sfx/music/buzz.mp3');
+    oldResolver.sprite = () => new Promise(resolve => pendingSprites.push(resolve));
+    const state = controller.playback.restore().beat.state;
+    const pendingStage = controller.stage.render({ ...state, characters: { ghost: { id: 'ghost', name: 'Ghost', expression: 'default', slot: 0 } } }, 1);
+    controller.settingsPanel.querySelector('[aria-label="Preview character"]').value = 'Nina';
+    [...controller.settingsPanel.querySelectorAll('button')].find(button => button.textContent === 'Preview sprite').click();
+    let resolveMusic; oldResolver.audio = () => new Promise(resolve => resolveMusic = resolve);
+    const pendingMusic = controller.audio.setChannel('music', { name: 'delayed', rate: 1 });
+    await eventually(() => pendingSprites.length === 2 && resolveMusic);
+    await controller.selectEnvironment('harry-potter');
+    for (const resolve of pendingSprites) resolve(oldSpriteURL); resolveMusic(oldMusicURL);
+    await pendingStage; await pendingMusic; await pause(30);
+    assert(oldResolver.disposed); equal(controller.audio.sources.size, 0);
+    assert(![...controller.root.querySelectorAll('img')].some(image => image.src.includes(`/environments/${DEFAULT_ENVIRONMENT}/`)));
+    const preview = controller.settingsPanel.querySelector('.vn-sprite-preview'); assert(preview.hidden); assert(!preview.getAttribute('src'));
+    await controller.selectEnvironment(DEFAULT_ENVIRONMENT);
+    await eventually(() => controller.root.querySelector('[data-character="ashley"] img')?.src.includes('/ashley/'));
+    equal(controller.playback.position, 0);
+});
+await check('refresh merges personal content and selection remains safe during generation or while closed', async () => {
+    const originalJSON = controller.catalogResolver.json, picker = controller.root.querySelector('[data-environment-picker]');
+    const publishedBefore = JSON.stringify(inventory), requested = [];
+    controller.catalogResolver.json = async path => {
+        requested.push(path);
+        return path === 'assets.json' ? inventory : { environments: { test_castle: { path: 'environments/test_castle', name: 'Test castle', description: '', files: [], characters: {} } } };
+    };
+    try {
+        await controller.refreshAssets(); equal(picker.options.length, 4); equal(picker.options[3].textContent, 'Test castle'); equal(controller.playback.position, 0);
+        equal(controller.settingsPanel.querySelector('[data-setting="environment"]').options.length, 4);
+        equal(requested.sort(), ['assets.json', 'assets.local.json']); equal(JSON.stringify(inventory), publishedBefore);
+    } finally { controller.catalogResolver.json = originalJSON; await controller.refreshAssets(); }
+    emit('GENERATION_STARTED', 'normal'); await controller.selectEnvironment('re-zero');
+    assert(controller.root.querySelector('.vn-status').textContent.includes('Waiting')); assert(!controller.root.textContent.includes('SECRET_CANONICAL'));
+    emit('GENERATION_ENDED'); await eventually(() => controller.playback?.position === 0);
+    controller.close(); await controller.selectEnvironment(DEFAULT_ENVIRONMENT); assert(controller.root.hidden); equal(controller.audio.sources.size, 0);
+    await controller.open(0); await eventually(() => controller.root.querySelector('[data-character="ashley"] img')?.src.includes('/ashley/'));
+    equal(controller.playback.position, 0); equal(picker.options.length, 3);
+});
+await check('artifact opens automatically, blocks scripts and application access', async () => {
+    await controller.action('next'); await controller.action('next');
+    assert(controller.html.active); const frame = controller.root.querySelector('.vn-artifact iframe');
+    equal(frame.getAttribute('sandbox'), ''); assert(!frame.srcdoc.includes('<script>')); assert(frame.srcdoc.includes('Letter'));
+    await pause(100); assert(!document.body.dataset.compromised);
+    await controller.action('close-artifact'); assert(!controller.html.active); assert(controller.root.querySelector('.vn-text').textContent.includes('After artifact'));
+});
+await check('HTML sanitizer strips network navigation, forms and nested frames', async () => {
+    const html = isolatedDocument('<div><iframe src="/secret"></iframe><form action="/api"><input></form><a href="https://evil.test">link</a><img src="https://evil.test/x"><script>alert(1)</script></div>');
+    assert(!html.includes('<iframe')); assert(!html.includes('<form')); assert(!html.includes('https://evil')); assert(!html.includes('<script>'));
+    controller.settings.interactiveArtifacts = true; controller.html.open({ html: '<button onclick="document.body.textContent=\'Clicked\'">Clock</button>', interactive: true });
+    equal(controller.root.querySelector('.vn-artifact iframe').getAttribute('sandbox'), 'allow-scripts'); controller.html.close();
+});
+await check('interactive HTML runs in an opaque origin without app or storage access', async () => {
+    let received;
+    const listener = event => { if (event.data?.vnSandboxTest) received = event; };
+    window.addEventListener('message', listener);
+    try {
+        controller.html.open({ interactive: true, html: `<script>let denied=0;try{parent.document.body.dataset.compromised='yes'}catch{denied++}try{localStorage.setItem('test','x')}catch{denied++}parent.postMessage({vnSandboxTest:true,denied},'*')</script><p>Isolated script</p>` });
+        const frame = controller.root.querySelector('.vn-artifact iframe');
+        await pause(200); assert(received); assert(received.source === frame.contentWindow); equal(received.origin, 'null'); equal(received.data.denied, 2); assert(!document.body.dataset.compromised);
+    } finally { window.removeEventListener('message', listener); controller.html.close(); }
+});
+await check('reveal is deliberate, non-mutating, and closes on generation', async () => {
+    controller.close(); const original = JSON.stringify(context.chat);
+    controller.reveal.toggle(0); assert(controller.reveal.dialog.textContent.includes('SECRET_CANONICAL')); equal(JSON.stringify(context.chat), original);
+    emit('GENERATION_STARTED', 'normal'); assert(!controller.reveal.dialog); controller.reveal.toggle(0); assert(!controller.reveal.dialog);
+    await controller.open(0); assert(controller.root.querySelector('.vn-status').textContent.includes('Waiting')); assert(!controller.root.textContent.includes('SECRET_CANONICAL'));
+    emit('GENERATION_ENDED'); await pause(100);
+});
+await check('swipe and edit use selected message instead of last chat entry', async () => {
+    context.chat[0].mes = 'SECRET_ALT\n/////\n#BACKGROUND outside\nNARRATION\nAlternative'; context.chat[0].swipe_id = 1;
+    emit('MESSAGE_SWIPED', 0); await pause(100);
+    assert(controller.root.querySelector('.vn-text').textContent.includes('Alternative')); equal(Object.keys(controller.playback.restore().beat.state.characters).length, 0);
+    context.chat[0].mes = 'SECRET_ALT\n/////\nNARRATION\nEdited'; emit('MESSAGE_UPDATED', 0); await pause(100);
+    assert(controller.root.querySelector('.vn-text').textContent.includes('Edited'));
+});
+await check('chat switches clear stage, background, audio and reveal', async () => {
+    context.chatId = 'B'; context.chat = [{ mes: 'UNAVAILABLE_HIDDEN_CANONICAL' }]; mountChat(); emit('CHAT_CHANGED'); await pause(100);
+    equal(controller.root.querySelectorAll('.vn-character').length, 0); equal(controller.audio.sources.size, 0);
+    equal(controller.root.querySelector('.vn-background').style.backgroundImage, ''); assert(!controller.root.textContent.includes('UNAVAILABLE_HIDDEN_CANONICAL'));
+    await controller.action('transcript'); assert(!controller.root.querySelector('.vn-panel-content').textContent.includes('Edited')); await controller.action('close-panel');
+});
+await check('refresh reconstruction, DOM remount, reinitialization and disable', async () => {
+    context.chat = [{ mes: initial, swipe_id: 0 }]; mountChat();
+    controller.dispose(); controller = new VNController(createHost(() => context), new URL('../', import.meta.url), inventory); controller.audio.audioFactory = () => new FakeAudio();
+    await controller.open(0); await pause(100); equal(controller.root.querySelectorAll('.vn-character').length, 4);
+    equal(document.querySelectorAll('#vnplus-overlay').length, 1); equal(document.querySelectorAll('#vnplus-settings').length, 1);
+    mountChat(); await pause(150); equal(document.querySelectorAll('.vn-message-tools').length, 1); assert([...listeners.values()].every(set => set.size === 1));
+    controller.settings.enabled = false; controller.settingsChanged('enabled'); assert(controller.root.hidden); equal(document.querySelectorAll('.vn-message-tools').length, 0);
+    controller.settings.enabled = true; controller.settingsChanged('enabled'); await controller.open(0);
+});
+await check('missing assets, property styling and reduced motion remain readable', async () => {
+    context.chat[0].mes = 'SECRET\n/////\n#BACKGROUND unavailable_art\nUnknown: "Still readable." [excited]';
+    await controller.open(0); await pause(300);
+    assert(controller.root.querySelector('.vn-text').textContent.includes('Still readable')); assert(controller.root.classList.contains('vn-reduced-motion'));
+    assert(controller.root.querySelector('.vn-no-sprite'));
+});
+await check('obsolete async background and sprite requests cannot overwrite new scene', async () => {
+    const originalBackground = controller.resolver.background, originalSprite = controller.resolver.sprite;
+    let resolveBackground, resolveSprite;
+    controller.resolver.background = name => name === 'delayed' ? new Promise(resolve => resolveBackground = resolve) : originalBackground.call(controller.resolver, name);
+    const oldState = { ...controller.playback.restore().beat.state, background: 'delayed' };
+    const old = controller.stage.render(oldState, 1); await pause(10);
+    const newState = { ...oldState, background: 'kitchen', characters: {} }; await controller.stage.render(newState, 1);
+    resolveBackground(controller.resolver.url('backgrounds/street.png')); await old;
+    assert(controller.root.querySelector('.vn-background').style.backgroundImage.includes('kitchen'));
+    controller.resolver.sprite = () => new Promise(resolve => resolveSprite = resolve);
+    const pending = controller.stage.render({ ...newState, characters: { ghost: { id: 'ghost', name: 'Ghost', expression: 'default', slot: 0 } } }, 1); await pause(10);
+    await controller.stage.render(newState, 1); resolveSprite(controller.resolver.url('characters/nina/default.webp')); await pending;
+    equal(controller.root.querySelectorAll('.vn-character').length, 0);
+    controller.resolver.background = originalBackground; controller.resolver.sprite = originalSprite;
+});
+await check('breathing, expression interpolation and blink images clean up on reduced motion', async () => {
+    const until = async predicate => { for (let i = 0; i < 150; i++) { if (predicate()) return; await pause(20); } throw new Error('Sprite animation did not become ready'); };
+    controller.settings.reducedMotion = false; controller.settings.expressionTransition = 400;
+    controller.settings.characters.nina = { blink: { image: 'happy.webp', duration: 90 }, breathing: { centerX: .42, centerY: .58 } };
+    context.chat[0].mes = 'SECRET\n/////\nNINA: "First expression" [default]\nNINA: "Second expression" [happy]';
+    await controller.open(0);
+    const node = controller.root.querySelector('[data-character="nina"]'), animator = controller.stage.sprites;
+    await until(() => animator.records.get(node)?.frame?.querySelector('.vn-sprite-blink'));
+    let record = animator.records.get(node);
+    assert(record.frame.classList.contains('vn-sprite-meshed')); assert(record.frame.querySelector('canvas'));
+    assert(animator.mesh.gl); equal(record.breath.centerX, .42); equal(record.breath.centerY, .58);
+    const phase = record.inhale, vertices = [...animator.mesh.mesh.positions];
+    await until(() => record.inhale !== phase && vertices.some((value, index) => value !== animator.mesh.mesh.positions[index]));
+    animator.blink(node); assert(record.frame.querySelector('.vn-sprite-open').hidden); assert(!record.frame.querySelector('.vn-sprite-blink').hidden);
+    assert(animator.mesh.surfaces.get(record.frame).image === record.frame.querySelector('.vn-sprite-blink'));
+    await pause(120); assert(!record.frame.querySelector('.vn-sprite-open').hidden); assert(record.frame.querySelector('.vn-sprite-blink').hidden);
+    animator.blink(node); await controller.action('next'); await until(() => node.dataset.expression === 'happy');
+    record = animator.records.get(node); equal(record.visual.querySelectorAll('.vn-sprite-frame').length, 2); assert(record.animations.size > 0);
+    assert(!record.frame.querySelector('.vn-sprite-open').hidden);
+    await controller.action('back'); await until(() => node.dataset.expression === 'default');
+    await until(() => record.visual.querySelectorAll('.vn-sprite-frame').length === 1 && record.animations.size === 0);
+    equal(record.visual.querySelectorAll('.vn-sprite-frame').length, 1); equal(record.animations.size, 0);
+    equal(animator.mesh.surfaces.size, 1);
+    const panel = controller.settingsPanel;
+    panel.querySelector('[aria-label="Breathing center character"]').value = 'Nina';
+    const centers = [...panel.querySelectorAll('label')].filter(label => label.textContent.startsWith('Breathing center ')).map(label => label.querySelector('input'));
+    centers[0].value = '.35'; centers[1].value = '.55';
+    const cursor = controller.playback.cursor, frame = record.frame;
+    [...panel.querySelectorAll('button')].find(button => button.textContent === 'Apply breathing center').click();
+    await until(() => record.breath.centerX === .35 && record.breath.centerY === .55);
+    equal(controller.playback.cursor, cursor); assert(record.frame === frame); assert(animator.records.get(node) === record);
+    equal(controller.settings.characters.nina.blink.duration, 90); equal(controller.settings.characters.nina.breathing.centerX, .35);
+    assert(panel.querySelector('[aria-label="Character registry JSON"]').value.includes('"centerY": 0.55'));
+    [...panel.querySelectorAll('button')].find(button => button.textContent === 'Load breathing center').click();
+    await pause(50); equal(centers.map(input => Number(input.value)), [.35, .55]);
+    controller.settings.reducedMotion = true; controller.present(controller.playback.restore()); await pause(30);
+    assert(!record.breath); equal(record.blinkTimer, null); equal(record.openTimer, null); equal(animator.mesh.surfaces.size, 0); assert(!record.frame.querySelector('canvas')); equal(animator.frameId, null);
+    controller.settings.expressionTransition = 280; delete controller.settings.characters.nina;
+});
+await check('GPU mesh has no triangle seams, preserves alpha/orientation, and releases resources', async () => {
+    const renderer = new SpriteMeshRenderer(), source = document.createElement('canvas'); source.width = 128; source.height = 192;
+    const context = source.getContext('2d'); context.fillStyle = 'rgba(255,80,32,.5)'; context.fillRect(0, 0, 128, 192);
+    const image = new Image(); image.className = 'vn-sprite-open'; image.alt = 'Mesh fixture'; image.src = source.toDataURL(); await image.decode();
+    const frame = document.createElement('div'); frame.className = 'vn-sprite-frame'; frame.style.cssText = 'position:fixed;left:0;top:0;bottom:auto;width:173.4px;height:240.8px;'; frame.append(image); document.body.append(frame);
+    try {
+        assert(renderer.enable(frame));
+        for (const inhale of [0, .071, .324, .777, 1]) {
+            assert(renderer.draw(frame, breathingConfig({ breathing: { amount: 5, centerX: .43, centerY: .57 } }), inhale));
+            const surface = renderer.surfaces.get(frame), width = surface.canvas.width, height = surface.canvas.height;
+            const data = surface.context.getImageData(0, 0, width, height).data;
+            for (let y = Math.ceil(height * .1); y < height * .9; y++) for (let x = Math.ceil(width * .2); x < width * .8; x++) {
+                const i = (y * width + x) * 4;
+                assert(Math.abs(data[i + 3] - 128) <= 2, `Triangle seam at ${x},${y}, phase ${inhale}: alpha ${data[i + 3]}`);
+                assert(data[i] >= 253 && Math.abs(data[i + 1] - 80) <= 2 && Math.abs(data[i + 2] - 32) <= 2, 'Premultiplied texture color changed');
+            }
+        }
+        const ctx = source.getContext('2d'); ctx.clearRect(0,0,128,192); ctx.fillStyle = '#00ff00'; ctx.fillRect(0,0,128,192); ctx.fillStyle = '#ff0000'; ctx.fillRect(0,0,128,24); ctx.fillStyle = '#0000ff'; ctx.fillRect(0,168,128,24);
+        const closed = new Image(); closed.className = 'vn-sprite-blink'; closed.src = source.toDataURL(); await closed.decode(); frame.append(closed); image.hidden = true;
+        assert(renderer.draw(frame, breathingConfig({}), .5));
+        const surface = renderer.surfaces.get(frame), sample = y => [...surface.context.getImageData(Math.floor(surface.canvas.width/2), Math.floor(surface.canvas.height*y),1,1).data];
+        equal(sample(.05), [255,0,0,255]); equal(sample(.95), [0,0,255,255]); equal(sample(.5), [0,255,0,255]);
+        renderer.canvas.dispatchEvent(new Event('webglcontextlost')); equal(renderer.surfaces.size, 0); assert(!frame.classList.contains('vn-sprite-meshed')); assert(!renderer.enable(frame));
+    } finally { renderer.dispose(); frame.remove(); }
+});
+await check('click/keyboard progression, typewriter skip and auto advance use live controls', async () => {
+    context.chat[0].mes = 'SECRET\n/////\nNARRATION\nFirst paragraph\nNARRATION\nSecond paragraph'; await controller.open(0);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })); equal(controller.playback.position, 1);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true })); equal(controller.playback.position, 0);
+    controller.settings.reducedMotion = false; controller.settings.typewriterEffect = true; controller.settings.typewriterSpeed = 100;
+    await controller.action('replay'); assert(controller.dialogue.typing);
+    controller.root.querySelector('.vn-dialogue').click(); assert(!controller.dialogue.typing); equal(controller.playback.position, 0);
+    controller.settings.typewriterEffect = false; controller.settings.reducedMotion = true; controller.settings.autoAdvance = true; controller.settings.autoAdvanceDelay = 30;
+    controller.present(controller.playback.restore()); await pause(100); assert(!controller.root.querySelector('.vn-reply').hidden);
+    controller.settings.autoAdvance = false; clearTimeout(controller.autoTimer);
+});
+await check('reply, retry, exit and resume delegate to normal host controls', async () => {
+    await controller.action('reply'); controller.root.querySelector('#vnplus-reply').value = 'Test reply'; await controller.action('send'); equal(sends, 1);
+    await controller.action('retry'); equal(retries, 1);
+    controller.close(); assert(controller.root.hidden); await controller.open(0); assert(!controller.root.hidden);
+});
+controller.dispose();
+document.querySelector('#test-status').textContent = `${passes} passed · ${failures} failed`;
+document.body.dataset.testStatus = failures ? 'failed' : 'passed';

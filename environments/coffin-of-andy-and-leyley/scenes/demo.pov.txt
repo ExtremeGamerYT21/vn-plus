@@ -1,0 +1,30 @@
+#BACKGROUND living_room
+#MUSIC buzz slowed
+#ENTER Jason
+#ENTER Ashley
+#ENTER Nina
+#ENTER Leyley
+
+NARRATION
+Rain murmurs against the windows. Four familiar faces gather beneath the warm light.
+
+ASHLEY: "Well? Don't keep us waiting." [smug]
+
+JASON: "I found something you should see." [happy]
+
+NINA: "A letter? Who is it from?" [excited]
+
+LEYLey: "Open it. We'll find out together." [happy]
+
+#SFX page_turn
+
+```html
+<article style="padding:36px;max-width:520px;margin:auto;border:1px solid #ae9676;background:#f5edda;box-shadow:0 8px 30px #74582c20"><p style="letter-spacing:.18em;font:12px sans-serif">AN UNEXPECTED INVITATION</p><h1 style="font-size:36px;font-weight:normal">Meet me at dusk.</h1><p>The garden gate will be open. Bring the little brass key.</p><p style="text-align:right;font-style:italic">— A friend</p></article>
+```
+
+#BACKGROUND outside
+#CAMERA ZOOM 1.1
+NARRATION
+Outside, the last light catches on the wet pavement. Nobody has left your side.
+
+ASHLEY: "All right. Let's go." [happy]

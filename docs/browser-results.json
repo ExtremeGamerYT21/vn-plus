@@ -1,0 +1,26 @@
+{
+  "status": "21 passed · 0 failed",
+  "tests": [
+    "PASS · POV privacy and four characters from one scenario",
+    "PASS · backward restores background, expression and audio state",
+    "PASS · grouped rows keep the player left and rear busts smaller and higher",
+    "PASS · VN music mute button preserves selection and leaves ambience independent",
+    "PASS · both layout selectors synchronize and switch live without restarting the scene",
+    "PASS · environment selectors isolate content/profiles and preserve the selected paragraph",
+    "PASS · environment switching cancels old sprite, preview and audio loads",
+    "PASS · refresh merges personal content and selection remains safe during generation or while closed",
+    "PASS · artifact opens automatically, blocks scripts and application access",
+    "PASS · HTML sanitizer strips network navigation, forms and nested frames",
+    "PASS · interactive HTML runs in an opaque origin without app or storage access",
+    "PASS · reveal is deliberate, non-mutating, and closes on generation",
+    "PASS · swipe and edit use selected message instead of last chat entry",
+    "PASS · chat switches clear stage, background, audio and reveal",
+    "PASS · refresh reconstruction, DOM remount, reinitialization and disable",
+    "PASS · missing assets, property styling and reduced motion remain readable",
+    "PASS · obsolete async background and sprite requests cannot overwrite new scene",
+    "PASS · breathing, expression interpolation and blink images clean up on reduced motion",
+    "PASS · GPU mesh has no triangle seams, preserves alpha/orientation, and releases resources",
+    "PASS · click/keyboard progression, typewriter skip and auto advance use live controls",
+    "PASS · reply, retry, exit and resume delegate to normal host controls"
+  ]
+}
