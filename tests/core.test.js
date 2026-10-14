@@ -30,6 +30,37 @@ test('Unicode names, punctuation, multiline dialogue, emphasis and emotion casin
     assert.equal(tokens[0].text, '  *Prose*\n\n'); assert.equal(tokens[1].character, 'Dr. Élodie O’Neil');
     assert.equal(tokens[1].text, '“Hello,\n  you.”'); assert.equal(tokens[1].emotion, 'excited');
 });
+test('freestyle prose is narration without requiring a NARRATION marker', () => {
+    const parsed = parsePOV('  You hear *footsteps*.\n\nThe door creaks.\nAshley: "Hello."\nYou turn around.');
+    assert.deepEqual(parsed.tokens.map(token => token.type), ['narration', 'dialogue', 'narration']);
+    assert.equal(parsed.tokens[0].text, '  You hear *footsteps*.\n\nThe door creaks.\n');
+    assert.equal(parsed.tokens[2].text, 'You turn around.');
+    assert.deepEqual(parsed.errors, []);
+});
+test('parenthesized dialogue is an internal thought with intact text, speaker and expression', () => {
+    const parsed = parsePOV('Ashley: "(I should keep this to myself.)" [NERVOUS]\nDr. Élodie: “(This (really) matters.)”\nNina: (Maybe\n  tomorrow.) [happy]\nJason: \'(Wait.)\'');
+    assert.equal(parsed.tokens.length, 4); assert.deepEqual(parsed.errors, []);
+    assert.ok(parsed.tokens.every(token => token.type === 'dialogue' && token.thought));
+    assert.equal(parsed.tokens[0].text, '"(I should keep this to myself.)"');
+    assert.equal(parsed.tokens[0].character, 'Ashley'); assert.equal(parsed.tokens[0].emotion, 'nervous');
+    assert.equal(parsed.tokens[2].text, '(Maybe\n  tomorrow.)');
+    const timeline = compileTimeline(parsed.tokens, registry(), settings());
+    assert.equal(timeline.beats[0].state.speaker, 'ashley');
+    assert.equal(timeline.beats[0].state.characters.ashley.expression, 'nervous');
+    const player = new Playback(timeline); player.forward(); player.forward();
+    assert.equal(player.back().beat.token.thought, true);
+});
+test('spoken parentheses and freestyle parenthetical prose do not become internal dialogue', () => {
+    const parsed = parsePOV('Ashley: "Hello (again)." [happy]\nNina: "(Quietly) hello."\n\n(You hear footsteps.)');
+    assert.deepEqual(parsed.tokens.map(token => token.type), ['dialogue', 'dialogue', 'narration']);
+    assert.ok(parsed.tokens.every(token => !token.thought)); assert.deepEqual(parsed.errors, []);
+});
+test('unfinished thought wrappers are withheld until streaming completes', () => {
+    for (const text of ['Ashley: (Not yet', 'Ashley: "(Not yet" [sad]', 'Ashley: "(Not yet.)']) {
+        const parsed = parsePOV(text); assert.equal(parsed.tokens.length, 0); assert.equal(parsed.errors.length, 1);
+    }
+    assert.equal(parsePOV('Ashley: "(Ready.)" [happy]').tokens[0].thought, true);
+});
 test('unknown and malformed commands cannot become visible prose', () => {
     const parsed = parsePOV('#UNKNOWN hidden command\n#MUSIC\n@background kitchen\n@soundFX door\n@music buzz slowed\nNARRATION\nHello');
     assert.equal(parsed.errors.length, 1); assert.equal(parsed.tokens.filter(token => token.type === 'narration').length, 1);

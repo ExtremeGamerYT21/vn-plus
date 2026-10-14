@@ -1,4 +1,4 @@
-# Visual Novel+ 2.3.1
+# Visual Novel+ 2.4.0
 
 A procedural visual novel presentation layer for SillyTavern. It reads **only** the player perspective after an exact `/////` line in the selected assistant message. Canonical narration, conversation storage, generation, and outgoing context remain under SillyTavern and your separate POV workflow.
 
@@ -13,6 +13,8 @@ Version 2.2.1 cleans up obsolete JavaScript/CSS files and an overridden dialogue
 Version 2.3 puts authored content in selectable **environments**. Choose **The Coffin of Andy and Leyley**, **Harry Potter**, **Re:Zero**, or your own setting under **General → Content environment** or in the VN toolbar. The supplied artwork is in the Coffin environment; the other two are empty starters ready for your content.
 
 Version 2.3.1 adds GitHub installation and updates. Personal content uses an optional local inventory, keeping the shipped catalog clean for future updates.
+
+Version 2.4 adds silhouette busts for missing art, SillyTavern theme inheritance with optional VN color overrides, text shaking limited to configurable intense emotion tags, internal thoughts, and optional Fish Audio voices from character properties. Plain prose works as narration without a `NARRATION` marker. Parenthesized dialogue displays as internal thoughts and stays silent.
 
 ## Install
 
@@ -129,9 +131,17 @@ Property example (all fields optional):
 }
 ```
 
-Registry overrides in settings use a JSON object keyed by character folder ID and can also specify `assetFolder`. These override file properties. There are sprite previews, expression/identity alias maps, and layout overrides. Actual expression assets always take priority over aliases/defaults; `excited` retains its own presentation flair. Inactive speakers dim; narration does not remove them. Missing sprites use named placeholders, or can be hidden by preference.
+Registry overrides in settings use a JSON object keyed by character folder ID and can also specify `assetFolder`. These override file properties. There are sprite previews, expression/identity alias maps, and layout overrides. Actual expression assets always take priority over aliases/defaults; `excited` retains its own presentation flair. Inactive speakers dim; narration does not remove them. Missing sprites use named shadow silhouettes, or can be hidden by preference.
 
 Textures, color, fonts, opacity, border visibility and dialogue sizing are configurable globally; a speaking character can override colors, font and texture. `nameplateColor`, `nameplateBackground`, `borderColor`, and `boxColor` customize the nameplate/panel independently. `sounds` optionally maps expression names to voice/effect filenames. Custom per-character box/nameplate styles use these supported semantic properties rather than arbitrary application HTML/CSS injection.
+
+## Theme and character voices
+
+The VN interface follows SillyTavern’s theme colors and font. **Theme** in VN settings provides optional body, panel, world, border, accent, muted-text and silhouette colors; blank fields inherit the current ST theme. Character properties can still override dialogue colors, textures and fonts. The previous default purple colors/font migrate to theme inheritance while custom values remain.
+
+Text shakes only for tags in **Presentation → Emotion tags that shake**, such as rage, terror, panic or unhinged. Calm tags and narration stay still, including when an old global jitter setting or a shake/jitter text command is present. Reduced motion disables shaking.
+
+Set `"voiceId":"YOUR_FISH_VOICE_ID"` in a character’s properties or registry override to voice that character. With no ID, the character is mute. Fish settings are under **Extensions → Visual Novel+ → Fish Audio voices**, also available from the VN toolbar’s **Voices** button. The optional server bridge keeps the key in SillyTavern’s secret store; generation is manual and only includes selected finalized spoken dialogue. See [Fish setup, generation, timing review and audio finishing](docs/speech.md).
 
 ## Sprite motion and blinking
 
@@ -192,7 +202,7 @@ Music mute is a saved preference and remains active across scene changes/reopeni
 
 ## Privacy, storage and lifecycle
 
-- No prompt injection, rewriting API, provider integration, model calls, external server, or independent conversation store.
+- No prompt injection, story rewriting, LLM generation calls or independent conversation store. Optional Fish Audio speech sends only manually selected spoken POV dialogue through the bundled server bridge when you request generation.
 - Only regular settings persist. Seen-beat sets (up to 32 response fingerprints), asset results and diagnostics are bounded in memory. No new global localStorage scene/transcript keys are written. Legacy stored keys are ignored rather than deleted.
 - Swipes/edits reconstruct the selected source; chat changes clear staging/audio; refresh reconstructs the scene from the saved message. Branch identity includes chat and character/group IDs.
 - Canonical text is shown only by a deliberate reveal. Reveal closes on generation, editing, swiping, chat changes or entering VN. A missing/incomplete POV produces a safe waiting/unavailable view.

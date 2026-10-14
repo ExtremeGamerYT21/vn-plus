@@ -2,6 +2,23 @@ const COMMANDS = new Set(['BACKGROUND', 'MUSIC', 'AMBIENT', 'SFX', 'FADE', 'FLAS
 const LEGACY = { SOUNDFX: 'SFX' };
 const ROOT_HTML = /^\s*(?:<!doctype\s+html\b|<(?:html|article|section|div|main|svg|table|canvas|figure|pre|p|style|h[1-6]|details)\b)/i;
 
+// A single outer pair must enclose the whole utterance; an aside within speech
+// such as "Hello (again)." remains ordinary dialogue.
+function thoughtWrapper(text) {
+    if (!text.startsWith('(')) return false;
+    let depth = 0;
+    for (let i = 0; i < text.length; i++) {
+        if (text[i] === '(') depth++;
+        else if (text[i] === ')' && --depth === 0) return i === text.length - 1;
+    }
+    return null; // Streaming thought with an unfinished outer pair.
+}
+function completedDialogue(text) {
+    const value = text.trim().replace(/\s*\[[^\]\r\n]+\]\s*$/, '').trim();
+    const closing = { '"': '"', '“': '”', "'": "'", '‘': '’' }[value[0]];
+    return closing ? value.length > 1 && value.endsWith(closing) : thoughtWrapper(value) === true || /\[[^\]]+\]\s*$/.test(text);
+}
+
 /** Only call with splitMessage(...).pov. Never with a raw combined message. */
 export function parsePOV(pov) {
     const tokens = [], errors = [];
@@ -14,17 +31,22 @@ export function parsePOV(pov) {
     const flush = () => {
         if (!current) return;
         let text = current.text;
-        let emotion = 'default';
+        let emotion = 'default', thought = false, direction;
         if (current.type === 'dialogue') {
             const tag = /\s*\[([^\]\r\n]+)\][ \t]*(?:\r?\n)?$/.exec(text);
-            if (tag) { emotion = tag[1].trim().toLowerCase(); text = text.slice(0, tag.index); }
+            if (tag) { direction = tag[1].trim(); emotion = direction.toLowerCase(); text = text.slice(0, tag.index); }
             const quote = text.trim()[0];
             const closing = { '"': '"', '“': '”', "'": "'", '‘': '’' }[quote];
             if (closing && (text.trim().length < 2 || !text.trim().endsWith(closing))) {
                 errors.push({ line: current.line, message: 'Incomplete quoted dialogue withheld.' }); current = null; return;
             }
+            const content = closing ? text.trim().slice(1, -1).trim() : text.trim();
+            thought = thoughtWrapper(content);
+            if (thought === null) {
+                errors.push({ line: current.line, message: 'Incomplete internal thought withheld.' }); current = null; return;
+            }
         }
-        if (text.trim()) tokens.push({ ...current, text, ...(current.type === 'dialogue' ? { emotion } : {}) });
+        if (text.trim()) tokens.push({ ...current, text, ...(current.type === 'dialogue' ? { emotion, ...(direction ? { direction } : {}), ...(thought ? { thought: true } : {}) } : {}) });
         current = null;
     };
     for (let i = 0; i < lines.length; i++) {
@@ -66,13 +88,14 @@ export function parsePOV(pov) {
             continue;
         }
         if (/^NARRATION$/i.test(trimmed)) { flush(); current = { type: 'narration', text: '', line: i + 1 }; continue; }
-        // Unicode and punctuation names; a quote or an ending expression distinguishes
+        // Unicode and punctuation names; a quote, thought or ending expression distinguishes
         // dialogue from prose labels such as "Note: this is a room".
         const dialogue = /^\s*([^:\r\n<>]{1,100}):[ \t]*(.*)$/.exec(clean);
-        if (dialogue && (/^["“'‘]/.test(dialogue[2]) || /\[[^\]]+\]\s*$/.test(dialogue[2]))) {
+        if (dialogue && (/^["“'‘(]/.test(dialogue[2]) || /\[[^\]]+\]\s*$/.test(dialogue[2]))) {
             flush(); current = { type: 'dialogue', character: dialogue[1].trim(), text: dialogue[2] + (line.endsWith('\n') ? '\n' : ''), line: i + 1 }; continue;
         }
         if (!trimmed && current?.type === 'dialogue') { flush(); continue; }
+        if (current?.type === 'dialogue' && completedDialogue(current.text)) flush();
         if (!trimmed && !current) continue;
         current ??= { type: 'narration', text: '', line: i + 1 };
         current.text += line;

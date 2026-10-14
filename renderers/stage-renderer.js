@@ -1,5 +1,6 @@
 import { stagePosition } from '../core/stage-layout.js';
 import { SpriteAnimator } from './sprite-animator.js';
+import { createSilhouette } from './silhouette.js';
 
 export class StageRenderer {
     constructor(root, resolver, registry, settings) { this.root = root; this.resolver = resolver; this.registry = registry; this.settings = settings; this.generation = 0; this.nodes = new Map(); this.sprites = new SpriteAnimator(root, resolver, settings); }
@@ -27,7 +28,7 @@ export class StageRenderer {
             let node = this.nodes.get(character.id);
             if (!node) {
                 node = document.createElement('div'); node.className = 'vn-character'; node.dataset.character = character.id;
-                const fallback = document.createElement('div'); fallback.className = 'vn-missing-bust'; fallback.textContent = character.name;
+                const fallback = createSilhouette(character.name);
                 node.append(fallback); stage.append(node); this.nodes.set(character.id, node);
             }
             node.dataset.name = character.name;

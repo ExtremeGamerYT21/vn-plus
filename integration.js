@@ -2,6 +2,10 @@
 export function createHost(getContext) {
     return {
         context: getContext,
+        request(url, options = {}) {
+            if (!/^\/api\/plugins\/vn-plus-tts\/(status|secret|synthesize)$/.test(url)) throw new Error('Invalid VN+ speech route.');
+            return fetch(url, { ...options, headers: { ...(getContext().getRequestHeaders?.() || { 'Content-Type': 'application/json' }), ...options.headers } });
+        },
         subscribe(name, callback) {
             const context = getContext(), event = (context.eventTypes || context.event_types)?.[name];
             if (!event || !context.eventSource) return () => {};

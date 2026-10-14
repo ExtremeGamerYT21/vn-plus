@@ -1,5 +1,5 @@
 {
-  "status": "21 passed · 0 failed",
+  "status": "25 passed · 0 failed",
   "tests": [
     "PASS · POV privacy and four characters from one scenario",
     "PASS · backward restores background, expression and audio state",
@@ -20,7 +20,11 @@
     "PASS · obsolete async background and sprite requests cannot overwrite new scene",
     "PASS · breathing, expression interpolation and blink images clean up on reduced motion",
     "PASS · GPU mesh has no triangle seams, preserves alpha/orientation, and releases resources",
+    "PASS · freestyle narration and internal thoughts preserve identity, styling, transcript and silent playback",
     "PASS · click/keyboard progression, typewriter skip and auto advance use live controls",
-    "PASS · reply, retry, exit and resume delegate to normal host controls"
+    "PASS · reply, retry, exit and resume delegate to normal host controls",
+    "PASS · missing artwork uses a bust silhouette, ST theme overrides apply, and only intense tags shake",
+    "PASS · Fish settings use property voices, protect credentials and connect cached clips to final dialogue",
+    "PASS · MP3 export is real decodable audio and finishing keeps original sample timing"
   ]
 }

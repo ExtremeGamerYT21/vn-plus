@@ -1,4 +1,4 @@
-import { EMOTION_FLAIR } from './emotion-flair.js';
+import { EMOTION_FLAIR, shouldShakeText } from './emotion-flair.js';
 
 /** Small, safe emphasis renderer. Text is always inserted with text nodes. */
 export function appendEmphasis(container, text, letters = []) {
@@ -17,14 +17,15 @@ export class DialogueRenderer {
     async render(token, props = {}, effect = 'normal', onDone = () => {}, instant = false) {
         this.cancel(); const generation = this.generation;
         const box = this.root.querySelector('.vn-dialogue'), text = box.querySelector('.vn-text');
-        box.querySelector('.vn-speaker').textContent = token.type === 'dialogue' ? (props.displayName || token.character) : 'Narration';
+        const speaker = token.type === 'dialogue' ? (props.displayName || token.character) : 'Narration';
+        box.querySelector('.vn-speaker').textContent = token.thought ? `${speaker} · thoughts` : speaker;
         const color = (value, fallback) => CSS.supports('color', value || '') ? value : fallback;
-        box.style.setProperty('--vn-accent', color(props.color, '#baabef'));
-        box.style.setProperty('--vn-name-color', color(props.nameplateColor || props.color, '#baabef'));
-        box.style.setProperty('--vn-border-color', color(props.borderColor || props.color, '#baabef88'));
+        box.style.setProperty('--vn-accent', color(props.color, 'var(--vn-ui-accent)'));
+        box.style.setProperty('--vn-name-color', color(props.nameplateColor || props.color, 'var(--vn-ui-accent)'));
+        box.style.setProperty('--vn-border-color', color(props.borderColor || props.color, 'var(--vn-border)'));
         box.style.backgroundColor = props.boxColor ? color(props.boxColor, '') : '';
         box.querySelector('.vn-speaker').style.backgroundColor = color(props.nameplateBackground, 'transparent');
-        box.style.setProperty('--vn-text-color', color(token.type === 'narration' ? props.narrationColor || this.settings.narrationColor : props.textColor || this.settings.textColor, '#f4f1fa'));
+        box.style.setProperty('--vn-text-color', color(token.type === 'narration' ? props.narrationColor || this.settings.narrationColor : props.textColor || this.settings.textColor, token.type === 'narration' ? 'var(--vn-muted)' : 'var(--vn-ui-color)'));
         box.style.setProperty('--vn-box-opacity', this.settings.overlayOpacity);
         box.style.width = `min(${this.settings.dialogueBoxWidth}vw, 94vw)`;
         box.style.minHeight = `${this.settings.dialogueBoxHeight}px`;
@@ -37,8 +38,9 @@ export class DialogueRenderer {
         text.style.letterSpacing = `${this.settings.letterSpacing}px`;
         text.style.fontFamily = this.resolver.fontFamily(props.font || this.settings.dialogueFont);
         text.className = 'vn-text';
+        text.classList.toggle('vn-thought', !!token.thought);
         if (!this.settings.reducedMotion && this.settings.textEffects) {
-            if (flair.shake && flair.shake !== 'none' || ['shake', 'jitter'].includes(effect) || this.settings.typewriterJitter) text.classList.add('vn-text-jitter');
+            if (shouldShakeText(token.emotion, this.settings)) text.classList.add('vn-text-jitter');
             if (effect === 'whisper') text.classList.add('vn-whisper');
             if (effect === 'shout') text.classList.add('vn-shout');
         }

@@ -17,6 +17,9 @@ import { createOverlay } from './ui/overlay.js';
 import { bindControls } from './ui/controls.js';
 import { createSettings, loadSettings } from './ui/settings.js';
 import { OmniscientToggle } from './ui/omniscient-toggle.js';
+import { applyTheme } from './core/theme.js';
+import { SpeechEngine } from './renderers/speech-engine.js';
+import { SpeechPanel } from './ui/speech-panel.js';
 
 export class VNController {
     constructor(host, base, inventory = {}) {
@@ -28,6 +31,10 @@ export class VNController {
         this.resolver = this.createContentResolver(this.environment); this.registry = new CharacterRegistry(this.resolver, this.settings);
         this.root = createOverlay(); this.stage = new StageRenderer(this.root, this.resolver, this.registry, this.settings);
         this.dialogue = new DialogueRenderer(this.root, this.resolver, this.settings); this.audio = new AudioEngine(this.resolver, this.settings, message => this.log(message));
+        this.speech = new SpeechEngine(host, this.settings); this.speech.onEnded = () => this.scheduleAuto();
+        const speechCallbacks = { prepare: () => this.prepareSpeech(), change: () => this.settingsChanged('speech') };
+        this.speechSettingsPanel = new SpeechPanel(this.speech, speechCallbacks);
+        this.voicePanel = new SpeechPanel(this.speech, speechCallbacks, { expanded: true }); applyTheme(this.root, this.settings);
         this.effects = new EffectsRenderer(this.root, this.settings); this.html = new HTMLRenderer(this.root, this.settings);
         this.reveal = new OmniscientToggle(host.context, () => this.busy || !this.settings.enabled);
         this.selected = latestAssistant(host.context()); this.chatId = chatIdentity(host.context());
@@ -43,6 +50,7 @@ export class VNController {
                 open: () => void this.open(), replay: () => void this.action('replay'), debug: () => void this.action('debug'),
                 change: key => this.settingsChanged(key), refresh: () => void this.refreshAssets(),
                 environments: this.environments.map(entry => ({ value: entry.id, label: entry.name })),
+                speechPanel: this.speechSettingsPanel.node,
                 preview: async (name, expression) => {
                     const registry = this.registry, resolver = this.resolver; await registry.prepare([name]);
                     if (resolver !== this.resolver) return null;
@@ -56,6 +64,7 @@ export class VNController {
                 },
             });
             target.append(this.settingsPanel);
+            applyTheme(this.settingsPanel, this.settings);
         }
         for (const node of document.querySelectorAll('#chat .mes[mesid]')) {
             const index = Number(node.getAttribute('mesid')), message = readMessage(this.host.context(), index);
@@ -74,7 +83,7 @@ export class VNController {
         const subscribe = (name, callback) => this.disposers.push(this.host.subscribe(name, callback));
         subscribe('GENERATION_STARTED', (type, options, dryRun) => {
             if (dryRun || ['quiet', 'impersonate'].includes(type)) return;
-            this.busy = true; this.parsed = null; this.reveal.close(); this.invalidate(); this.mount();
+            this.busy = true; this.parsed = null; this.speech.clearScene(); this.reveal.close(); this.invalidate(); this.mount();
             if (!this.root.hidden) this.wait('Waiting for a completed player perspective…');
         });
         const completed = () => {
@@ -86,16 +95,20 @@ export class VNController {
         };
         subscribe('GENERATION_ENDED', completed); subscribe('GENERATION_STOPPED', completed);
         subscribe('MESSAGE_RECEIVED', index => {
-            if (!readMessage(this.host.context(), Number(index))) return;
+            const message = readMessage(this.host.context(), Number(index)); if (!message) return;
+            if (this.speech.prepared && this.speech.prepared.sourceId !== this.speechSceneId(message)) this.speech.clearScene();
             this.pendingIndex = Number(index);
             if (!this.busy) { this.selected = Number(index); this.pendingIndex = null; if (!this.root.hidden || this.settings.automaticPlayback) void this.open(this.selected); }
             this.mount();
         });
         for (const event of ['MESSAGE_SWIPED', 'MESSAGE_UPDATED', 'MESSAGE_EDITED', 'MESSAGE_SWIPE_DELETED', 'CHARACTER_MESSAGE_RENDERED']) subscribe(event, index => {
             this.reveal.close(); this.mount();
+            const message = readMessage(this.host.context(), Number(index));
+            if (Number(index) === this.selected && this.speech.prepared && (!message || this.speech.prepared.sourceId !== this.speechSceneId(message))) this.speech.clearScene();
             if (Number(index) === this.selected) { this.sceneRevision = null; if (!this.root.hidden && !this.busy) void this.open(this.selected); }
         });
         subscribe('MESSAGE_DELETED', () => {
+            this.speech.clearScene();
             this.reveal.close(); this.invalidate(); this.playback = null; this.parsed = null; this.sceneRevision = null;
             this.selected = latestAssistant(this.host.context()); this.mount(); if (!this.root.hidden) void this.open(this.selected);
         });
@@ -103,6 +116,7 @@ export class VNController {
             const identity = chatIdentity(this.host.context());
             if (identity === this.chatId && event === 'CHAT_LOADED') { this.mount(); return; }
             this.chatId = identity; this.selected = latestAssistant(this.host.context()); this.busy = false; this.pendingIndex = null;
+            this.speech.clearScene();
             this.reveal.close(); this.invalidate(); this.playback = null; this.parsed = null; this.sceneRevision = null; this.seen.clear(); this.mount();
             if (!this.root.hidden) void this.open(this.selected);
         });
@@ -118,8 +132,12 @@ export class VNController {
     }
     settingsChanged(key) {
         if (key === 'environment') { void this.selectEnvironment(this.settings.environment); return; }
-        if (CONTENT_PROFILE_KEYS.includes(key) || key === 'breathingCenter') saveContentProfile(this.settings, this.environment.id);
+        if (CONTENT_PROFILE_KEYS.includes(key) || key === 'breathingCenter' || key === 'themeReset') saveContentProfile(this.settings, this.environment.id);
+        if (key === 'themeReset') for (const name of ['dialogueFont', 'textColor', 'narrationColor']) { const input = this.settingsPanel?.querySelector(`[data-setting="${name}"]`); if (input) input.value = this.settings[name]; }
         this.host.save(this.settings); this.reveal.close(); this.mount();
+        applyTheme(this.root, this.settings); if (this.settingsPanel) applyTheme(this.settingsPanel, this.settings);
+        if (key === 'speech') { this.speech.configurationChanged(); return; }
+        if (key === 'characters') this.speech.clearScene();
         this.updateLayoutControls();
         if (key === 'musicMuted') this.audio.setMusicMuted(this.settings.musicMuted);
         this.updateMusicButton();
@@ -143,7 +161,7 @@ export class VNController {
         if (next.id === this.environment.id && !force) { this.settings.environment = next.id; this.updateEnvironmentControls(); return false; }
         const message = readMessage(this.host.context(), this.selected);
         const resume = this.playback && message ? { key: sceneKey(this.host.context(), message), position: this.playback.position } : this.environmentResume;
-        this.invalidate(); this.resolver.dispose();
+        this.speech.clearScene(); this.invalidate(); this.resolver.dispose();
         activateContentProfile(this.settings, next.id, this.environment.id); this.environment = next;
         this.resolver = this.createContentResolver(next); this.registry = new CharacterRegistry(this.resolver, this.settings);
         this.stage.resolver = this.resolver; this.stage.registry = this.registry; this.stage.sprites.resolver = this.resolver;
@@ -179,7 +197,7 @@ export class VNController {
         const status = panel.querySelector('[data-character-status]'); if (status) status.textContent = `Editing ${this.environment.name}.`;
     }
     invalidate() {
-        this.generation++; clearTimeout(this.autoTimer); this.dialogue.cancel(); this.stage.clear(); this.effects.clear(); this.html.close(); this.audio.close();
+        this.generation++; clearTimeout(this.autoTimer); this.speech.stop(); this.dialogue.cancel(); this.stage.clear(); this.effects.clear(); this.html.close(); this.audio.close();
         this.root.querySelector('.vn-panel').hidden = true; this.root.querySelector('.vn-reply').hidden = true;
         this.transcriptArtifact = false;
     }
@@ -199,15 +217,20 @@ export class VNController {
         this.selected = Number.isInteger(index) && index >= 0 ? index : latestAssistant(context);
         if (this.busy) { this.wait('Waiting for a completed player perspective…'); return; }
         const message = readMessage(context, this.selected);
-        if (!message || message.status !== 'ready') { this.invalidate(); this.sceneRevision = null; this.playback = null; this.parsed = null; this.parserErrors = []; this.wait('Player perspective is unavailable. A completed POV section after ///// is required.'); return; }
+        if (!message || message.status !== 'ready') { this.speech.clearScene(); this.invalidate(); this.sceneRevision = null; this.playback = null; this.parsed = null; this.parserErrors = []; this.wait('Player perspective is unavailable. A completed POV section after ///// is required.'); return; }
+        if (this.speech.prepared && this.speech.prepared.sourceId !== this.speechSceneId(message)) this.speech.clearScene();
         const revision = `${this.environment.id}:${identity}:${message.index}:${message.swipe}:${message.pov}`;
-        if (this.sceneRevision === revision && this.playback) { this.present(this.playback.restore()); return; }
+        if (this.sceneRevision === revision && this.playback) {
+            try { this.speech.prepare(this.speechSceneId(message), this.playback.timeline, this.registry); } catch (error) { this.speech.clearScene(); this.speech.notify(error.message); }
+            this.present(this.playback.restore()); return;
+        }
         this.invalidate(); this.parsed = null; this.parserErrors = []; const generation = this.generation; this.wait('Preparing scene…');
         const parsed = parsePOV(message.pov);
         const names = parsed.tokens.filter(token => token.character || token.name === 'ENTER').map(token => token.character || token.args);
         await this.registry.prepare(names);
         if (generation !== this.generation || this.busy || this.root.hidden) return;
         const timeline = compileTimeline(parsed.tokens, this.registry, this.settings), sourceKey = sceneKey(context, message), key = `${this.environment.id}:${sourceKey}`;
+        try { this.speech.prepare(this.speechSceneId(message), timeline, this.registry); } catch (error) { this.speech.clearScene(); this.speech.notify(error.message); }
         if (!this.seen.has(key)) { if (this.seen.size >= 32) this.seen.delete(this.seen.keys().next().value); this.seen.set(key, new Set()); }
         this.playback = new Playback(timeline, this.seen.get(key)); this.sceneRevision = revision; this.parsed = parsed; this.parserErrors = [...parsed.errors, ...timeline.errors];
         this.root.querySelector('.vn-scene-label').textContent = `PLAYER PERSPECTIVE · RESPONSE ${message.index + 1} · SWIPE ${message.swipe + 1}`;
@@ -220,6 +243,7 @@ export class VNController {
         clearTimeout(this.autoTimer); this.html.close(); this.dialogue.cancel(); this.effects.clear(); this.audio.cancelOneShots();
         this.root.querySelector('.vn-status').hidden = true; this.root.querySelector('.vn-reply').hidden = true;
         const { state, token } = result.beat;
+        this.speech.playBeat(result.done || token.type !== 'dialogue' || token.thought ? -1 : result.beat.index);
         void this.stage.render(state, this.playback.timeline.maxSlots).catch(error => this.log(error.message)); void this.audio.sync(state);
         for (const effect of result.effects) { if (effect.type === 'sfx') void this.audio.sfx(effect.name); else this.effects.trigger(effect); }
         this.root.querySelector('[data-action="back"]').disabled = this.playback.position <= 0;
@@ -236,17 +260,29 @@ export class VNController {
             const flair = this.settings.textEffects ? EMOTION_FLAIR[token.emotion] || {} : {};
             if (flair.screenFlash) this.effects.trigger({ type: 'flash', value: flair.screenFlash });
             const sound = props.sounds?.[token.emotion] || props.sound || flair.sound || token.emotion;
-            if (this.settings.characterSounds) void this.audio.sfx(sound, props.assetFolder || state.speaker);
+            if (this.settings.characterSounds && !token.thought && !this.settings.tts.enabled) void this.audio.sfx(sound, props.assetFolder || state.speaker);
         }
     }
     scheduleAuto() {
         clearTimeout(this.autoTimer);
-        if (this.settings.autoAdvance && !this.busy && !this.root.hidden && !this.html.active && this.root.querySelector('.vn-panel').hidden && this.root.querySelector('.vn-reply').hidden) this.autoTimer = setTimeout(() => void this.action('next'), this.settings.autoAdvanceDelay);
+        if (this.settings.autoAdvance && !this.speech.speaking && !this.busy && !this.root.hidden && !this.html.active && this.root.querySelector('.vn-panel').hidden && this.root.querySelector('.vn-reply').hidden) this.autoTimer = setTimeout(() => void this.action('next'), this.settings.autoAdvanceDelay);
     }
     showReply() {
         clearTimeout(this.autoTimer); this.root.querySelector('.vn-reply').hidden = false;
         this.root.querySelector('[data-action="retry"]').disabled = this.busy || this.selected !== this.host.context().chat.length - 1;
         this.root.querySelector('#vnplus-reply').focus();
+    }
+    speechSceneId(message) { return `${this.environment.id}:${sceneKey(this.host.context(), message)}`; }
+    async prepareSpeech() {
+        if (this.busy) throw new Error('Wait for the finalized player perspective before preparing voices.');
+        const message = readMessage(this.host.context(), this.selected), registry = this.registry;
+        if (!message || message.status !== 'ready') throw new Error('Select a completed assistant response with a POV section.');
+        const parsed = parsePOV(message.pov);
+        if (parsed.errors.some(error => error.message.startsWith('Incomplete') || error.message.startsWith('Unclosed'))) throw new Error('The selected POV contains unfinished dialogue or artifacts. Wait for a completed response.');
+        await registry.prepare(parsed.tokens.filter(token => token.character).map(token => token.character));
+        const current = readMessage(this.host.context(), this.selected);
+        if (this.busy || registry !== this.registry || !current || current.pov !== message.pov || current.swipe !== message.swipe || current.index !== message.index) throw new Error('The selected scene changed. Prepare its dialogue again.');
+        return this.speech.prepare(this.speechSceneId(message), compileTimeline(parsed.tokens, registry, this.settings), registry);
     }
     panel(kind) {
         clearTimeout(this.autoTimer); this.dialogue.skip(); clearTimeout(this.autoTimer);
@@ -258,7 +294,10 @@ export class VNController {
             if (token.type === 'command') continue;
             const paragraph = document.createElement('p');
             if (token.type === 'artifact') { const button = document.createElement('button'); button.textContent = 'View scene artifact'; button.addEventListener('click', () => { panel.hidden = true; this.html.open(token); this.transcriptArtifact = true; }); paragraph.append(button); }
-            else paragraph.textContent = `${token.type === 'dialogue' ? `${token.character}: ` : ''}${token.text}`;
+            else {
+                paragraph.textContent = `${token.type === 'dialogue' ? `${token.character}${token.thought ? ' (thoughts)' : ''}: ` : ''}${token.text}`;
+                paragraph.classList.toggle('vn-thought', !!token.thought);
+            }
             content.append(paragraph);
         }
         panel.hidden = false; panel.querySelector('button').focus();
@@ -273,6 +312,12 @@ export class VNController {
                 return;
             }
             if (action === 'replay' && this.root.hidden) { await this.open(this.selected); if (this.playback && !this.busy) this.present(this.playback.replay()); return; }
+            if (action === 'speech') {
+                clearTimeout(this.autoTimer); this.dialogue.skip(); clearTimeout(this.autoTimer);
+                const panel = this.root.querySelector('.vn-panel'); panel.querySelector('.vn-panel-title').textContent = 'Fish Audio voices';
+                panel.querySelector('.vn-panel-content').replaceChildren(this.voicePanel.node); this.voicePanel.refresh(); panel.hidden = false;
+                panel.querySelector('button').focus(); return;
+            }
             if (action === 'debug' || action === 'transcript') { if (this.root.hidden) await this.open(this.selected); this.panel(action); return; }
             if (action === 'close-panel') { this.root.querySelector('.vn-panel').hidden = true; this.root.querySelector('.vn-dialogue').focus(); this.scheduleAuto(); return; }
             if (action === 'close-artifact') { this.html.close(); if (this.transcriptArtifact) { this.transcriptArtifact = false; this.panel('transcript'); } else if (this.playback && !this.busy) this.present(this.playback.forward()); return; }
@@ -312,5 +357,6 @@ export class VNController {
         this.close(); this.stage.dispose(); this.observer.disconnect(); clearTimeout(this.mountTimer); this.disposers.forEach(dispose => dispose());
         this.root.remove(); this.settingsPanel?.remove(); document.querySelectorAll('.vn-message-tools').forEach(node => node.remove()); this.seen.clear();
         this.resolver.dispose(); this.catalogResolver.dispose();
+        this.speechSettingsPanel.dispose(); this.voicePanel.dispose(); this.speech.dispose();
     }
 }

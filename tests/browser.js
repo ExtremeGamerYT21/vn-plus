@@ -4,6 +4,9 @@ import { DEFAULT_SETTINGS } from '../ui/settings.js';
 import { isolatedDocument } from '../renderers/html-renderer.js';
 import { SpriteMeshRenderer, breathingConfig } from '../renderers/sprite-mesh.js';
 import { DEFAULT_ENVIRONMENT } from '../core/content-environments.js';
+import { encodeMP3 } from '../core/speech-mp3.js';
+import { decodeChapter, wavBytes } from '../core/speech-pcm.js';
+import { SAMPLE_RATE } from '../core/speech-segments.js';
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const assert = (value, message = 'Assertion failed') => { if (!value) throw new Error(message); };
 const equal = (a, b) => assert(JSON.stringify(a) === JSON.stringify(b), `${JSON.stringify(a)} != ${JSON.stringify(b)}`);
@@ -14,7 +17,7 @@ let sends = 0, retries = 0;
 const initial = `SECRET_CANONICAL_DO_NOT_RENDER\n#BACKGROUND secret\n/////\n#BACKGROUND kitchen\n#MUSIC buzz\n#AMBIENT outside_noise\n#ENTER Jason\n#ENTER Ashley\n#ENTER Nina\n#ENTER Leyley\nASHLEY: "Hello." [smug]\n#BACKGROUND street\n#SFX door\nNINA: "Ready?" [excited]\n\`\`\`html\n<div><h1>Letter</h1><script>parent.document.body.dataset.compromised='yes'</script></div>\n\`\`\`\nNARRATION\nAfter artifact`;
 const context = {
     characterId: 0, chatId: 'A', chat: [{ mes: initial, swipe_id: 0 }, { mes: 'User', is_user: true }],
-    extensionSettings: { visual_novel_plus: { ...structuredClone(DEFAULT_SETTINGS), typewriterEffect: false, characterSounds: false, reducedMotion: true, characters: { jason: { assetFolder: 'andrew', color: '#78c976' } } } },
+    extensionSettings: { visual_novel_plus: { ...structuredClone(DEFAULT_SETTINGS), typewriterEffect: false, characterSounds: false, reducedMotion: true, dialogueFont: 'faustina', characters: { jason: { assetFolder: 'andrew', color: '#78c976' } } } },
     eventTypes: Object.fromEntries(events.map(name => [name, name])), saveSettingsDebounced() {},
     eventSource: { on(name, callback) { const set = listeners.get(name) || new Set(); set.add(callback); listeners.set(name, set); }, removeListener(name, callback) { listeners.get(name)?.delete(callback); } },
     async generate(type) { assert(type === 'regenerate'); retries++; },
@@ -96,7 +99,7 @@ await check('environment selectors isolate content/profiles and preserve the sel
     equal(controller.root.querySelectorAll('.vn-character img').length, 0); equal(controller.root.querySelector('.vn-background').style.backgroundImage, '');
     assert(oldMusic.paused); equal(controller.audio.sources.size, 0); assert(controller.resolver.base.href.endsWith('/environments/harry-potter/'));
     equal(controller.registry.get('nina').boxTexture, undefined); equal(controller.root.querySelector('.vn-dialogue').style.backgroundImage, '');
-    assert(controller.root.querySelector('.vn-text').style.fontFamily.includes('vn-harry-potter-'));
+    equal(controller.root.querySelector('.vn-text').style.fontFamily, 'inherit');
     equal(JSON.parse(controller.settingsPanel.querySelector('[aria-label="Character registry JSON"]').value), {});
     const editor = controller.settingsPanel.querySelector('[aria-label="Character registry JSON"]');
     editor.value = JSON.stringify({ nina: { color: '#abcdef', breathing: { centerX: .8 } } });
@@ -291,6 +294,40 @@ await check('GPU mesh has no triangle seams, preserves alpha/orientation, and re
         renderer.canvas.dispatchEvent(new Event('webglcontextlost')); equal(renderer.surfaces.size, 0); assert(!frame.classList.contains('vn-sprite-meshed')); assert(!renderer.enable(frame));
     } finally { renderer.dispose(); frame.remove(); }
 });
+await check('freestyle narration and internal thoughts preserve identity, styling, transcript and silent playback', async () => {
+    const originalSFX = controller.audio.sfx, originalSounds = controller.settings.characterSounds;
+    const originalNina = controller.settings.characters.nina, sounds = [];
+    controller.audio.sfx = async (name, character) => { sounds.push({ name, character }); };
+    controller.settings.characterSounds = true; controller.settings.characters.nina = { sound: 'thought-voice.ogg' };
+    controller.settings.reducedMotion = true; controller.settings.typewriterEffect = false;
+    context.chat[0].mes = 'SECRET_THOUGHT_CANONICAL\n/////\nYou hear footsteps.\nNina: "(I should keep this to myself.)" [happy]\n#SFX door\nNina: "Hello (again)." [happy]\nNina: (Perhaps tomorrow.) [happy]\nNARRATION\nYou turn around.';
+    const originalChat = JSON.stringify(context.chat);
+    try {
+        await controller.open(0);
+        const text = controller.root.querySelector('.vn-text'), speaker = controller.root.querySelector('.vn-speaker');
+        equal(speaker.textContent, 'Narration'); assert(text.textContent.includes('You hear footsteps.')); equal(sounds.length, 0);
+        await controller.action('next');
+        assert(text.classList.contains('vn-thought')); equal(getComputedStyle(text).fontStyle, 'italic');
+        equal(speaker.textContent, 'Nina · thoughts'); equal(text.textContent, '"(I should keep this to myself.)"');
+        equal(controller.playback.restore().beat.state.characters.nina.expression, 'happy'); equal(sounds.length, 0);
+        await controller.action('transcript');
+        const transcript = controller.root.querySelector('.vn-panel-content');
+        assert(transcript.textContent.includes('Nina (thoughts): "(I should keep this to myself.)"'));
+        assert(transcript.querySelector('p.vn-thought')); assert(!transcript.textContent.includes('SECRET_THOUGHT_CANONICAL'));
+        await controller.action('close-panel'); await controller.action('next');
+        assert(!text.classList.contains('vn-thought')); equal(speaker.textContent, 'Nina');
+        equal(sounds.map(sound => sound.name), ['door', 'thought-voice.ogg']); equal(sounds[1].character, 'nina');
+        await controller.action('next'); assert(text.classList.contains('vn-thought')); equal(sounds.length, 2);
+        await controller.action('back'); assert(!text.classList.contains('vn-thought')); equal(sounds.length, 2);
+        await controller.action('next'); assert(text.classList.contains('vn-thought')); equal(sounds.length, 2);
+        await controller.action('next'); equal(speaker.textContent, 'Narration'); assert(!text.classList.contains('vn-thought'));
+        await controller.action('replay'); await controller.action('next'); assert(text.classList.contains('vn-thought')); equal(sounds.length, 2);
+        equal(JSON.stringify(context.chat), originalChat); assert(!controller.root.textContent.includes('SECRET_THOUGHT_CANONICAL'));
+    } finally {
+        controller.audio.sfx = originalSFX; controller.settings.characterSounds = originalSounds;
+        if (originalNina === undefined) delete controller.settings.characters.nina; else controller.settings.characters.nina = originalNina;
+    }
+});
 await check('click/keyboard progression, typewriter skip and auto advance use live controls', async () => {
     context.chat[0].mes = 'SECRET\n/////\nNARRATION\nFirst paragraph\nNARRATION\nSecond paragraph'; await controller.open(0);
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })); equal(controller.playback.position, 1);
@@ -306,6 +343,92 @@ await check('reply, retry, exit and resume delegate to normal host controls', as
     await controller.action('reply'); controller.root.querySelector('#vnplus-reply').value = 'Test reply'; await controller.action('send'); equal(sends, 1);
     await controller.action('retry'); equal(retries, 1);
     controller.close(); assert(controller.root.hidden); await controller.open(0); assert(!controller.root.hidden);
+});
+await check('missing artwork uses a bust silhouette, ST theme overrides apply, and only intense tags shake', async () => {
+    const previous = { characters: controller.settings.characters, themeColors: controller.settings.themeColors, font: controller.settings.dialogueFont,
+        text: controller.settings.textColor, narration: controller.settings.narrationColor, motion: controller.settings.reducedMotion };
+    const properties = { '--SmartThemeBodyColor': '#e0e8df', '--SmartThemeQuoteColor': '#83b68c', '--SmartThemeBlurTintColor': '#223128', '--SmartThemeBorderColor': '#536859', '--mainFontFamily': 'monospace' };
+    const styles = Object.fromEntries(Object.keys(properties).map(key => [key, document.documentElement.style.getPropertyValue(key)]));
+    try {
+        for (const [key, value] of Object.entries(properties)) document.documentElement.style.setProperty(key, value);
+        controller.settings.characters = {}; controller.settings.themeColors = {}; controller.settings.dialogueFont = '';
+        controller.settings.textColor = ''; controller.settings.narrationColor = ''; controller.settings.reducedMotion = false;
+        controller.settings.textEffects = true; controller.settings.typewriterEffect = false;
+        context.chat[0].mes = 'PRIVATE\n/////\n#TEXT jitter\nUnknown: "Calm." [nervous]\nUnknown: "Intense!" [rage]\nYou hear footsteps.';
+        await controller.open(0); await eventually(() => controller.root.querySelector('.vn-no-sprite svg'));
+        const silhouette = controller.root.querySelector('.vn-no-sprite .vn-missing-bust');
+        assert(silhouette.querySelector('path')); assert(silhouette.querySelector('svg').getAttribute('aria-label').includes('Unknown'));
+        assert(silhouette.getBoundingClientRect().height > 100);
+        const text = controller.root.querySelector('.vn-text'); assert(!text.classList.contains('vn-text-jitter'));
+        equal(getComputedStyle(text).color, 'rgb(224, 232, 223)'); equal(getComputedStyle(text).fontFamily, 'monospace');
+        equal(getComputedStyle(controller.root.querySelector('.vn-world')).backgroundImage, 'none');
+        const panelOverride = controller.settingsPanel.querySelector('[data-theme-color="panel"]'); panelOverride.value = '#203040'; panelOverride.dispatchEvent(new Event('change'));
+        equal(controller.root.style.getPropertyValue('--vn-panel'), '#203040'); equal(context.extensionSettings.visual_novel_plus.themeColors.panel, '#203040');
+        await controller.action('next'); assert(text.classList.contains('vn-text-jitter'));
+        await controller.action('next'); assert(!text.classList.contains('vn-text-jitter'));
+        assert(!controller.settingsPanel.querySelector('[data-setting="typewriterJitter"]'));
+    } finally {
+        for (const [key, value] of Object.entries(styles)) if (value) document.documentElement.style.setProperty(key, value); else document.documentElement.style.removeProperty(key);
+        Object.assign(controller.settings, { characters: previous.characters, themeColors: previous.themeColors, dialogueFont: previous.font, textColor: previous.text, narrationColor: previous.narration, reducedMotion: previous.motion });
+        controller.settingsChanged('themeColors');
+    }
+});
+await check('Fish settings use property voices, protect credentials and connect cached clips to final dialogue', async () => {
+    const originalRequest = controller.host.request, originalCharacters = controller.settings.characters, originalSettings = structuredClone(controller.settings.tts);
+    const originalFactory = controller.speech.audioFactory; let syntheses = 0, keys = 0;
+    const originalCharacterSounds = controller.settings.characterSounds, originalSFX = controller.audio.sfx; let legacySounds = 0;
+    controller.settings.characterSounds = true; controller.audio.sfx = async () => { legacySounds++; };
+    const samples = Float32Array.from({ length: Math.round(SAMPLE_RATE * 1.5) }, (_, i) => .06 * Math.sin(2 * Math.PI * 240 * i / SAMPLE_RATE));
+    const bytes = wavBytes(samples); let binary = ''; for (const byte of bytes) binary += String.fromCharCode(byte);
+    const payload = { audio_base64: btoa(binary), chunk_seq: 0, chunk_audio_offset_sec: 0, alignment: { segments: [
+        { text: 'Hello', start: .1, end: .3 }, { text: 'world', start: .3, end: .5 }, { text: 'Good', start: .8, end: 1 }, { text: 'morning', start: 1, end: 1.2 },
+    ] } };
+    controller.host.request = async (url, options = {}) => {
+        if (url.endsWith('/status')) return Response.json({ configured: true });
+        if (url.endsWith('/secret')) { equal(JSON.parse(options.body).value, 'FAKE_BROWSER_KEY'); keys++; return Response.json({ configured: true }); }
+        syntheses++; const request = JSON.parse(options.body); equal(request.model, 's2.1-pro-free'); equal(request.body.reference_id, ['voice-nina', 'voice-ashley']);
+        assert(request.body.text.includes('[curious] Hello world.')); assert(!request.body.text.includes('Keep quiet')); assert(!request.body.text.includes('PRIVATE')); assert(!request.body.text.includes('Silent'));
+        const data = new TextEncoder().encode(`data: ${JSON.stringify(payload)}\r\n\r\n`); let offset = 0;
+        return new Response(new ReadableStream({ pull(stream) { if (offset >= data.length) return stream.close(); stream.enqueue(data.slice(offset, offset + 4093)); offset += 4093; } }), { headers: { 'Content-Type': 'text/event-stream' } });
+    };
+    controller.settings.tts.enabled = true; controller.settings.tts.processing = true; controller.speech.audioFactory = () => new FakeAudio();
+    controller.settings.characters = { nina: { voiceId: 'voice-nina' }, ashley: { voiceId: 'https://fish.audio/m/voice-ashley/' } };
+    context.chat[0].mes = 'PRIVATE\n/////\nUnknown: "Silent."\nNina: "(Keep quiet.)" [nervous]\nNina: "Hello world." [curious]\nAshley: "Good morning." [happy]\n\nYou take a breath.';
+    const stored = JSON.stringify(context.chat);
+    try {
+        await controller.open(0); const panel = controller.speechSettingsPanel;
+        panel.keyInput.value = 'FAKE_BROWSER_KEY'; [...panel.node.querySelectorAll('button')].find(button => button.textContent === 'Save API key').click();
+        await eventually(() => keys === 1 && panel.keyInput.value === '');
+        await controller.prepareSpeech(); equal(controller.speech.prepared.segments.length, 2); equal(syntheses, 0);
+        equal(panel.node.querySelectorAll('.vn-speech-segment').length, 2);
+        assert(!JSON.stringify(controller.settings).includes('FAKE_BROWSER_KEY')); assert(!controller.messages.join(' ').includes('FAKE_BROWSER_KEY'));
+        await controller.action('speech'); assert(controller.root.querySelector('.vn-panel-title').textContent.includes('Fish')); await controller.action('close-panel');
+        const job = await controller.speech.generate(); equal(job.status, 'complete'); equal(syntheses, 1); equal(job.chapters[0].clips.filter(clip => clip.review).length, 0);
+        assert(job.chapters[0].processed.results.size === 2); assert(job.chapters[0].processed.results.values().next().value.notes.some(note => note.includes('Denoising skipped')));
+        await controller.action('next'); assert(!controller.speech.audio); // Thought remains mute.
+        await controller.action('next'); await eventually(() => controller.speech.audio?.src.startsWith('blob:'));
+        const ninaAudio = controller.speech.audio; assert(!ninaAudio.paused);
+        await controller.action('next'); await eventually(() => controller.speech.audio && controller.speech.audio !== ninaAudio); assert(ninaAudio.paused);
+        await controller.action('next'); assert(!controller.speech.audio); equal(syntheses, 1);
+        await controller.speech.generate(); equal(syntheses, 1); equal(JSON.stringify(context.chat), stored);
+        equal(legacySounds, 0);
+        emit('GENERATION_STARTED', 'normal'); let rejected = false; try { await controller.prepareSpeech(); } catch { rejected = true; } assert(rejected); equal(syntheses, 1);
+        emit('GENERATION_ENDED'); await eventually(() => !controller.busy && controller.speech.prepared?.segments.length === 2);
+        context.chat[0].mes = 'PRIVATE_EDIT\n/////\nNina: "Changed."'; context.chat[0].swipe_id++;
+        emit('MESSAGE_SWIPED', 0); await eventually(() => controller.root.querySelector('.vn-text').textContent.includes('Changed.'));
+        assert(!controller.speech.job); assert(!controller.speech.audio); equal(syntheses, 1);
+    } finally {
+        controller.host.request = originalRequest; controller.settings.characters = originalCharacters; controller.settings.tts = originalSettings;
+        controller.speech.audioFactory = originalFactory; controller.speech.clearScene(); controller.settingsChanged('speech');
+        controller.settings.characterSounds = originalCharacterSounds; controller.audio.sfx = originalSFX;
+    }
+});
+await check('MP3 export is real decodable audio and finishing keeps original sample timing', async () => {
+    const original = Float32Array.from({ length: SAMPLE_RATE }, (_, i) => .1 * Math.sin(2 * Math.PI * 440 * i / SAMPLE_RATE));
+    const before = original.slice(), mp3 = await encodeMP3(original, 128), decoded = await decodeChapter(mp3);
+    assert(mp3.length > 1000); assert(String.fromCharCode(...mp3.slice(0, 4)) !== 'RIFF');
+    assert(decoded.length >= SAMPLE_RATE * .95 && decoded.length < SAMPLE_RATE * 1.2);
+    assert(decoded.some(sample => Math.abs(sample) > .02)); equal([...original], [...before]);
 });
 controller.dispose();
 document.querySelector('#test-status').textContent = `${passes} passed · ${failures} failed`;

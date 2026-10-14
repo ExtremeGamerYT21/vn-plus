@@ -1,3 +1,4 @@
 * text=auto eol=lf
 # Preserve authored media and property files exactly as supplied.
 environments/** -text
+vendor/** -text

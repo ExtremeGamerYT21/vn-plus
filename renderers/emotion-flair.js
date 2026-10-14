@@ -1,4 +1,9 @@
 // Presentation data retained from the supplied extension.
+export const INTENSE_EMOTIONS = ['rage', 'cryangry', 'mad', 'angry', 'furious', 'fight', 'terror', 'terrified', 'horrified', 'panic', 'panicked', 'ohshit', 'shock', 'shocked', 'yikes', 'manic', 'unhinged', 'screaming', 'sobbing'];
+export function shouldShakeText(emotion, settings) {
+    return !settings.reducedMotion && !!settings.textEffects &&
+        (settings.intenseEmotions || INTENSE_EMOTIONS).some(tag => String(tag).trim().toLowerCase() === String(emotion || '').trim().toLowerCase());
+}
 export const EMOTION_FLAIR = {
     // ── Rage / anger tier ───────────────────────────────
     rage:        { speedMult: 0.45, dotPause: 0,    fontScale: 1.25, shake: 'heavy',  screenFlash: 'rgba(180,0,0,0.18)',    sound: null },

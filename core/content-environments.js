@@ -9,7 +9,7 @@ export const validEnvironmentId = id => typeof id === 'string' && /^[a-z0-9]+(?:
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
 const profile = value => ({
     characters: object(value?.characters) ? structuredClone(value.characters) : {},
-    dialogueFont: typeof value?.dialogueFont === 'string' ? value.dialogueFont : 'faustina',
+    dialogueFont: typeof value?.dialogueFont === 'string' ? value.dialogueFont : '',
     dialogueBoxTexture: typeof value?.dialogueBoxTexture === 'string' ? value.dialogueBoxTexture : '',
 });
 

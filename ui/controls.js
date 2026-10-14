@@ -21,7 +21,7 @@ export function bindControls(root, callbacks) {
         if (editable) return;
         if (event.key === 'Tab') {
             const visibleLayer = [...root.querySelectorAll('.vn-artifact,.vn-panel,.vn-reply')].find(node => !node.hidden) || root;
-            const targets = [...visibleLayer.querySelectorAll('button,textarea,select,[tabindex="0"]')].filter(node => !node.disabled && node.getClientRects().length);
+            const targets = [...visibleLayer.querySelectorAll('button,input,textarea,select,summary,[tabindex="0"]')].filter(node => !node.disabled && node.getClientRects().length);
             const first = targets[0], last = targets.at(-1);
             if (event.shiftKey && (document.activeElement === first || !root.contains(document.activeElement))) { event.preventDefault(); last?.focus(); }
             else if (!event.shiftKey && (document.activeElement === last || !root.contains(document.activeElement))) { event.preventDefault(); first?.focus(); }

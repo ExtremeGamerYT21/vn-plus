@@ -20,6 +20,8 @@ ASHLEY: "Is someone there?" [nervous]
 
 Each `NARRATION` marker starts a narration block. Plain prose is also accepted in the POV section. A character name followed by a colon and quoted text starts dialogue; Unicode, spaces, apostrophes and punctuation in names are supported. Quotes, punctuation, newlines and `*emphasis*`, `_emphasis_`, `**strong emphasis**` are retained. A trailing `[expression]` is optional and case-insensitive. Multiline quoted dialogue ends before the next marker, command, dialogue, or blank separating line. Unclosed dialogue quotes and unclosed HTML fences are withheld and reported in the inspector. An expression-tagged unquoted dialogue line is also accepted.
 
+`NARRATION` is optional: freestyle prose is narration automatically. Parentheses around the entire dialogue text mark **internal thoughts**. Both `ASHLEY: "(I should keep this to myself.)" [nervous]` and `ASHLEY: (I should keep this to myself.) [nervous]` work. Thoughts keep the character's bust, expression and theme, appear in italics with a thoughts nameplate, and suppress automatic character voice/effect sounds. Explicit `#SFX` and background audio still work. Quotes and parentheses remain in the displayed text and transcript. Curly/single quotes, nested parentheses and multiline thoughts are supported; incomplete wrappers are withheld while streaming. Parentheses within ordinary speech, such as `ASHLEY: "Hello (again)."`, remain spoken dialogue. Parenthetical prose without a character label remains narration.
+
 Commands occupy their own line. Command names are case-insensitive. Unknown commands are ignored and reported, never displayed. Commands are applied in sequence up to the next visible narration/dialogue/artifact beat. Commands after the last visible beat are applied before the reply panel.
 
 | Command | Meaning |
@@ -34,7 +36,7 @@ Commands occupy their own line. Command names are case-insensitive. Unknown comm
 | `#FADE BLACK` / `#FADE IN` | Fade the scene to black / reveal it. Dialogue and controls remain usable. |
 | `#FLASH WHITE` | Brief flash; a valid CSS color is also accepted. |
 | `#SHAKE LIGHT` / `#SHAKE STRONG` | Brief scene shake. |
-| `#TEXT normal` | Reset text flair override. Also `whisper`, `shout`, `jitter`, `shake`. |
+| `#TEXT normal` | Reset text flair override. Also `whisper`, `shout`, `jitter`, `shake`. Shaking is restricted to the configured intense emotion tags, even with a shake/jitter text override. |
 | `#MODE VN` / `PROSE` / `CINEMATIC` / `BLACK` | Select the presentation mode. |
 | `#CAMERA ZOOM 1.2` | Zoom the existing background, clamped to 0.5–3. |
 | `#CAMERA PAN 8 -3` | Background translation in percent, clamped to ±30. |
