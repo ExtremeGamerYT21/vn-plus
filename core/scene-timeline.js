@@ -15,10 +15,11 @@ export function compileTimeline(tokens, registry, settings) {
     let state = emptyState(settings.displayMode);
     const beats = [], errors = [], views = [];
     const names = tokens.filter(token => token.type === 'dialogue' || (token.type === 'command' && token.name === 'ENTER')).map(token => token.character || token.args);
-    const cast = [...new Set(names.map(name => registry.identify(name)))];
-    const maxSlots = Math.max(1, cast.filter(id => settings.showPlayerBust || !registry.isPlayer(id)).length);
+    const cast = [...new Set(names.filter(name => !registry.isNarrator(name)).map(name => registry.identify(name)))];
+    const maxSlots = Math.max(1, cast.filter(id => !registry.isNarrator(id) && (settings.showPlayerBust || !registry.isPlayer(id))).length);
     const enter = (name, emotion) => {
         const id = registry.identify(name);
+        if (registry.isNarrator(name)) return null;
         if (!settings.showPlayerBust && registry.isPlayer(id)) return id;
         const present = state.characters[id];
         if (present) { if (emotion) present.expression = emotion; return id; }

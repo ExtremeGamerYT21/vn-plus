@@ -215,6 +215,44 @@ await check('missing assets, property styling and reduced motion remain readable
     assert(controller.root.querySelector('.vn-text').textContent.includes('Still readable')); assert(controller.root.classList.contains('vn-reduced-motion'));
     assert(controller.root.querySelector('.vn-no-sprite'));
 });
+await check('narrator labels stay readable without a bust or reserved stage slot', async () => {
+    context.chat[0].mes = 'SECRET\n/////\n#ENTER Narrator\n#ENTER Nina\nNarrator: "The door opens." [calm]\nNina: "Hello."\nNarration: A moment passes.';
+    await controller.open(0); await pause(100);
+    equal(controller.root.querySelectorAll('.vn-character').length, 1);
+    assert(!controller.root.querySelector('[data-character="narrator"]'));
+    equal(controller.playback.timeline.maxSlots, 1); equal(controller.playback.restore().beat.token.type, 'narration');
+    equal(controller.root.querySelector('.vn-speaker').textContent, 'Narration'); assert(controller.root.querySelector('.vn-text').textContent.includes('The door opens.'));
+    await controller.action('next'); await controller.action('next'); await pause(50);
+    equal(controller.root.querySelectorAll('.vn-character').length, 1); equal(controller.playback.restore().beat.state.speaker, null);
+    await controller.action('back'); await pause(50); equal(controller.root.querySelectorAll('.vn-character').length, 1);
+});
+await check('textbox image-only option keeps artwork and removes every panel decoration', async () => {
+    const keys = ['characters', 'dialogueBoxImageOnly', 'dialogueBoxTexture', 'showBoxChrome', 'showBoxBackground'];
+    const previous = Object.fromEntries(keys.map(key => [key, controller.settings[key]]));
+    try {
+        Object.assign(controller.settings, { characters: { ashley: { boxTexture: 'shared/box_texture.png', boxColor: '#ff00ff', nameplateBackground: '#00ff00' } },
+            dialogueBoxImageOnly: false, dialogueBoxTexture: 'shared/box_texture.png', showBoxChrome: true, showBoxBackground: true });
+        context.chat[0].mes = 'SECRET\n/////\nAshley: "Artwork only."\nNarrator: "Still only artwork."'; await controller.open(0);
+        const box = controller.root.querySelector('.vn-dialogue'), toggle = controller.settingsPanel.querySelector('[data-setting="dialogueBoxImageOnly"]');
+        assert(!box.classList.contains('vn-image-only')); toggle.checked = true; toggle.dispatchEvent(new Event('change')); await pause(30);
+        equal(context.extensionSettings.visual_novel_plus.dialogueBoxImageOnly, true);
+        const checkArtwork = () => {
+            const css = getComputedStyle(box); assert(box.classList.contains('vn-image-only')); assert(css.backgroundImage.includes('shared/box_texture.png'));
+            equal(css.backgroundColor, 'rgba(0, 0, 0, 0)'); equal(css.borderTopWidth, '0px'); equal(css.borderRadius, '0px'); equal(css.boxShadow, 'none'); equal(css.backdropFilter, 'none');
+            equal(getComputedStyle(box, '::before').display, 'none'); equal(getComputedStyle(box.querySelector('.vn-speaker')).backgroundColor, 'rgba(0, 0, 0, 0)');
+        };
+        checkArtwork(); controller.settings.showBoxBackground = false; controller.settingsChanged('showBoxBackground'); await pause(30); checkArtwork();
+        await controller.action('next'); await pause(30); checkArtwork();
+        await controller.action('back'); await pause(30); checkArtwork();
+        controller.settings.characters.ashley.boxImageOnly = false; controller.settings.showBoxBackground = true; controller.settingsChanged('characters'); await pause(100);
+        assert(!box.classList.contains('vn-image-only')); equal(getComputedStyle(box).backgroundColor, 'rgb(255, 0, 255)');
+        controller.settings.characters.ashley = { boxTexture: '' }; controller.settings.dialogueBoxTexture = ''; controller.settingsChanged('characters'); await pause(100);
+        assert(!box.classList.contains('vn-image-only')); equal(getComputedStyle(box).backgroundImage, 'none'); assert(parseFloat(getComputedStyle(box).borderTopWidth) > 0);
+    } finally {
+        Object.assign(controller.settings, previous); controller.settingsChanged('characters');
+        const toggle = controller.settingsPanel.querySelector('[data-setting="dialogueBoxImageOnly"]'); if (toggle) toggle.checked = previous.dialogueBoxImageOnly;
+    }
+});
 await check('obsolete async background and sprite requests cannot overwrite new scene', async () => {
     const originalBackground = controller.resolver.background, originalSprite = controller.resolver.sprite;
     let resolveBackground, resolveSprite;

@@ -36,6 +36,7 @@ export function speechSegments(timeline, registry, sourceId) {
         const token = beat.token;
         if (token.type !== 'dialogue' || token.thought) return [];
         const character = registry.identify(token.character), props = registry.get(character);
+        if (registry.isNarrator(token.character)) return [];
         let voice;
         try { voice = fishVoiceId(props.voiceId); }
         catch { throw new Error(`Invalid voiceId for ${props.displayName || token.character}.`); }

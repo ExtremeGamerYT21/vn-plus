@@ -1,4 +1,5 @@
 export const slug = value => String(value || '').normalize('NFKC').trim().toLowerCase().replace(/\s+/g, '_').replace(/[^\p{L}\p{N}_'-]/gu, '');
+export const isNarratorName = value => ['narrator', 'narration'].includes(slug(value));
 const aliases = value => Array.isArray(value) ? value.filter(item => typeof item === 'string') : typeof value === 'string' ? [value] : [];
 export const EMOTION_ALIASES = { neutral: 'default', normal: 'default', mad: 'angry', furious: 'rage', annoyed: 'angry', joy: 'happy', excited: 'happy', cheerful: 'happy', depressed: 'sad', upset: 'sad', shocked: 'surprised', startled: 'surprised', shy: 'embarrassed', flustered: 'embarrassed', anxious: 'nervous', worried: 'nervous', terrified: 'scared', afraid: 'scared', loving: 'love', weeping: 'crying', amused: 'laughing', sleepy: 'tired' };
 
@@ -14,6 +15,7 @@ export class CharacterRegistry {
         return key || 'unknown';
     }
     isPlayer(id) { return this.identify(id) === this.identify(this.settings.playerName); }
+    isNarrator(name) { const id = this.identify(name); return isNarratorName(name) || isNarratorName(id) || isNarratorName(this.get(id).displayName); }
     get(id) { return { ...(this.properties.get(id) || {}), ...(this.entries().find(entry => entry.id === id) || {}) }; }
     async prepare(names) {
         // Inventory makes property aliases discoverable without directory listing APIs.

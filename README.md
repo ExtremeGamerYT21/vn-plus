@@ -1,4 +1,4 @@
-# Visual Novel+ 2.4.0
+# Visual Novel+ 2.4.1
 
 A procedural visual novel presentation layer for SillyTavern. It reads **only** the player perspective after an exact `/////` line in the selected assistant message. Canonical narration, conversation storage, generation, and outgoing context remain under SillyTavern and your separate POV workflow.
 
@@ -138,6 +138,10 @@ Textures, color, fonts, opacity, border visibility and dialogue sizing are confi
 ## Theme and character voices
 
 The VN interface follows SillyTavern’s theme colors and font. **Theme** in VN settings provides optional body, panel, world, border, accent, muted-text and silhouette colors; blank fields inherit the current ST theme. Character properties can still override dialogue colors, textures and fonts. The previous default purple colors/font migrate to theme inheritance while custom values remain.
+
+**Presentation → Textbox image only (no fill or frame)** uses the character's `boxTexture` or the global texture as the entire box, preserving transparent pixels and removing the colored fill, border, accent strip, shadow, rounded clipping and blur. The normal box remains when no texture is configured. Use `"boxImageOnly":true` or `false` in character properties for a per-character override. Hiding the panel background also keeps any configured texture visible.
+
+The narrator has no bust or cast slot. `Narrator:` and `Narration:` labels are narration, and `#ENTER Narrator` / `#ENTER Narration` leave the cast alone. Missing-art silhouettes remain available for actual characters.
 
 Text shakes only for tags in **Presentation → Emotion tags that shake**, such as rage, terror, panic or unhinged. Calm tags and narration stay still, including when an old global jitter setting or a shake/jitter text command is present. Reduced motion disables shaking.
 

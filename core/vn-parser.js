@@ -1,3 +1,4 @@
+import { isNarratorName } from './character-registry.js';
 const COMMANDS = new Set(['BACKGROUND', 'MUSIC', 'AMBIENT', 'SFX', 'FADE', 'FLASH', 'SHAKE', 'TEXT', 'ENTER', 'EXIT', 'MODE', 'CAMERA', 'TINT', 'SCENE']);
 const LEGACY = { SOUNDFX: 'SFX' };
 const ROOT_HTML = /^\s*(?:<!doctype\s+html\b|<(?:html|article|section|div|main|svg|table|canvas|figure|pre|p|style|h[1-6]|details)\b)/i;
@@ -46,7 +47,10 @@ export function parsePOV(pov) {
                 errors.push({ line: current.line, message: 'Incomplete internal thought withheld.' }); current = null; return;
             }
         }
-        if (text.trim()) tokens.push({ ...current, text, ...(current.type === 'dialogue' ? { emotion, ...(direction ? { direction } : {}), ...(thought ? { thought: true } : {}) } : {}) });
+        if (text.trim()) {
+            if (current.type === 'dialogue' && isNarratorName(current.character)) tokens.push({ type: 'narration', text, line: current.line });
+            else tokens.push({ ...current, text, ...(current.type === 'dialogue' ? { emotion, ...(direction ? { direction } : {}), ...(thought ? { thought: true } : {}) } : {}) });
+        }
         current = null;
     };
     for (let i = 0; i < lines.length; i++) {
@@ -91,6 +95,9 @@ export function parsePOV(pov) {
         // Unicode and punctuation names; a quote, thought or ending expression distinguishes
         // dialogue from prose labels such as "Note: this is a room".
         const dialogue = /^\s*([^:\r\n<>]{1,100}):[ \t]*(.*)$/.exec(clean);
+        if (dialogue && isNarratorName(dialogue[1]) && !/^["“'‘(]/.test(dialogue[2]) && !/\[[^\]]+\]\s*$/.test(dialogue[2])) {
+            flush(); current = { type: 'narration', text: dialogue[2] + (line.endsWith('\n') ? '\n' : ''), line: i + 1 }; continue;
+        }
         if (dialogue && (/^["“'‘(]/.test(dialogue[2]) || /\[[^\]]+\]\s*$/.test(dialogue[2]))) {
             flush(); current = { type: 'dialogue', character: dialogue[1].trim(), text: dialogue[2] + (line.endsWith('\n') ? '\n' : ''), line: i + 1 }; continue;
         }

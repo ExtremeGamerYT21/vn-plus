@@ -31,8 +31,10 @@ export class DialogueRenderer {
         box.style.minHeight = `${this.settings.dialogueBoxHeight}px`;
         box.classList.toggle('vn-no-chrome', !this.settings.showBoxChrome);
         box.classList.toggle('vn-no-panel', !this.settings.showBoxBackground);
-        const texture = this.resolver.url(`characters/${props.boxTexture || this.settings.dialogueBoxTexture}`);
-        box.style.backgroundImage = texture && (props.boxTexture || this.settings.dialogueBoxTexture) ? `url("${texture}")` : '';
+        const texturePath = props.boxTexture || this.settings.dialogueBoxTexture;
+        const texture = texturePath ? this.resolver.url(`characters/${texturePath}`) : null;
+        box.style.backgroundImage = texture ? `url("${texture}")` : '';
+        box.classList.toggle('vn-image-only', !!texture && (typeof props.boxImageOnly === 'boolean' ? props.boxImageOnly : this.settings.dialogueBoxImageOnly));
         const flair = this.settings.textEffects ? EMOTION_FLAIR[token.emotion] || {} : {};
         text.style.fontSize = `${this.settings.textScale * (flair.fontScale || 1) * (props.voiceScale || 1)}em`;
         text.style.letterSpacing = `${this.settings.letterSpacing}px`;

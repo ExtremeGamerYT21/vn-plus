@@ -55,6 +55,12 @@ test('each short chapter maps only its voiced characters to fresh speaker indice
     assert.ok(plan.every(chapter => chapter.body.prosody.normalize_loudness));
     assert.equal(chapterRequests(speechSegments(input.timeline, input.registry, 'scene'), { ...SPEECH_DEFAULTS, splitChapters: false }).length, 1);
 });
+test('a narrator voice property cannot turn narration into a voiced character', () => {
+    const input = fixture('Narrator: "A moment passes."\nStory voice: "Another moment."\nNina: "Hello."', {
+        narrator: { voiceId: 'narrator-voice' }, story: { displayName: 'Narrator', aliases: ['Story voice'], voiceId: 'story-voice' }, nina: { voiceId: 'nina-voice' },
+    });
+    assert.deepEqual(speechSegments(input.timeline, input.registry, 'scene').map(line => line.character), ['nina']);
+});
 test('all chapters are validated before the first bridge or synthesis request', async () => {
     const input = fixture(`Nina: "Hello"\nNina: "${'a'.repeat(20001)}"`); input.config.tts.chapterSize = 1; let calls = 0;
     const engine = engineFor(input, async () => { calls++; throw new Error(); });

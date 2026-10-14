@@ -21,9 +21,11 @@ export class StageRenderer {
             if (current()) background.style.backgroundImage = url ? `url("${url}")` : '';
         }) : Promise.resolve();
         if (!state.background) background.style.backgroundImage = '';
-        for (const [id, node] of this.nodes) if (!state.characters[id]) { this.sprites.remove(node); node.remove(); this.nodes.delete(id); }
-        const count = Math.max(maxSlots, ...Object.values(state.characters).map(char => char.slot + 1));
-        await Promise.all([backgroundRequest, ...Object.values(state.characters).map(async character => {
+        const characters = Object.values(state.characters).filter(character => !this.registry.isNarrator(character.id) && !this.registry.isNarrator(character.name));
+        const visibleIds = new Set(characters.map(character => character.id));
+        for (const [id, node] of this.nodes) if (!visibleIds.has(id)) { this.sprites.remove(node); node.remove(); this.nodes.delete(id); }
+        const count = Math.max(maxSlots, ...characters.map(char => char.slot + 1));
+        await Promise.all([backgroundRequest, ...characters.map(async character => {
             const props = this.registry.get(character.id);
             let node = this.nodes.get(character.id);
             if (!node) {

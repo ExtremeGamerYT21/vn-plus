@@ -37,6 +37,17 @@ test('freestyle prose is narration without requiring a NARRATION marker', () => 
     assert.equal(parsed.tokens[2].text, 'You turn around.');
     assert.deepEqual(parsed.errors, []);
 });
+test('narrator labels and entrances never create a staged character or consume a cast slot', () => {
+    const parsed = parsePOV('#ENTER Narrator\n#ENTER Narration\n#ENTER Nina\nNARRATOR: "The door opens." [calm]\nNarration: You hear footsteps.\nNina: "Hello."\nNarrator: "Then it closes."');
+    assert.deepEqual(parsed.tokens.filter(token => token.type !== 'command').map(token => token.type), ['narration', 'narration', 'dialogue', 'narration']);
+    const timeline = compileTimeline(parsed.tokens, registry(), settings());
+    assert.equal(timeline.maxSlots, 1);
+    for (const beat of timeline.beats) assert.ok(Object.keys(beat.state.characters).every(id => id === 'nina'));
+    assert.equal(timeline.beats.at(-1).state.speaker, null);
+    const config = settings(); config.characters.story = { displayName: 'Narrator', aliases: ['Story voice'] };
+    const aliased = compileTimeline(parsePOV('#ENTER Story voice\nStory voice: "A moment passes."').tokens, registry(config), config);
+    assert.deepEqual(Object.keys(aliased.beats.at(-1).state.characters), []);
+});
 test('parenthesized dialogue is an internal thought with intact text, speaker and expression', () => {
     const parsed = parsePOV('Ashley: "(I should keep this to myself.)" [NERVOUS]\nDr. Élodie: “(This (really) matters.)”\nNina: (Maybe\n  tomorrow.) [happy]\nJason: \'(Wait.)\'');
     assert.equal(parsed.tokens.length, 4); assert.deepEqual(parsed.errors, []);
