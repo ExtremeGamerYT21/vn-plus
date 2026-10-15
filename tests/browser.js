@@ -3,6 +3,7 @@ import { runSharedChecks } from './browser-shared.js';
 import { runArtifactChecks } from './browser-artifacts.js';
 import { runTimingChecks } from './browser-timing.js';
 import { runJournalChecks } from './browser-journal.js';
+import { runLiveVoiceChecks } from './browser-live-voices.js';
 import { createHost } from '../integration.js';
 import { DEFAULT_SETTINGS } from '../ui/settings.js';
 import { isolatedDocument } from '../renderers/html-renderer.js';
@@ -831,6 +832,11 @@ await runSharedChecks({ check, assert, equal, eventually, context, mountChat, em
 document.querySelector('#test-status').textContent = `${passes} passed · ${failures} failed`;
 document.body.dataset.testStatus = 'running';
 await runArtifactChecks({ check, assert, equal, eventually, context, mountChat, emit, makeController() {
+    const next = new VNController(createHost(() => context, { localContent: false }), new URL('../', import.meta.url), inventory);
+    next.audio.audioFactory = () => new FakeAudio(); return next;
+} });
+document.querySelector('#test-status').textContent = `${passes} passed · ${failures} failed`;
+await runLiveVoiceChecks({ check, assert, equal, eventually, context, mountChat, makeController() {
     const next = new VNController(createHost(() => context, { localContent: false }), new URL('../', import.meta.url), inventory);
     next.audio.audioFactory = () => new FakeAudio(); return next;
 } });

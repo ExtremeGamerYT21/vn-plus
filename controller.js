@@ -49,6 +49,7 @@ export class VNController {
         this.reveal = new OmniscientToggle(host.context, () => this.busy || !this.settings.enabled);
         this.selected = latestAssistant(host.context()); this.chatId = chatIdentity(host.context());
         this.generation = 0; this.busy = false; this.seen = new Map(); this.disposers = []; this.messages = [];
+        this.disposers.push(this.speech.onChange(() => this.updateVoiceStatus()));
         this.playbackState = new ChatStatePublisher(host, value => this.root.dispatchEvent(new CustomEvent('vnplus:playback-changed', { bubbles: true, detail: value })), 'vn_plus_playback');
         this.playbackState.bind(this.environment);
         this.sharedState = new ChatStatePublisher(host, value => this.root.dispatchEvent(new CustomEvent('vnplus:state-changed', { bubbles: true, detail: value })));
@@ -59,6 +60,33 @@ export class VNController {
         this.bindHost(); this.mount(); this.updateMusicButton(); this.updateLayoutControls(); this.updateEnvironmentControls();
         void this.loadEnvironmentStyle();
         void this.refreshContext();
+        this.sourceTimer = setInterval(() => this.checkSource(), 500);
+    }
+    sourceFingerprint(context = this.host.context()) {
+        const message = readMessage(context, this.selected);
+        return JSON.stringify([chatIdentity(context), this.followLatest ? latestAssistant(context) : null, this.selected, message?.swipe, message?.raw, contextEntries(context, this.selected)]);
+    }
+    checkSource() {
+        if (this.disposed || this.root.hidden || this.busy || document.hidden) return;
+        const context = this.host.context(), fingerprint = this.sourceFingerprint(context);
+        if (fingerprint === this.observedSource) { this.settlingSource = null; return; }
+        // Let a silent transformer finish replacing its output before preparing paid audio.
+        if (this.settlingSource !== fingerprint) { this.settlingSource = fingerprint; return; }
+        // Some transformers replace mes without emitting a SillyTavern event.
+        // Keep following the latest response, while preserving deliberate history playback.
+        const index = this.followLatest || chatIdentity(context) !== this.chatId ? latestAssistant(context) : this.selected;
+        void this.open(index).catch(error => this.log(`POV refresh: ${error.message}`));
+    }
+    updateVoiceStatus() {
+        const badge = this.root.querySelector('.vn-voice-ready'); if (!badge) return;
+        const result = this.playback?.restore();
+        const status = result && !result.done ? this.speech.lineStatus(result.beat.index, true) : null;
+        badge.hidden = !status;
+        if (!status) return;
+        const labels = { ready: '✓ Next voice', generating: '◌ Next voice', pending: '○ Next voice', review: '! Voice review', failed: '! Voice unavailable' };
+        badge.textContent = labels[status.state]; badge.dataset.state = status.state;
+        badge.title = `${status.line.name}: ${status.line.text} (${status.state})`;
+        badge.setAttribute('aria-label', `Next voiced line: ${status.state}. ${status.line.name}`);
     }
     log(message) { this.messages.push(message); if (this.messages.length > 50) this.messages.shift(); if (this.settings.debug) console.debug('[VN+]', message); }
     get sceneVariables() { return structuredClone(this.stage.variables || {}); }
@@ -234,7 +262,15 @@ export class VNController {
         if (key === 'themeReset') for (const name of ['dialogueFont', 'textColor', 'narrationColor']) { const input = this.settingsPanel?.querySelector(`[data-setting="${name}"]`); if (input) input.value = this.settings[name]; }
         this.host.save(this.settings); this.reveal.close(); this.mount();
         applyTheme(this.root, this.settings); if (this.settingsPanel) applyTheme(this.settingsPanel, this.settings);
-        if (key === 'speech') { this.speech.configurationChanged(); return; }
+        if (key === 'speech') {
+            this.speech.configurationChanged();
+            if (this.playback && this.parsed && !this.busy && !this.root.hidden) {
+                const message = readMessage(this.host.context(), this.selected);
+                try { this.speech.prepare(this.speechSceneId(message), this.playback.timeline, this.registry); this.speech.requestAutomatic(); this.present(this.playback.restore()); }
+                catch (error) { this.speech.clearScene(); this.speech.notify(error.message); }
+            }
+            this.updateVoiceStatus(); return;
+        }
         if (['autoAdvance', 'dialogueSecondsPerCharacter', 'narrationWordsPerMinute'].includes(key) || key.endsWith('ReactionSound')) { this.scheduleAuto(); return; }
         if (key === 'characters') this.speech.clearScene();
         this.updateLayoutControls();
@@ -341,6 +377,9 @@ export class VNController {
         else if (!this.playbackState.binding?.current()) this.playbackState.bind(this.environment);
         void this.refreshContext();
         this.selected = Number.isInteger(index) && index >= 0 ? index : latestAssistant(context);
+        this.followLatest = this.selected === latestAssistant(context);
+        this.observedSource = this.sourceFingerprint(context);
+        this.settlingSource = null;
         if (this.busy) { this.publishPlaybackActivity(); this.wait('Waiting for a completed player perspective…'); return; }
         const message = readMessage(context, this.selected);
         if (!message || message.status !== 'ready') { this.speech.clearScene(); this.invalidate(); this.sceneRevision = null; this.playback = null; this.parsed = null; this.parserErrors = []; this.wait('Player perspective is unavailable. A completed POV section after ///// is required.'); return; }
@@ -350,6 +389,7 @@ export class VNController {
         const revision = JSON.stringify([sourceRevision, history, this.settings.castMemoryTurns]);
         if (this.sceneRevision === revision && this.playback) {
             try { this.speech.prepare(this.speechSceneId(message), this.playback.timeline, this.registry); } catch (error) { this.speech.clearScene(); this.speech.notify(error.message); }
+            this.speech.requestAutomatic();
             this.present(this.playback.restore()); return;
         }
         const historyPosition = this.sceneRevision && this.sceneSourceRevision === sourceRevision && this.playback ? this.playback.position : null;
@@ -379,6 +419,7 @@ export class VNController {
         const seed = reduceContext(history, this.registry, this.settings, { beforeLast: true });
         const timeline = compileTimeline(parsed.tokens, this.registry, this.settings, seed), sourceKey = sceneKey(context, message), key = `${this.environment.id}:${sourceKey}`;
         try { this.speech.prepare(this.speechSceneId(message), timeline, this.registry); } catch (error) { this.speech.clearScene(); this.speech.notify(error.message); }
+        this.speech.requestAutomatic();
         if (!this.seen.has(key)) { if (this.seen.size >= 32) this.seen.delete(this.seen.keys().next().value); this.seen.set(key, new Set()); }
         this.playback = new Playback(timeline, this.seen.get(key)); this.sceneRevision = revision; this.sceneSourceRevision = sourceRevision; this.parsed = parsed; this.parserErrors = [...parsed.errors, ...timeline.errors];
         this.root.querySelector('.vn-scene-label').textContent = `PLAYER PERSPECTIVE · RESPONSE ${message.index + 1} · SWIPE ${message.swipe + 1}`;
@@ -398,7 +439,8 @@ export class VNController {
         const { state, token } = result.beat;
         this.runtimeState = structuredClone(state);
         this.worldIdentity = JSON.stringify([chatIdentity(this.host.context()), this.environment.id]);
-        const playback = this.speech.playBeat(result.done || token.type !== 'dialogue' || token.thought ? -1 : result.beat.index);
+        const playback = this.speech.playBeat(result.done || token.thought ? -1 : result.beat.index);
+        this.updateVoiceStatus();
         const source = { message: this.selected, swipe: readMessage(this.host.context(), this.selected)?.swipe ?? 0, beat: result.beat.index, position: this.playback.position };
         this.renderState(state, source);
         for (const effect of result.effects) { if (effect.type === 'sfx') void this.audio.sfx(effect.name); else this.effects.trigger(effect); }
@@ -410,7 +452,8 @@ export class VNController {
         if (result.done) { dialogue.hidden = true; this.showReply(); return; }
         if (token.type === 'artifact') { dialogue.hidden = true; this.html.open(token); return; }
         dialogue.hidden = false;
-        const props = state.speaker ? this.registry.get(state.speaker) : {};
+        const props = token.type === 'narration' || token.type === 'dialogue' && this.registry.isNarrator(token.character)
+            ? this.registry.get('narrator') : state.speaker ? this.registry.get(state.speaker) : {};
         void this.dialogue.render(token, props, state.textEffect, () => this.scheduleAuto(), !result.forward, playback);
         const generation = this.generation, cursor = this.playback.cursor, navigation = this.playback;
         this.timing.start({ token, settings: this.settings, playback, visualChecks: result.beat.visualChecks,
@@ -597,6 +640,7 @@ export class VNController {
         void this.stage.render(state, this.playback.timeline.maxSlots).catch(error => this.log(error.message));
     }
     dispose() {
+        clearInterval(this.sourceTimer);
         clearTimeout(this.contextTimer); this.sharedState.cancel();
         this.close(); this.disposed = true; this.audio.onChange = null; this.stage.dispose(); this.observer.disconnect(); clearTimeout(this.mountTimer); this.disposers.forEach(dispose => dispose());
         this.root.remove(); this.settingsPanel?.remove(); document.querySelectorAll('.vn-message-tools').forEach(node => node.remove()); this.seen.clear();

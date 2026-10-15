@@ -1,5 +1,5 @@
 {
-  "status": "82 passed · 0 failed",
+  "status": "89 passed · 0 failed",
   "tests": [
     "PASS · POV privacy and four characters from one scenario",
     "PASS · backward restores background, expression and audio state",
@@ -70,6 +70,13 @@
     "PASS · artifact IDs isolate local data and named values do not expire with the recent cast",
     "PASS · environment-local artifact commands load HTML into the same scoped metadata bridge",
     "PASS · closing a local artifact cancels its pending load and cannot reopen a stale iframe",
+    "PASS · an open missing-POV screen recovers from silent mes replacement without a host event",
+    "PASS · silent latest responses and swipes refresh while historical playback retains its selection",
+    "PASS · closed VN screens stop source monitoring and reopen on the latest authoritative POV",
+    "PASS · narrator properties style silent narration and never produce a narrator body",
+    "PASS · the first-person checkbox hides aliased player bodies while retaining dialogue and voice assignment",
+    "PASS · automatic voices prepare ahead and the next-line symbol changes to ready without manual generation",
+    "PASS · text waits for a late automatic clip and follows its actual word clock",
     "PASS · visual overlays preserve the same sandbox and interaction state across dialogue beats",
     "PASS · an open visual reads and writes message extra at the current paragraph rather than its opening paragraph",
     "PASS · Auto progresses to reply with an interactive visual still open and never starts a Fish request",

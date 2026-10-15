@@ -1,6 +1,6 @@
 export const SAMPLE_RATE = 44100;
 export const SPEECH_DEFAULTS = {
-    enabled: false, autoPlay: true, syncText: true, model: 's2.1-pro-free', splitChapters: true, chapterSize: 6,
+    enabled: false, autoGenerate: false, narratorEnabled: false, autoPlay: true, syncText: true, model: 's2.1-pro-free', splitChapters: true, chapterSize: 6,
     temperature: .7, topP: .7, speed: 1, chunkLength: 300, latency: 'normal', normalize: true,
     conditionPrevious: true, bitrate: 128, timeout: 180, volume: 1, lead: .2, tail: .2,
     processing: true, matchVolume: true, targetRms: -20, denoise: 4, soften: 0, ceiling: -1.5, edgeFade: 5,
@@ -31,26 +31,26 @@ export function spokenText(text) {
     if (close && value.endsWith(close)) value = value.slice(1, -1);
     return value.replace(/<\|speaker:\d+\|>/g, '').replace(/\*\*([^*]+)\*\*|\*([^*]+)\*|_([^_]+)_/g, (_, bold, em, under) => bold || em || under).trim();
 }
-export function speechSegments(timeline, registry, sourceId) {
+export function speechSegments(timeline, registry, sourceId, options = {}) {
     return timeline.beats.flatMap((beat, index) => {
         const token = beat.token;
-        if (token.type !== 'dialogue' || token.thought) return [];
-        const character = registry.identify(token.character), props = registry.get(character);
-        if (registry.isNarrator(token.character)) return [];
+        const narrator = token.type === 'narration' || token.type === 'dialogue' && registry.isNarrator(token.character);
+        if (token.thought || (narrator ? !options.narratorEnabled : token.type !== 'dialogue')) return [];
+        const character = narrator ? 'narrator' : registry.identify(token.character), props = registry.get(character);
         let voice;
         try { voice = fishVoiceId(props.voiceId); }
         catch { throw new Error(`Invalid voiceId for ${props.displayName || token.character}.`); }
         if (!voice) return [];
         const text = spokenText(token.text);
         if (!text) return [];
-        return [{ id: `${sourceId}:${index}`, beat: index, character, name: props.displayName || token.character,
+        return [{ id: `${sourceId}:${index}`, beat: index, character, name: props.displayName || token.character || 'Narration',
             voice, text, synthesisText: `${token.direction ? `[${token.direction}] ` : ''}${text}` }];
     });
 }
 export function chapterRequests(segments, settings) {
     validateSpeechSettings(settings);
     if (!['s2.1-pro-free', 's2.1-pro'].includes(settings.model)) throw new Error('Select a supported Fish model explicitly.');
-    if (!segments.length) throw new Error('No spoken dialogue has a character voiceId. Add voiceId in character properties.');
+    if (!segments.length) throw new Error('No enabled speaker has a character voiceId. Add voiceId in character properties.');
     if (segments.length > 200) throw new Error('Select at most 200 spoken segments per generation.');
     if (new Set(segments.map(segment => segment.character)).size > 8) throw new Error('Select at most eight voiced characters.');
     const count = settings.splitChapters ? Math.max(1, Math.min(200, Math.floor(settings.chapterSize))) : segments.length;

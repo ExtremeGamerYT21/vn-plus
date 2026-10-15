@@ -18,7 +18,7 @@ export class DialogueRenderer {
     async render(token, props = {}, effect = 'normal', onDone = () => {}, instant = false, playback = null) {
         this.cancel(); const generation = this.generation;
         const box = this.root.querySelector('.vn-dialogue'), text = box.querySelector('.vn-text');
-        const speaker = token.type === 'dialogue' ? (props.displayName || token.character) : token.type === 'interaction' ? 'Interaction' : 'Narration';
+        const speaker = token.type === 'dialogue' ? (props.displayName || token.character) : token.type === 'interaction' ? 'Interaction' : props.displayName || 'Narration';
         box.querySelector('.vn-speaker').textContent = token.thought ? `${speaker} · thoughts` : speaker;
         const color = (value, fallback) => CSS.supports('color', value || '') ? value : fallback;
         box.style.setProperty('--vn-accent', color(props.color, 'var(--vn-ui-accent)'));
@@ -26,7 +26,7 @@ export class DialogueRenderer {
         box.style.setProperty('--vn-border-color', color(props.borderColor || props.color, 'var(--vn-border)'));
         box.style.backgroundColor = props.boxColor ? color(props.boxColor, '') : '';
         box.querySelector('.vn-speaker').style.backgroundColor = color(props.nameplateBackground, 'transparent');
-        box.style.setProperty('--vn-text-color', color(token.type === 'narration' ? props.narrationColor || this.settings.narrationColor : props.textColor || this.settings.textColor, token.type === 'narration' ? 'var(--vn-muted)' : 'var(--vn-ui-color)'));
+        box.style.setProperty('--vn-text-color', color(token.type === 'narration' ? props.textColor || props.narrationColor || this.settings.narrationColor : props.textColor || this.settings.textColor, token.type === 'narration' ? 'var(--vn-muted)' : 'var(--vn-ui-color)'));
         box.style.setProperty('--vn-box-opacity', this.settings.overlayOpacity);
         box.style.setProperty('--vn-dialogue-width', `min(${this.settings.dialogueBoxWidth}vw, 94vw)`);
         box.style.setProperty('--vn-dialogue-min-height', `${this.settings.dialogueBoxHeight}px`);
@@ -63,15 +63,16 @@ export class DialogueRenderer {
             const delay = this.settings.typewriterSpeed * (flair.speedMult || 1) * (Number(props.voiceSpeed) || 1) + (/[.!?…]/.test(letter.textContent) ? flair.dotPause || 70 : 0);
             this.timer = setTimeout(tick, delay);
         };
-        const cues = this.settings.tts?.syncText !== false && token.type === 'dialogue' && !token.thought && playback
-            ? speechRevealCues(this.letters.map(letter => letter.textContent).join(''), playback.clip, playback.words) : null;
-        if (cues) {
+        let cues = playback?.clip ? speechRevealCues(this.letters.map(letter => letter.textContent).join(''), playback.clip, playback.words) : null;
+        if (this.settings.tts?.syncText !== false && !token.thought && playback && (!playback.clip || cues)) {
             let shown = 0;
             const follow = () => {
                 if (generation !== this.generation || !this.typing) return;
                 if (playback.status === 'failed') { index = shown; tick(); return; }
                 if (['ended', 'cancelled'].includes(playback.status)) { this.complete(); return; }
                 if (playback.status === 'playing') {
+                    cues ??= speechRevealCues(this.letters.map(letter => letter.textContent).join(''), playback.clip, playback.words);
+                    if (!cues) { index = shown; tick(); return; }
                     const time = playback.audio?.currentTime;
                     let through = 0;
                     if (Number.isFinite(time)) for (const cue of cues) { if (cue.at > time) break; through = cue.through; }

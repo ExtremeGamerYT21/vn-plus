@@ -23,10 +23,10 @@ export class SpeechEngine {
     constructor(host, settings, dependencies = {}) {
         this.host = host; this.settings = settings; this.decode = dependencies.decode || decodeChapter; this.process = dependencies.process || processChapter;
         this.audioFactory = dependencies.audioFactory || (() => new Audio()); this.cache = new Map(); this.listeners = new Set(); this.excluded = new Set(); this.playEpoch = 0;
-        this.status = 'Prepare spoken dialogue, then generate voices when you choose.';
+        this.autoAttempts = new Set(); this.status = 'Prepare spoken dialogue, then generate voices when you choose.';
     }
     onChange(callback) { this.listeners.add(callback); return () => this.listeners.delete(callback); }
-    notify(message) { if (message) this.status = message; for (const callback of this.listeners) callback(); }
+    notify(message) { if (message) this.status = message; this.resumePending(); for (const callback of this.listeners) callback(); }
     async endpoint(path, options = {}) {
         const request = this.host.request || ((url, init) => fetch(url, init));
         const response = await request(`/api/plugins/vn-plus-tts/${path}`, options);
@@ -40,10 +40,41 @@ export class SpeechEngine {
     async saveKey(value) { await this.endpoint('secret', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value }) }); this.notify('Fish key saved in SillyTavern’s secret store.'); }
     async removeKey() { await this.endpoint('secret', { method: 'DELETE' }); this.notify('Saved Fish key removed.'); }
     prepare(sourceId, timeline, registry) {
-        const segments = speechSegments(timeline, registry, sourceId), signature = JSON.stringify([sourceId, segments]);
+        const segments = speechSegments(timeline, registry, sourceId, this.settings.tts), signature = JSON.stringify([sourceId, segments]);
         if (signature !== this.prepared?.signature) { this.cancel(); this.excluded.clear(); this.job = null; }
         this.prepared = { sourceId, segments, signature };
-        this.selectCachedJob(); this.notify(`${segments.length} spoken segments have character voice IDs. Narration and thoughts stay silent.`); return segments;
+        this.selectCachedJob(); this.notify(`${segments.length} segments have voice IDs. ${this.settings.tts.narratorEnabled ? 'Narrator voicing is enabled.' : 'Narrator is muted.'} Thoughts stay silent.`); return segments;
+    }
+    requestAutomatic() {
+        if (!this.settings.tts.enabled || !this.settings.tts.autoGenerate || !this.prepared?.segments.length) return;
+        try {
+            const key = this.key(this.plan());
+            if (this.autoAttempts.has(key)) return;
+            this.autoAttempts.add(key);
+            if (this.autoAttempts.size > 32) this.autoAttempts.delete(this.autoAttempts.values().next().value);
+            // One attempt per finalized response/configuration. Failures require an explicit retry.
+            void this.generate().catch(error => { this.notify(error.message); if (this.pending) { this.stop('failed'); this.onEnded?.(); } });
+        } catch (error) { this.notify(error.message); }
+    }
+    lineStatus(beat, next = false) {
+        if (!this.settings.tts.enabled) return null;
+        const line = this.prepared?.segments.find(segment => (next ? segment.beat > beat : segment.beat === beat) && !this.excluded.has(segment.id));
+        if (!line) return null;
+        const found = this.clip(line.id);
+        const state = found?.clip.review ? 'review' : found?.chapter.processingError ? 'failed'
+            : found && (found.chapter.processed?.results.has(line.id) || !this.settings.tts.processing) ? 'ready'
+            : this.job?.status === 'failed' || this.job?.status === 'cancelled' ? 'failed'
+            : this.job?.status === 'generating' || found ? 'generating' : 'pending';
+        return { state, line };
+    }
+    resumePending() {
+        const pending = this.pending; if (!pending) return;
+        const found = this.clip(pending.id);
+        if (found && !found.clip.review && !found.chapter.processingError) {
+            this.pending = null; void this.play(pending.id, true, pending.playback);
+        } else if (found?.clip.review || found?.chapter.processingError || ['failed', 'cancelled', 'complete'].includes(this.job?.status)) {
+            this.stop('failed'); this.onEnded?.();
+        }
     }
     plan() {
         if (!this.prepared) throw new Error('Prepare the selected final dialogue first.');
@@ -136,9 +167,10 @@ export class SpeechEngine {
         if (processed) { const result = (await this.ensureProcessed(found.chapter)).results.get(id); if (!result) throw new Error('Processed clip is unavailable.'); return result.samples; }
         return found.chapter.original.slice(Math.round(found.clip.start * SAMPLE_RATE), Math.round(found.clip.end * SAMPLE_RATE));
     }
-    async play(id, processed = true) {
+    async play(id, processed = true, existing = null) {
         this.stop(); const epoch = this.playEpoch; this.starting = true;
-        const found = this.clip(id), playback = { status: 'loading', audio: null, clip: found?.clip, words: found?.chapter.words || [] };
+        const found = this.clip(id), playback = existing || {};
+        Object.assign(playback, { status: 'loading', audio: null, clip: found?.clip, words: found?.chapter.words || [] });
         this.playback = playback;
         try {
             const samples = await this.clipSamples(id, processed); if (epoch !== this.playEpoch) return;
@@ -165,14 +197,23 @@ export class SpeechEngine {
     }
     playBeat(beat) {
         if (this.settings.tts.enabled && this.settings.tts.autoPlay) {
-            const line = this.prepared?.segments.find(segment => segment.beat === beat);
+            const line = this.prepared?.segments.find(segment => segment.beat === beat && !this.excluded.has(segment.id));
             if (line && this.clip(line.id) && !this.clip(line.id).clip.review) { void this.play(line.id); return this.playback; }
+            if (line && this.settings.tts.autoGenerate) {
+                this.stop();
+                const playback = { status: 'loading', audio: null, clip: null, words: [] };
+                this.playback = playback; this.pending = { id: line.id, playback };
+                this.requestAutomatic(); this.resumePending();
+                // A previous failed attempt is not retried by navigation.
+                if (this.pending && !this.running) this.stop('failed');
+                return playback;
+            }
         }
         this.stop(); return null;
     }
     get speaking() { return !!this.starting || !!this.audio && !this.audio.paused; }
-    stop(reason = 'cancelled') { this.playEpoch++; this.starting = false; if (this.playback) this.playback.status = reason; this.playback = null; if (this.audio) { this.audio.onended = null; this.audio.onerror = null; } this.audio?.pause(); this.audio?.removeAttribute?.('src'); this.audio?.load?.(); this.audio = null; if (this.url) URL.revokeObjectURL(this.url); this.url = null; }
-    cancel() { this.abort?.abort(); this.stop(); }
+    stop(reason = 'cancelled') { this.playEpoch++; this.pending = null; this.starting = false; if (this.playback) this.playback.status = reason; this.playback = null; if (this.audio) { this.audio.onended = null; this.audio.onerror = null; } this.audio?.pause(); this.audio?.removeAttribute?.('src'); this.audio?.load?.(); this.audio = null; if (this.url) URL.revokeObjectURL(this.url); this.url = null; }
+    cancel() { this.abort?.abort(); this.abort = null; this.running = null; this.stop(); }
     clearScene() { this.cancel(); this.prepared = null; this.job = null; this.excluded.clear(); this.notify('Prepare the selected final dialogue to use its character voices.'); }
     async sourceSamples(processed = false) {
         if (!this.job?.chapters.length) throw new Error('Generate at least one chapter first.');

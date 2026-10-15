@@ -1,6 +1,31 @@
 # Fish Audio voices
 
-VN+ generates voices for the selected finalized POV dialogue. Each character supplies its own `voiceId` through `properties.json` or its normal character registry override. An absent or empty ID means mute. There is no separate voice assignment table or narrator fallback. Narration, internal thoughts and HTML artifacts are excluded from synthesis.
+VN+ generates voices for the selected finalized POV. Each character supplies its own `voiceId` through `properties.json` or its normal character registry override. An absent or empty ID means mute. Narration is muted by default and has its own optional voice. Internal thoughts and HTML artifacts are excluded from synthesis.
+
+## Automatic voices and readiness
+
+Under **Extensions → Visual Novel+ → Fish Audio voices → Voice generation and playback**, enable voices and **Automatically generate voices for completed POV responses**. Automatic generation is off by default. It uses the configured Fish model and account, including that model's normal usage charges. Keep **Play prepared clips during VN dialogue** enabled for automatic playback. Manual prepare/generate controls remain available.
+
+Opening a completed POV prepares its voiced lines in chapters ahead of playback. The symbol beside the text describes the next voiced beat: `○` pending, `◌` generating, `✓` ready, or `!` unavailable/requires review. Its tooltip names the speaker and line. Readiness requires a usable aligned cut and successful audio finishing. Missing voice IDs stay silent.
+
+If the current line's recording is still generating, voice-synchronized text and Auto wait for it. The text follows actual word timestamps when available. Playback/generation failures release the text to the ordinary typewriter and local timing rules; uncertain cuts require review. A failed automatic attempt does not repeat on every reopen/navigation. Use **Generate selected dialogue / Generate remaining chapters** to retry explicitly. Completed recordings are reused within the bounded in-memory cache; a page refresh clears that audio cache.
+
+## Narrator and first-person view
+
+**Voice the narrator (off = muted)** uses this environment's `characters/narrator/properties.json`. The file is loaded even without an inventory entry. For example:
+
+```json
+{
+  "displayName": "Narrator",
+  "voiceId": "YOUR_FISH_VOICE_ID",
+  "textColor": "#d8d0bc",
+  "font": "Georgia"
+}
+```
+
+`name` is also accepted when `displayName` is absent. Name, text color, font and normal box styling apply even when narration is muted. Enabling the toggle without a voice ID keeps narration silent. The narrator never receives a bust. Use **Refresh assets** after editing properties files.
+
+**General → Hide player bust (first-person view)** hides the canonical player and their aliases. Set **Player identity** to the player character's name. Dialogue, player emotion and the player's own voice ID continue to work. Existing `showPlayerBust` preferences are preserved; checking the new label sets that value to false.
 
 ```json
 {
@@ -46,7 +71,7 @@ When Fish voices are enabled, automatic legacy character/emotion sounds are supp
 
 ## Timing review and playback
 
-**Reveal dialogue with voice timing**, under **Voice generation and playback**, is on by default. With automatic voice playback and the typewriter enabled, dialogue appears word by word at the generated transcription timestamps. The reveal follows the audio's current playback position, including retained opening silence, pauses and playback stalls. It uses existing generated clips and never starts synthesis when advancing.
+**Reveal dialogue with voice timing**, under **Voice generation and playback**, is on by default. With automatic voice playback and the typewriter enabled, dialogue appears word by word at the generated transcription timestamps. The reveal follows the audio's current playback position, including retained opening silence, pauses and playback stalls. It uses prepared clips; when automatic generation is enabled it can also wait for a clip still being generated ahead. The reveal itself makes no synthesis requests.
 
 Missing or mismatched word timings use the ordinary typewriter; playback failure resumes it from the visible text. Clicking to finish text leaves the voice playing, and Auto waits for both. Reduced motion, a disabled typewriter, zero typewriter speed and backward navigation display the full line immediately. Stopping voice playback also finishes the text. The 2.6 update changes only frontend code, so an installation already running the 2.5.1 bridge needs a browser refresh, without another server restart.
 

@@ -37,7 +37,8 @@ export class StageRenderer {
             }
         }) : Promise.resolve();
         if (!state.background) { background.style.backgroundImage = ''; this.backgroundUrl = null; this.publishContext(state, false); }
-        const characters = Object.values(state.characters).filter(character => !this.registry.isNarrator(character.id) && !this.registry.isNarrator(character.name));
+        const characters = Object.values(state.characters).filter(character => !this.registry.isNarrator(character.id) && !this.registry.isNarrator(character.name)
+            && (this.settings.showPlayerBust || !this.registry.isPlayer(character.id)));
         const visibleIds = new Set(characters.map(character => character.id));
         for (const [id, node] of this.nodes) if (!visibleIds.has(id)) { this.sprites.remove(node); node.remove(); this.nodes.delete(id); }
         const count = Math.max(maxSlots, ...characters.map(char => char.slot + 1));

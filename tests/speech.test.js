@@ -33,6 +33,64 @@ const engineFor = (input, request, dependencies = {}) => {
     const engine = new SpeechEngine({ request }, input.config, { decode: async () => new Float32Array(SAMPLE_RATE), ...dependencies });
     engine.prepare('chat:message:swipe', input.timeline, input.registry); return engine;
 };
+const fakeVoiceAudio = () => ({ currentTime: 0, paused: true, async play() { this.paused = false; }, pause() { this.paused = true; }, removeAttribute() {}, load() {} });
+const fakeFinish = async chapter => chapter.clips.filter(clip => !clip.review).map(clip => ({ id: clip.id, samples: new Float32Array(4410), notes: [] }));
+
+test('narrator properties load without inventory entries and optional narration uses one reserved voice', async () => {
+    const input = fixture('You wait.\nNarrator: "A door opens."\nNina: "(Stay quiet.)"', {});
+    input.registry.resolver.json = async path => path === 'characters/narrator/properties.json' ? { name: 'Storyteller', textColor: '#abcdef', font: 'Georgia', voiceId: 'story-voice' } : null;
+    await input.registry.prepare([]);
+    assert.equal(input.registry.get('narrator').displayName, 'Storyteller');
+    assert.equal(speechSegments(input.timeline, input.registry, 'scene').length, 0);
+    const lines = speechSegments(input.timeline, input.registry, 'scene', { narratorEnabled: true });
+    assert.deepEqual(lines.map(line => line.character), ['narrator', 'narrator']);
+    assert.ok(lines.every(line => line.voice === 'story-voice' && line.name === 'Storyteller'));
+    assert.ok(!input.timeline.beats.some(beat => beat.state.characters.narrator));
+});
+
+test('automatic generation is opt-in and needs both voices enabled and eligible segments', () => {
+    const input = fixture('Nina: "Hello"'); let calls = 0;
+    const engine = engineFor(input, async () => { calls++; throw new Error('Must not request'); });
+    engine.requestAutomatic(); input.config.tts.autoGenerate = true; input.config.tts.enabled = false; engine.requestAutomatic();
+    input.config.tts.enabled = true; engine.prepare('mute', fixture('Unknown: "Hello"').timeline, input.registry); engine.requestAutomatic();
+    assert.equal(calls, 0); engine.dispose();
+});
+
+test('automatic generation holds the current line, prepares ahead and reuses completed recordings', async () => {
+    const input = fixture('Nina: "Hello"'); input.config.tts.autoGenerate = true; let posts = 0;
+    const engine = engineFor(input, async url => url.endsWith('/status') ? Response.json({ configured: true }) : (posts++, response(simpleStream())), { audioFactory: fakeVoiceAudio, process: fakeFinish });
+    const line = engine.prepared.segments[0], playback = engine.playBeat(line.beat);
+    assert.equal(playback.status, 'loading'); engine.requestAutomatic();
+    await engine.running; await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(posts, 1); assert.equal(playback.status, 'playing'); assert.equal(engine.lineStatus(line.beat).state, 'ready');
+    engine.stop(); engine.prepare('chat:message:swipe', input.timeline, input.registry); engine.requestAutomatic(); engine.playBeat(line.beat);
+    await new Promise(resolve => setTimeout(resolve, 0)); assert.equal(posts, 1); engine.dispose();
+});
+
+test('failed automatic voicing releases text and never repeatedly bills retries on navigation', async () => {
+    const input = fixture('Nina: "Hello"'); input.config.tts.autoGenerate = true; let posts = 0;
+    const engine = engineFor(input, async url => url.endsWith('/status') ? Response.json({ configured: true }) : (posts++, new Response('', { status: 503 })), { process: fakeFinish });
+    const beat = engine.prepared.segments[0].beat, playback = engine.playBeat(beat);
+    await engine.running; assert.equal(playback.status, 'failed'); assert.equal(engine.lineStatus(beat).state, 'failed');
+    engine.playBeat(beat); engine.requestAutomatic(); assert.equal(posts, 1);
+    await engine.generate(); assert.equal(posts, 2); engine.dispose();
+});
+
+test('untrusted transcript cuts show review instead of auto-playing guessed speech', async () => {
+    const input = fixture('Nina: "Hello"'); input.config.tts.autoGenerate = true;
+    const engine = engineFor(input, async url => url.endsWith('/status') ? Response.json({ configured: true }) : response(simpleStream('Different')), { audioFactory: () => { throw new Error('Do not play an unreviewed cut'); }, process: fakeFinish });
+    const beat = engine.prepared.segments[0].beat, playback = engine.playBeat(beat);
+    await engine.running; assert.equal(playback.status, 'failed'); assert.equal(engine.lineStatus(beat).state, 'review'); engine.dispose();
+});
+
+test('navigating away cancels a waiting voice without interrupting ahead generation', async () => {
+    const input = fixture('Nina: "Hello"'); input.config.tts.autoGenerate = true;
+    let release, played = 0;
+    const engine = engineFor(input, async url => url.endsWith('/status') ? Response.json({ configured: true }) : new Promise(resolve => release = () => resolve(response(simpleStream()))), { audioFactory: () => { played++; return fakeVoiceAudio(); }, process: fakeFinish });
+    const playback = engine.playBeat(engine.prepared.segments[0].beat), generation = engine.running;
+    await new Promise(resolve => setTimeout(resolve, 0)); engine.playBeat(-1); release(); await generation;
+    assert.equal(playback.status, 'cancelled'); assert.equal(played, 0); assert.equal(engine.job.status, 'complete'); engine.dispose();
+});
 
 test('Fish voice IDs accept official voice URLs and reject arbitrary destinations', () => {
     assert.equal(fishVoiceId('https://fish.audio/pt/m/4744963f03b24efeb8e29b86aca419a0/'), '4744963f03b24efeb8e29b86aca419a0');

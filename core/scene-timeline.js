@@ -15,6 +15,7 @@ export function compileTimeline(tokens, registry, settings, inherited = {}, reco
     let state = emptyState(settings.displayMode);
     for (const key of ['background', 'music', 'ambient', 'scene', 'visuals', 'textEffect', 'mode', 'black', 'camera', 'tint', 'playerEmotion']) if (Object.hasOwn(inherited, key)) state[key] = clone(inherited[key]);
     state.characters = Object.assign(Object.create(null), clone(inherited.characters || {}));
+    for (const id of Object.keys(state.characters)) if (registry.isNarrator(id) || !settings.showPlayerBust && registry.isPlayer(id)) delete state.characters[id];
     const beats = [], errors = [], views = [];
     const names = tokens.filter(token => token.type === 'dialogue' || (token.type === 'command' && token.name === 'ENTER')).map(token => token.character || token.args);
     const cast = [...new Set([...Object.keys(state.characters), ...names.filter(name => !registry.isNarrator(name)).map(name => registry.identify(name))])];

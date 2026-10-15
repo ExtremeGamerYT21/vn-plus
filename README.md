@@ -1,4 +1,6 @@
-# Visual Novel+ 2.16.0
+# Visual Novel+ 2.17.0
+
+Version 2.17 continuously checks the current response while VN is open, recovering when a POV transformer silently adds or replaces the `/////` section. Historical playback keeps its selection. Fish settings add optional **automatic voice generation** with a next-line readiness symbol and **narrator voicing** from the environment's `characters/narrator/properties.json`. Narrator name, text color and font apply even while muted. **General → Hide player bust (first-person view)** keeps the player invisible while preserving dialogue, voice and emotion. Automatic generation is opt-in and reuses prepared audio; failed requests require manual retry. See [voice settings and narrator setup](docs/speech.md). Refresh SillyTavern after updating; no server restart is needed.
 
 Version 2.16 collects important-scene journal entries from the existing POV transformer’s optional trailing `vnplus-journal` JSON block. No additional model request is made. Each response stores only its diary additions in `extra.vn_plus`, with duplicate suppression, inherited story dates, selected-swipe/revision/branch isolation and an end-of-response visibility boundary. The diary API combines these with manual notes. See [journal setup and transformer instructions](docs/journal.md). Import the optional journal-display RegEx preset to hide metadata in ordinary chat too. Refresh SillyTavern after updating; no server restart is needed.
 

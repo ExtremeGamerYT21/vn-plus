@@ -35,10 +35,14 @@ export class CharacterRegistry {
         if (entry.name) properties.aliases = [...new Set([...aliases(properties.aliases), entry.name])];
         this.properties.set(entry.id, properties); this.knownProperties.add(entry.id);
     }
-    get(id) { return { ...(this.properties.get(id) || {}), ...(this.entries().find(entry => entry.id === id) || {}) }; }
+    get(id) {
+        const props = { ...(this.properties.get(id) || {}), ...(this.entries().find(entry => entry.id === id) || {}) };
+        if (!props.displayName && typeof props.name === 'string') props.displayName = props.name;
+        return props;
+    }
     async prepare(names) {
         // Inventory makes property aliases discoverable without directory listing APIs.
-        const ids = new Set([...Object.keys(this.resolver.inventory.characters || {}), ...this.entries().map(entry => entry.id), ...names.map(slug)]);
+        const ids = new Set(['narrator', ...Object.keys(this.resolver.inventory.characters || {}), ...this.entries().map(entry => entry.id), ...names.map(slug)]);
         await Promise.all([...ids].map(async id => {
             if (this.properties.has(id)) return;
             const value = await this.resolver.json(`characters/${id}/properties.json`);

@@ -11,7 +11,7 @@ export function createOverlay() {
       <div class="vn-status" role="status" hidden></div>
       <div class="vn-content-notice" role="status" hidden></div>
       <div class="vn-dialogue" tabindex="0" role="button" aria-label="Advance dialogue">
-        <div class="vn-speaker">Narration</div><div class="vn-text"></div><div class="vn-dialogue-foot"><span class="vn-position"></span><span>Click to continue <b>▾</b></span></div>
+        <div class="vn-speaker">Narration</div><div class="vn-text"></div><div class="vn-dialogue-foot"><span class="vn-position"></span><span class="vn-voice-ready" role="status" hidden></span><span>Click to continue <b>▾</b></span></div>
       </div>
       <nav class="vn-controls" aria-label="Playback"><button data-action="back" title="Left arrow">← Back</button><button data-action="next" title="Space / Right arrow">Continue →</button><button data-action="replay">Replay</button><button data-action="skip">Skip viewed</button><button data-action="auto" aria-pressed="false">Auto</button><button data-action="reply">Reply</button></nav>
       <div class="vn-reply" hidden><label for="vnplus-reply">Your response</label><textarea id="vnplus-reply" rows="3" placeholder="Write your reply…"></textarea><div><button data-action="send">Send</button><button data-action="retry">Retry response</button><button data-action="close-reply">Resume scene</button></div><p class="vn-reply-status" role="status"></p></div>

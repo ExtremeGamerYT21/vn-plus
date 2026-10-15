@@ -63,3 +63,7 @@
 @media (max-width:600px) { .vn-top { padding: 12px; }.vn-scene-label { display: none; }.vn-dialogue { width: 94vw !important; padding: 20px; max-height: 50vh; }.vn-controls { gap: 4px; }.vn-controls button { padding: 6px 8px; font-size: 11px; }.vn-character { max-width: 40vw; }.vn-artifact,.vn-panel { padding: 8px; }.vn-top button { padding: 5px 8px; } }
 
 .vn-speech-segment { display: grid; grid-template-columns: 20px 1fr; gap: 4px 8px; padding: 8px 0; border-bottom: 1px solid var(--vn-border); } .vn-speech-segment small { grid-column: 2; overflow-wrap: anywhere; } .vn-speech-clip { border-top: 1px solid var(--vn-border); padding: 12px 0; } .vn-speech-clip button { margin: 4px; font-size: 12px; } .vn-speech-review { color: var(--vn-ui-accent); font-weight: 600; } .vn-speech-settings details { padding: 10px 0; } .vn-speech-status { white-space: normal; }
+
+/* Voice readiness follows the selected beat and inherits the environment theme. */
+.vnplus-ui .vn-voice-ready { margin-inline: auto 1em; font-variant-numeric: tabular-nums; }
+.vnplus-ui .vn-voice-ready[data-state="ready"] { color: var(--vn-ui-accent); }

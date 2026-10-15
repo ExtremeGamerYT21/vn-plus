@@ -8,7 +8,7 @@ export class SpeechPanel {
     constructor(engine, callbacks, { expanded = false } = {}) {
         this.engine = engine; this.callbacks = callbacks; this.node = element('details', '', 'vn-speech-settings'); this.node.open = expanded;
         this.node.append(element('summary', 'Fish Audio voices'));
-        this.node.append(element('p', 'Reads voiceId from each character’s properties or registry override. No voiceId means mute. Generate only the selected final spoken dialogue; narration and internal thoughts are excluded.', 'vn-hint'));
+        this.node.append(element('p', 'Reads voiceId from character properties. No voiceId means mute. Automatic generation prepares completed POV lines ahead; ✓ beside the text means the next voice line is ready. Narrator properties come from characters/narrator/properties.json in this environment. Internal thoughts stay silent.', 'vn-hint'));
         const keyRow = element('label', '', 'vn-setting'); keyRow.append(element('span', 'Fish API key'));
         this.keyInput = element('input'); this.keyInput.type = 'password'; this.keyInput.autocomplete = 'new-password'; this.keyInput.placeholder = 'Saved in SillyTavern’s secret store'; keyRow.append(this.keyInput); this.node.append(keyRow);
         const credentialActions = element('div', '', 'vn-settings-actions');
@@ -18,6 +18,8 @@ export class SpeechPanel {
         this.fields = new Map();
         for (const definition of [
             ['enabled', 'Enable Fish Audio voices', 'checkbox'], ['autoPlay', 'Play prepared clips during VN dialogue', 'checkbox'],
+            ['autoGenerate', 'Automatically generate voices for completed POV responses', 'checkbox'],
+            ['narratorEnabled', 'Voice the narrator (off = muted)', 'checkbox'],
             ['syncText', 'Reveal dialogue with voice timing', 'checkbox'],
             ['model', 'Fish model', [{ value: 's2.1-pro-free', label: 'S2.1 Pro Free' }, { value: 's2.1-pro', label: 'S2.1 Pro (paid)' }]],
             ['splitChapters', 'Split into short chapters', 'checkbox'], ['chapterSize', 'Spoken segments per chapter', 'number', 1, 200],
