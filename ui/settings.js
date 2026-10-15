@@ -7,7 +7,7 @@ import { createThemeSettings } from './theme-settings.js';
 import { SPEECH_DEFAULTS, speechSettings } from '../core/speech-segments.js';
 
 export const DEFAULT_SETTINGS = {
-    enabled: true, automaticPlayback: false, playerName: 'Jason', playerAliases: [], showPlayerBust: true,
+    enabled: true, automaticPlayback: false, environmentCss: true, playerName: 'Jason', playerAliases: [], showPlayerBust: true,
     layout: 'rows', stageLayoutVersion: 3, layouts: {}, displayMode: 'vn', bustScale: 1, bustHeight: 78, stageSpacing: 1, stageAlignment: 'bottom', inactiveBrightness: .45,
     rowSpacing: 8, rowRise: 6.5, rowDepthScale: .95,
     spriteBreathing: true, breathingAmount: 1.6, breathingDuration: 4200, expressionTransition: 280,
@@ -82,6 +82,11 @@ export function createSettings(settings, callbacks) {
             row.append(caption, input); details.append(row);
         }
         if (group === 'General') {
+            const cssRow = document.createElement('label'); cssRow.className = 'vn-setting';
+            const cssToggle = document.createElement('input'); cssToggle.type = 'checkbox'; cssToggle.checked = settings.environmentCss !== false; cssToggle.dataset.setting = 'environmentCss';
+            cssToggle.addEventListener('change', () => { settings.environmentCss = cssToggle.checked; callbacks.change('environmentCss'); });
+            cssRow.append(document.createTextNode('Apply environment dialogue.css'), cssToggle); details.append(cssRow);
+            const cssStatus = document.createElement('p'); cssStatus.className = 'vn-hint'; cssStatus.dataset.environmentCssStatus = ''; cssStatus.role = 'status'; details.append(cssStatus);
             const hint = document.createElement('p'); hint.className = 'vn-hint'; hint.dataset.environmentStatus = ''; hint.role = 'status'; details.append(hint);
         }
         if (group === 'Presentation') {

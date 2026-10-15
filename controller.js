@@ -21,6 +21,7 @@ import { OmniscientToggle } from './ui/omniscient-toggle.js';
 import { applyTheme } from './core/theme.js';
 import { SpeechEngine } from './renderers/speech-engine.js';
 import { SpeechPanel } from './ui/speech-panel.js';
+import { EnvironmentStyle } from './renderers/environment-style.js';
 
 export class VNController {
     constructor(host, base, inventory = {}) {
@@ -31,6 +32,7 @@ export class VNController {
         activateContentProfile(this.settings, this.environment.id);
         this.resolver = this.createContentResolver(this.environment); this.registry = this.createRegistry(this.resolver, this.environment);
         this.root = createOverlay(); this.stage = new StageRenderer(this.root, this.resolver, this.registry, this.settings);
+        this.environmentStyle = new EnvironmentStyle(this.root);
         this.dialogue = new DialogueRenderer(this.root, this.resolver, this.settings); this.audio = new AudioEngine(this.resolver, this.settings, message => this.log(message));
         this.speech = new SpeechEngine(host, this.settings); this.speech.onEnded = () => this.scheduleAuto();
         const speechCallbacks = { prepare: () => this.prepareSpeech(), change: () => this.settingsChanged('speech') };
@@ -42,6 +44,7 @@ export class VNController {
         this.generation = 0; this.busy = false; this.seen = new Map(); this.disposers = []; this.messages = [];
         this.disposers.push(bindControls(this.root, { action: action => void this.action(action), unlock: () => void this.audio.unlock(), escape: () => this.escape(), layout: value => { this.settings.layout = normalizeStageLayout(value); this.settingsChanged('layout'); }, environment: value => void this.selectEnvironment(value) }));
         this.bindHost(); this.mount(); this.updateMusicButton(); this.updateLayoutControls(); this.updateEnvironmentControls();
+        void this.loadEnvironmentStyle();
     }
     log(message) { this.messages.push(message); if (this.messages.length > 50) this.messages.shift(); if (this.settings.debug) console.debug('[VN+]', message); }
     get sceneVariables() { return structuredClone(this.stage.variables || {}); }
@@ -144,6 +147,7 @@ export class VNController {
         this.updateLayoutControls();
         if (key === 'musicMuted') this.audio.setMusicMuted(this.settings.musicMuted);
         this.updateMusicButton();
+        if (key === 'environmentCss') { void this.loadEnvironmentStyle(); return; }
         if (!this.settings.enabled) { this.close(); return; }
         if (key === 'musicMuted') return;
         if (key === 'layout' || key === 'breathingCenter') { this.applyLayout(); return; }
@@ -158,6 +162,14 @@ export class VNController {
         await this.selectEnvironment(id, true);
     }
     createContentResolver(environment) { return new AssetResolver(new URL(environment.path ? `${environment.path}/` : './', this.base), environment.inventory, environment.id); }
+    async loadEnvironmentStyle() {
+        this.environmentStyleStatus = { status: 'loading' };
+        const resolver = this.resolver, result = await this.environmentStyle.load(resolver, this.settings.environmentCss !== false);
+        if (resolver !== this.resolver || result.status === 'cancelled') return;
+        this.environmentStyleStatus = result;
+        const status = this.settingsPanel?.querySelector('[data-environment-css-status]');
+        if (status) status.textContent = result.status === 'loaded' ? 'Environment dialogue.css loaded. Refresh assets after editing it.' : result.status === 'error' ? `Environment CSS: ${result.error}` : result.status === 'disabled' ? 'Environment CSS is disabled.' : 'Optional environment dialogue.css is not present. Built-in styling is active.';
+    }
     createRegistry(resolver, environment) {
         const discover = this.host.resolveCharacters ? () => this.host.resolveCharacters({ environment: environment.path ? environment.id : null }) : null;
         return new CharacterRegistry(resolver, this.settings, discover);
@@ -171,6 +183,7 @@ export class VNController {
         this.speech.clearScene(); this.invalidate(); this.resolver.dispose();
         activateContentProfile(this.settings, next.id, this.environment.id); this.environment = next;
         this.resolver = this.createContentResolver(next); this.registry = this.createRegistry(this.resolver, next);
+        void this.loadEnvironmentStyle();
         this.stage.resolver = this.resolver; this.stage.registry = this.registry; this.stage.sprites.resolver = this.resolver;
         this.dialogue.resolver = this.resolver; this.audio.resolver = this.resolver;
         this.playback = null; this.sceneRevision = null; this.parsed = null; this.environmentResume = resume;
@@ -391,6 +404,7 @@ export class VNController {
         this.close(); this.stage.dispose(); this.observer.disconnect(); clearTimeout(this.mountTimer); this.disposers.forEach(dispose => dispose());
         this.root.remove(); this.settingsPanel?.remove(); document.querySelectorAll('.vn-message-tools').forEach(node => node.remove()); this.seen.clear();
         this.resolver.dispose(); this.catalogResolver.dispose();
+        this.environmentStyle.dispose();
         this.speechSettingsPanel.dispose(); this.voicePanel.dispose(); this.speech.dispose();
     }
 }

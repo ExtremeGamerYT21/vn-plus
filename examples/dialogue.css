@@ -1,0 +1,37 @@
+/* Copy to environments/YOUR-WORLD/dialogue.css, then Refresh assets. */
+:scope {
+    --vn-panel: #20211f;
+    --vn-ui-color: #eee9dd;
+    --vn-ui-accent: #c4b28b;
+}
+.vn-dialogue {
+    position: fixed;
+    left: 5vw;
+    right: 5vw;
+    bottom: 90px;
+    width: auto;
+    min-height: 150px;
+    margin: 0;
+    padding: 24px 30px;
+    border: 1px solid #c4b28b;
+    border-radius: 0;
+    background-color: #20211f;
+    background-image: none !important;
+    box-shadow: none;
+    backdrop-filter: none;
+}
+.vn-dialogue::before { display: none; }
+.vn-controls {
+    position: fixed;
+    right: 5vw;
+    bottom: 22px;
+    margin: 0;
+    gap: 10px;
+}
+.vn-controls button { border-radius: 0; padding: 10px 18px; }
+.vn-controls [data-action="next"] { order: -1; border-color: #c4b28b; }
+@media (max-width: 700px) {
+    .vn-dialogue { left: 3vw; right: 3vw; bottom: 150px; min-width: 0; }
+    .vn-controls { left: 3vw; right: 3vw; }
+    .vn-controls button { padding: 8px 10px; }
+}

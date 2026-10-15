@@ -1,8 +1,10 @@
-# Visual Novel+ 2.9.0
+# Visual Novel+ 2.10.0
 
 A procedural visual novel presentation layer for SillyTavern. It reads **only** the player perspective after an exact `/////` line in the selected assistant message. Canonical narration, conversation storage, generation, and outgoing context remain under SillyTavern and your separate POV workflow.
 
 The renderer is rebuilt in plain JavaScript modules. All 590 supplied assets and the existing character properties are preserved. The extension contains the current implementation, its tests, preview and development tools; unused editing variants and old source/style copies have been removed.
+
+Version 2.10 loads an optional local `dialogue.css` from each environment. Customize the dialogue box, typography, textures, button placement/order and responsive layout with scoped CSS. Files unload on environment changes and reload with **Refresh assets**. Disable them under **General → Apply environment dialogue.css**. They are Git-ignored and stay local across updates. See [environment CSS and selectors](docs/environment-css.md) and [the sample stylesheet](examples/dialogue.css). The default appearance is unchanged without a custom file.
 
 Version 2.9 extracts structured scene headers and applies story-time lighting to outdoor backgrounds and busts. See [scene variables and background lighting](docs/scene-context.md) for the header format, variables, local properties and the lighting schedule. The latest header carries across responses and refreshes. Indoor backgrounds keep full brightness; unlisted backgrounds are outdoors. Refresh SillyTavern after updating; no server restart is needed.
 

@@ -28,8 +28,8 @@ export class DialogueRenderer {
         box.querySelector('.vn-speaker').style.backgroundColor = color(props.nameplateBackground, 'transparent');
         box.style.setProperty('--vn-text-color', color(token.type === 'narration' ? props.narrationColor || this.settings.narrationColor : props.textColor || this.settings.textColor, token.type === 'narration' ? 'var(--vn-muted)' : 'var(--vn-ui-color)'));
         box.style.setProperty('--vn-box-opacity', this.settings.overlayOpacity);
-        box.style.width = `min(${this.settings.dialogueBoxWidth}vw, 94vw)`;
-        box.style.minHeight = `${this.settings.dialogueBoxHeight}px`;
+        box.style.setProperty('--vn-dialogue-width', `min(${this.settings.dialogueBoxWidth}vw, 94vw)`);
+        box.style.setProperty('--vn-dialogue-min-height', `${this.settings.dialogueBoxHeight}px`);
         box.classList.toggle('vn-no-chrome', !this.settings.showBoxChrome);
         box.classList.toggle('vn-no-panel', !this.settings.showBoxBackground);
         const texturePath = props.boxTexture || this.settings.dialogueBoxTexture;

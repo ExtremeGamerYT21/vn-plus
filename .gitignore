@@ -16,3 +16,5 @@ Thumbs.db
 /environments/*/characters/*/
 /environments/*/backgrounds/properties.json
 /backgrounds/properties.json
+/environments/*/dialogue.css
+/dialogue.css

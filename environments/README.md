@@ -5,6 +5,7 @@ Each setting owns a directory here. Choose it under General → Content environm
 ```
 environments/{id}/
   environment.json           # { "name": "Your setting", "description": "..." }
+  dialogue.css              # optional local styling for the box and VN controls
   characters/{character}/    # sprites, properties.json, blink images, voice/SFX
   characters/shared/        # dialogue textures and shared character sounds
   backgrounds/              # local properties.json maps filenames to { "inside": true/false }
@@ -25,6 +26,8 @@ Prefer a copied personal environment or character overrides in settings when mod
 Asset names in POV commands remain relative to the selected environment: `#BACKGROUND kitchen`, `#MUSIC theme`, and `NINA: "Hello." [happy]`. Each environment can reuse these names. Missing art uses the existing placeholder; media never falls back to another setting.
 
 Run `npm run backgrounds` to create or fill each environment's ignored `backgrounds/properties.json` without replacing existing values. Mark indoors with `inside: true`; unlisted/unclassified images are outdoors. The shipped Coffin defaults seed its local file. Properties follow the actual matched filename. Refresh assets after edits. See [scene variables and lighting](../docs/scene-context.md).
+
+An optional ignored `dialogue.css` controls that environment's dialogue box and buttons. It is scoped to VN mode, unloads on switching, and reloads with **Refresh assets**. See [environment CSS](../docs/environment-css.md) for examples and selectors.
 
 Character registry overrides, dialogue font choice and dialogue texture choice are saved separately for each environment. Per-character file properties, breathing centers, blink alternatives, themes and sounds live beside that setting's artwork. Global playback/audio/layout preferences continue to apply across environments.
 

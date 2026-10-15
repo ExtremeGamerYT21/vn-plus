@@ -29,4 +29,8 @@ const catalog = new AssetResolver(new URL('../', import.meta.url));
 const [published, local] = await Promise.all([catalog.json('assets.json'), catalog.json('assets.local.json')]);
 const inventory = mergeContentInventories(published || {}, local || {}); catalog.dispose();
 const controller = new VNController(createHost(() => context, { localContent: false }), new URL('../', import.meta.url), inventory);
+if (new URLSearchParams(location.search).has('css')) {
+    controller.environmentStyle.read = async () => fetch('../examples/dialogue.css').then(response => response.text());
+    await controller.loadEnvironmentStyle();
+}
 await controller.open(0);

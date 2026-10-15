@@ -7,6 +7,7 @@ import { DEFAULT_ENVIRONMENT } from '../core/content-environments.js';
 import { encodeMP3 } from '../core/speech-mp3.js';
 import { decodeChapter, wavBytes } from '../core/speech-pcm.js';
 import { SAMPLE_RATE } from '../core/speech-segments.js';
+import { EnvironmentStyle } from '../renderers/environment-style.js';
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const assert = (value, message = 'Assertion failed') => { if (!value) throw new Error(message); };
 const equal = (a, b) => assert(JSON.stringify(a) === JSON.stringify(b), `${JSON.stringify(a)} != ${JSON.stringify(b)}`);
@@ -674,6 +675,69 @@ await check('header edits and fresh controllers restore story time and a new cha
     context.chatId = 'no-header-chat'; context.chat = [{ mes: 'SECRET\n/////\n#BACKGROUND street\nNo header.' }]; mountChat(); emit('CHAT_CHANGED');
     await eventually(() => controller.parsed && controller.root.querySelector('.vn-text').textContent.includes('No header.'));
     await eventually(() => controller.sceneVariables.background === 'street'); equal(controller.sceneVariables.time, undefined); equal(controller.sceneVariables.lighting.brightness, 1);
+});
+await check('environment CSS changes dialogue and button layout while scoping resources animations and selectors', async () => {
+    const original = controller.environmentStyle.read, send = document.querySelector('#send_but'), outsideColor = getComputedStyle(send).color;
+    controller.environmentStyle.read = async () => `
+        :root { --vn-custom-test: loaded; }
+        .vn-dialogue { width:420px; min-width:0; border-radius:23px; background-image:url("characters/shared/box_texture.png") !important; animation:custom-pop 1s; }
+        .vn-controls { position:fixed; right:17px; bottom:19px; }
+        [data-action="next"] { order:-1; }
+        #send_but { color:rgb(255,0,0) !important; }
+        :scope + #send_but { color:rgb(255,0,0) !important; }
+        @media (min-width:1px) { .vn-controls button { letter-spacing:2px; } }
+        @supports (display:grid) { .vn-dialogue { border-bottom-width:3px; } }
+        @keyframes custom-pop { from { opacity:1; } to { opacity:1; } }
+        @font-face { font-family:outside-font; src:url("https://invalid.test/font"); }
+    `;
+    try {
+        await controller.loadEnvironmentStyle(); equal(controller.environmentStyleStatus.status, 'loaded');
+        const box = getComputedStyle(controller.root.querySelector('.vn-dialogue')), controls = getComputedStyle(controller.root.querySelector('.vn-controls'));
+        equal(box.width, '420px'); equal(box.borderTopLeftRadius, '23px'); assert(parseFloat(box.borderBottomWidth) > 2); equal(controls.position, 'fixed'); equal(controls.right, '17px');
+        equal(getComputedStyle(controller.root.querySelector('[data-action="next"]')).order, '-1');
+        equal(getComputedStyle(send).color, outsideColor); equal(getComputedStyle(document.body).getPropertyValue('--vn-custom-test'), '');
+        equal(getComputedStyle(controller.root).getPropertyValue('--vn-custom-test').trim(), 'loaded');
+        const css = controller.environmentStyle.style.textContent; assert(css.includes(controller.resolver.base.href + 'characters/shared/box_texture.png'));
+        assert(css.includes('@keyframes vn-environment-')); assert(!css.includes('@keyframes custom-pop')); assert(!css.includes('@font-face'));
+    } finally { controller.environmentStyle.read = original; await controller.loadEnvironmentStyle(); }
+});
+await check('environment changes unload the previous CSS and apply each setting without changing the paragraph', async () => {
+    const original = controller.environmentStyle.read, environment = controller.environment.id, position = controller.playback.position;
+    controller.environmentStyle.read = async resolver => `.vn-dialogue { border-radius:${resolver.namespace === 'harry-potter' ? 22 : 11}px; }`;
+    try {
+        await controller.loadEnvironmentStyle(); const old = controller.environmentStyle.style;
+        await controller.selectEnvironment('harry-potter'); await eventually(() => controller.environmentStyleStatus.status === 'loaded');
+        assert(!old.isConnected); equal(getComputedStyle(controller.root.querySelector('.vn-dialogue')).borderTopLeftRadius, '22px'); equal(controller.playback.position, position);
+        await controller.selectEnvironment(environment); await eventually(() => controller.environmentStyleStatus.status === 'loaded');
+        equal(getComputedStyle(controller.root.querySelector('.vn-dialogue')).borderTopLeftRadius, '11px'); equal(controller.playback.position, position);
+    } finally { controller.environmentStyle.read = original; await controller.selectEnvironment(environment); await controller.loadEnvironmentStyle(); }
+});
+await check('stale stylesheet loads and disposed renderers cannot reinstate old environment styles', async () => {
+    const original = controller.environmentStyle.read, environment = controller.environment.id; let release;
+    controller.environmentStyle.read = resolver => resolver.namespace === environment ? new Promise(resolve => release = resolve) : Promise.resolve('.vn-dialogue { border-radius:33px; }');
+    try {
+        const pending = controller.loadEnvironmentStyle(); await eventually(() => release);
+        await controller.selectEnvironment('harry-potter'); await eventually(() => controller.environmentStyleStatus.status === 'loaded');
+        release('.vn-dialogue { border-radius:99px; }'); await pending;
+        equal(getComputedStyle(controller.root.querySelector('.vn-dialogue')).borderTopLeftRadius, '33px');
+        const detached = new EnvironmentStyle(document.createElement('section')); let finish;
+        detached.read = () => new Promise(resolve => finish = resolve);
+        const cancelled = detached.load(controller.resolver); detached.dispose(); finish('.vn-dialogue { border-radius:99px; }');
+        equal((await cancelled).status, 'cancelled'); assert(!detached.style);
+    } finally { controller.environmentStyle.read = original; await controller.selectEnvironment(environment); await controller.loadEnvironmentStyle(); }
+});
+await check('the settings CSS toggle and Refresh assets reload styling without advancing the scene', async () => {
+    const original = controller.environmentStyle.read, enabled = controller.settings.environmentCss; let reads = 0;
+    controller.environmentStyle.read = async () => { reads++; return '.vn-dialogue { border-radius:37px; }'; };
+    try {
+        controller.settings.environmentCss = true; await controller.loadEnvironmentStyle(); const old = controller.environmentStyle.style, position = controller.playback.position;
+        const toggle = controller.settingsPanel.querySelector('[data-setting="environmentCss"]'); toggle.checked = false; toggle.dispatchEvent(new Event('change'));
+        await eventually(() => controller.environmentStyleStatus.status === 'disabled'); assert(!old.isConnected); equal(controller.playback.position, position);
+        toggle.checked = true; toggle.dispatchEvent(new Event('change')); await eventually(() => controller.environmentStyleStatus.status === 'loaded');
+        equal(getComputedStyle(controller.root.querySelector('.vn-dialogue')).borderTopLeftRadius, '37px'); const before = reads;
+        await controller.refreshAssets(); await eventually(() => controller.environmentStyleStatus.status === 'loaded'); assert(reads > before); equal(controller.playback.position, position);
+        assert(controller.settingsPanel.querySelector('[data-environment-css-status]').textContent.includes('loaded'));
+    } finally { controller.settings.environmentCss = enabled; controller.environmentStyle.read = original; await controller.loadEnvironmentStyle(); }
 });
 controller.dispose();
 document.querySelector('#test-status').textContent = `${passes} passed · ${failures} failed`;
