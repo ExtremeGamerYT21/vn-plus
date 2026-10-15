@@ -42,6 +42,12 @@
 .vn-artifact>section, .vn-panel>section { width: min(900px,94vw); height: min(760px,84vh); display: flex; flex-direction: column; overflow: hidden; background: var(--vn-panel); border: 1px solid var(--vn-ui-accent); border-radius: 14px; box-shadow: 0 20px 100px #000a; }
 .vn-artifact header, .vn-panel header { display: flex; align-items: center; justify-content: space-between; padding: 12px 18px; font: 13px var(--mainFontFamily,system-ui); border-bottom: 1px solid var(--vn-border); }.vn-artifact-content { flex: 1; min-height: 0; background: #faf7ef; }.vn-artifact iframe { width: 100%; height: 100%; border: 0; }
 .vn-panel-content { overflow: auto; padding: 24px; line-height: 1.7; white-space: pre-wrap; }.vn-panel-content pre { font: 12px/1.5 monospace; overflow-wrap: anywhere; white-space: pre-wrap; }
+.vn-visuals { position: absolute; inset: 76px 0 0; z-index: 5; pointer-events: none; }
+.vn-visual { position: absolute; top: calc(12px + var(--vn-visual-index,0) * 24px); right: calc(22px + var(--vn-visual-index,0) * 26px); width: min(380px,85vw); height: min(420px,50vh); pointer-events: auto; }
+.vn-visual .vn-artifact { position: absolute; inset: 0; padding: 0; background: transparent; backdrop-filter: none; display: flex; }
+.vn-visual .vn-artifact>section { width: 100%; height: 100%; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.vn-visual .vn-artifact header { padding: 4px 8px; border: 0; background: color-mix(in srgb,var(--vn-panel) 85%,transparent); border-radius: 6px; }
+.vn-visual .vn-artifact-content { background: transparent; }
 [data-mode=prose] .vn-stage { display: none; }[data-mode=prose] .vn-dialogue { width: min(740px,94vw) !important; }[data-mode=cinematic] .vn-background { transition-duration: 3s; }
 .vn-no-chrome { border-color: transparent; }.vn-no-chrome::before { display: none; }.vn-no-panel { background-color: transparent !important; box-shadow: none; backdrop-filter: none; }.vn-whisper { opacity: .8; font-style: italic; }.vn-shout { font-weight: 700; }
 .vn-dialogue.vn-image-only { background-color: transparent !important; background-size: 100% 100%; border: 0; border-radius: 0; box-shadow: none; backdrop-filter: none; }.vn-dialogue.vn-image-only::before { display: none; }.vn-image-only .vn-speaker { background-color: transparent !important; }

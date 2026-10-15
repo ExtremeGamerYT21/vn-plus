@@ -21,7 +21,7 @@ export function sceneSnapshot({ state, registry, settings, environment, stage, a
         lighting: { ...sceneLighting(state.scene, !!stage.variables?.lighting.inside), ambientColor: stage.ambientColor || '#ffffff', tint: stage.appliedTint || 'transparent', tintOpacity: .28 },
         music: audioState(state.music, audio.channels.music, settings.musicMuted, settings.musicVolume),
         ambient: audioState(state.ambient, audio.channels.ambient, false, settings.ambientVolume),
-        presentation: { mode: state.mode, black: state.black, camera: structuredClone(state.camera), textEffect: state.textEffect } };
+        presentation: { mode: state.mode, black: state.black, camera: structuredClone(state.camera), textEffect: state.textEffect }, visuals: Object.keys(state.visuals || {}) };
 }
 
 /** Scalars are strings so ST's getvar macros and /getvar behave consistently. */

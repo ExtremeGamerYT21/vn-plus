@@ -1,6 +1,7 @@
 import { VNController } from '../controller.js';
 import { runSharedChecks } from './browser-shared.js';
 import { runArtifactChecks } from './browser-artifacts.js';
+import { runTimingChecks } from './browser-timing.js';
 import { createHost } from '../integration.js';
 import { DEFAULT_SETTINGS } from '../ui/settings.js';
 import { isolatedDocument } from '../renderers/html-renderer.js';
@@ -436,9 +437,9 @@ await check('click/keyboard progression, typewriter skip and auto advance use li
     controller.settings.reducedMotion = false; controller.settings.typewriterEffect = true; controller.settings.typewriterSpeed = 100;
     await controller.action('replay'); assert(controller.dialogue.typing);
     controller.root.querySelector('.vn-dialogue').click(); assert(!controller.dialogue.typing); equal(controller.playback.position, 0);
-    controller.settings.typewriterEffect = false; controller.settings.reducedMotion = true; controller.settings.autoAdvance = true; controller.settings.autoAdvanceDelay = 30;
-    controller.present(controller.playback.restore()); await pause(100); assert(!controller.root.querySelector('.vn-reply').hidden);
-    controller.settings.autoAdvance = false; clearTimeout(controller.autoTimer);
+    controller.settings.typewriterEffect = false; controller.settings.reducedMotion = true; controller.settings.autoAdvance = true;
+    controller.present(controller.playback.restore()); await eventually(() => !controller.root.querySelector('.vn-reply').hidden);
+    controller.settings.autoAdvance = false; controller.timing.cancel();
 });
 await check('reply, retry, exit and resume delegate to normal host controls', async () => {
     await controller.action('reply'); controller.root.querySelector('#vnplus-reply').value = 'Test reply'; await controller.action('send'); equal(sends, 1);
@@ -526,7 +527,7 @@ await check('Fish settings use property voices, protect credentials and connect 
 });
 await check('dialogue follows the real voice clock through startup, pauses, skip and auto advance', async () => {
     const previous = { tts: controller.settings.tts, characters: controller.settings.characters, writer: controller.settings.typewriterEffect, speed: controller.settings.typewriterSpeed,
-        reduced: controller.settings.reducedMotion, automatic: controller.settings.autoAdvance, delay: controller.settings.autoAdvanceDelay, samples: controller.speech.clipSamples, factory: controller.speech.audioFactory };
+        reduced: controller.settings.reducedMotion, automatic: controller.settings.autoAdvance, samples: controller.speech.clipSamples, factory: controller.speech.audioFactory };
     let release;
     try {
         Object.assign(controller.settings, { typewriterEffect: true, typewriterSpeed: 2, reducedMotion: false, autoAdvance: false });
@@ -544,18 +545,18 @@ await check('dialogue follows the real voice clock through startup, pauses, skip
         const playback = controller.speech.playback, audio = controller.speech.audio; await pause(40); equal(visible(), '');
         audio.currentTime = .31; await eventually(() => visible() === '"Hello, ', 'First word did not follow voice');
         audio.paused = true; await pause(120); equal(visible(), '"Hello, ');
-        controller.settings.autoAdvance = true; controller.settings.autoAdvanceDelay = 80;
+        controller.settings.autoAdvance = true;
         audio.paused = false; audio.currentTime = 1.31; await eventually(() => visible() === '"Hello, world!"\n', 'Final word did not follow voice');
         await pause(120); equal(controller.playback.position, 0); assert(!controller.dialogue.typing);
         audio.onended(); equal(playback.status, 'ended'); await eventually(() => controller.playback.position === 1, 'Auto advance did not follow voice completion');
-        controller.settings.autoAdvance = false; clearTimeout(controller.autoTimer);
+        controller.settings.autoAdvance = false; controller.timing.cancel();
         controller.speech.clipSamples = async () => new Float32Array(SAMPLE_RATE * 2);
         await controller.action('replay'); await eventually(() => controller.speech.audio && !controller.speech.starting, 'Replayed voice did not start');
         const skippedAudio = controller.speech.audio; assert(controller.dialogue.skip()); equal(visible(), '"Hello, world!"\n'); assert(!skippedAudio.paused);
         await controller.action('next'); assert(skippedAudio.paused); assert(controller.root.querySelector('.vn-text').textContent.includes('After speech.'));
     } finally {
-        controller.speech.clearScene(); controller.dialogue.cancel(); clearTimeout(controller.autoTimer);
-        Object.assign(controller.settings, { tts: previous.tts, characters: previous.characters, typewriterEffect: previous.writer, typewriterSpeed: previous.speed, reducedMotion: previous.reduced, autoAdvance: previous.automatic, autoAdvanceDelay: previous.delay });
+        controller.speech.clearScene(); controller.dialogue.cancel(); controller.timing.cancel();
+        Object.assign(controller.settings, { tts: previous.tts, characters: previous.characters, typewriterEffect: previous.writer, typewriterSpeed: previous.speed, reducedMotion: previous.reduced, autoAdvance: previous.automatic });
         controller.speech.clipSamples = previous.samples; controller.speech.audioFactory = previous.factory;
     }
 });
@@ -829,6 +830,12 @@ await runSharedChecks({ check, assert, equal, eventually, context, mountChat, em
 document.querySelector('#test-status').textContent = `${passes} passed · ${failures} failed`;
 document.body.dataset.testStatus = 'running';
 await runArtifactChecks({ check, assert, equal, eventually, context, mountChat, emit, makeController() {
+    const next = new VNController(createHost(() => context, { localContent: false }), new URL('../', import.meta.url), inventory);
+    next.audio.audioFactory = () => new FakeAudio(); return next;
+} });
+document.querySelector('#test-status').textContent = `${passes} passed · ${failures} failed`;
+document.body.dataset.testStatus = failures ? 'failed' : 'passed';
+await runTimingChecks({ check, assert, equal, eventually, context, mountChat, emit, makeController() {
     const next = new VNController(createHost(() => context, { localContent: false }), new URL('../', import.meta.url), inventory);
     next.audio.audioFactory = () => new FakeAudio(); return next;
 } });

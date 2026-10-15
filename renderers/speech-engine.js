@@ -147,6 +147,7 @@ export class SpeechEngine {
         finally { if (epoch === this.playEpoch) this.starting = false; }
     }
     async beginAudio(samples, playback = null) {
+        if (playback) playback.duration = samples.length / SAMPLE_RATE;
         this.url = URL.createObjectURL(new Blob([wavBytes(samples)], { type: 'audio/wav' }));
         this.audio = this.audioFactory(); this.audio.src = this.url; this.audio.volume = Math.max(0, Math.min(1, this.settings.tts.volume));
         const audio = this.audio;

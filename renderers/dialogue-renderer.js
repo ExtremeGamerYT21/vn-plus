@@ -18,7 +18,7 @@ export class DialogueRenderer {
     async render(token, props = {}, effect = 'normal', onDone = () => {}, instant = false, playback = null) {
         this.cancel(); const generation = this.generation;
         const box = this.root.querySelector('.vn-dialogue'), text = box.querySelector('.vn-text');
-        const speaker = token.type === 'dialogue' ? (props.displayName || token.character) : 'Narration';
+        const speaker = token.type === 'dialogue' ? (props.displayName || token.character) : token.type === 'interaction' ? 'Interaction' : 'Narration';
         box.querySelector('.vn-speaker').textContent = token.thought ? `${speaker} · thoughts` : speaker;
         const color = (value, fallback) => CSS.supports('color', value || '') ? value : fallback;
         box.style.setProperty('--vn-accent', color(props.color, 'var(--vn-ui-accent)'));

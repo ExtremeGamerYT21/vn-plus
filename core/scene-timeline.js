@@ -2,7 +2,7 @@ export const SPEEDS = { normal: 1, slowed: .75, slow: .75, half: .5, sped: 1.4, 
 const clone = value => structuredClone(value);
 
 export function emptyState(mode = 'vn') {
-    return { background: null, music: null, ambient: null, scene: null, characters: Object.create(null), playerEmotion: null, speaker: null, textEffect: 'normal', mode, black: false, camera: { zoom: 1, x: 0, y: 0 }, tint: 'transparent' };
+    return { background: null, music: null, ambient: null, scene: null, visuals: {}, characters: Object.create(null), playerEmotion: null, speaker: null, textEffect: 'normal', mode, black: false, camera: { zoom: 1, x: 0, y: 0 }, tint: 'transparent' };
 }
 
 export function trackSpec(args) {
@@ -13,7 +13,7 @@ export function trackSpec(args) {
 
 export function compileTimeline(tokens, registry, settings, inherited = {}, recordBeats = true) {
     let state = emptyState(settings.displayMode);
-    for (const key of ['background', 'music', 'ambient', 'scene', 'textEffect', 'mode', 'black', 'camera', 'tint', 'playerEmotion']) if (Object.hasOwn(inherited, key)) state[key] = clone(inherited[key]);
+    for (const key of ['background', 'music', 'ambient', 'scene', 'visuals', 'textEffect', 'mode', 'black', 'camera', 'tint', 'playerEmotion']) if (Object.hasOwn(inherited, key)) state[key] = clone(inherited[key]);
     state.characters = Object.assign(Object.create(null), clone(inherited.characters || {}));
     const beats = [], errors = [], views = [];
     const names = tokens.filter(token => token.type === 'dialogue' || (token.type === 'command' && token.name === 'ENTER')).map(token => token.character || token.args);
@@ -52,6 +52,12 @@ export function compileTimeline(tokens, registry, settings, inherited = {}, reco
                 case 'MUSIC': state.music = trackSpec(arg); break;
                 case 'AMBIENT': state.ambient = trackSpec(arg); break;
                 case 'SFX': if (arg) oneShots.push({ type: 'sfx', name: arg }); break;
+                case 'VISUAL': {
+                    const close = /^CLOSE\s+/i.test(arg), id = arg.replace(/^CLOSE\s+/i, '');
+                    if (close) delete state.visuals[id];
+                    else if (!Object.hasOwn(state.visuals, id)) Object.defineProperty(state.visuals, id, { value: { id, local: true, interactive: true }, configurable: true, enumerable: true, writable: true });
+                    break;
+                }
                 case 'ENTER': if (arg) enter(arg); break;
                 case 'EXIT': delete state.characters[registry.identify(arg)]; state.speaker = null; break;
                 case 'FADE': if (upper === 'BLACK') state.black = true; else if (upper === 'IN') state.black = false; else errors.push({ line: token.line, message: 'Use #FADE BLACK or #FADE IN.' }); break;
@@ -74,6 +80,29 @@ export function compileTimeline(tokens, registry, settings, inherited = {}, reco
             const index = beats.length;
             beats.push({ index, token, state: clone(state), oneShots });
             if (token.type !== 'command' && token.type !== 'header') views.push(index);
+        }
+    }
+    if (recordBeats && !views.length && Object.keys(state.visuals).length) {
+        const index = beats.length;
+        beats.push({ index, token: { type: 'interaction', text: 'Inspect the object, then continue.', line: tokens.at(-1)?.line || 1 }, state: clone(state), oneShots: [] });
+        views.push(index);
+    }
+    // Keep source command beats for context reconstruction, but execute trailing commands
+    // during their dialogue beat rather than waiting for the next paragraph.
+    for (const beat of beats) {
+        beat.attached = [];
+        if (beat.token.type === 'dialogue') for (let i = beat.index + 1; beats[i]?.token.type === 'command'; i++) {
+            const command = beats[i]; command.attachedTo = beat.index;
+            beat.attached.push(command);
+        }
+        beat.visualChecks = [];
+        if (beat.token.type === 'narration') for (const id of Object.keys(beat.state.visuals)) {
+            for (let i = beat.index + 1; i < beats.length; i++) {
+                const token = beats[i].token;
+                if (token.name === 'SCENE' && /^RESET$/i.test(token.args)) break;
+                if (token.name !== 'VISUAL') continue;
+                if (/^CLOSE\s+/i.test(token.args) && token.args.replace(/^CLOSE\s+/i, '') === id) { beat.visualChecks.push(id); break; }
+            }
         }
     }
     return { beats, views, maxSlots, errors, finalState: clone(state) };

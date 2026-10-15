@@ -1,6 +1,6 @@
 import { isNarratorName } from './character-registry.js';
 import { parseSceneHeader } from './scene-context.js';
-const COMMANDS = new Set(['BACKGROUND', 'MUSIC', 'AMBIENT', 'SFX', 'FADE', 'FLASH', 'SHAKE', 'TEXT', 'ENTER', 'EXIT', 'MODE', 'CAMERA', 'TINT', 'SCENE']);
+const COMMANDS = new Set(['BACKGROUND', 'MUSIC', 'AMBIENT', 'SFX', 'FADE', 'FLASH', 'SHAKE', 'TEXT', 'ENTER', 'EXIT', 'MODE', 'CAMERA', 'TINT', 'SCENE', 'VISUAL']);
 const LEGACY = { SOUNDFX: 'SFX' };
 const ROOT_HTML = /^\s*(?:<!doctype\s+html\b|<(?:html|article|section|div|main|svg|table|canvas|figure|pre|p|style|h[1-6]|details)\b)/i;
 
@@ -93,7 +93,13 @@ export function parsePOV(pov) {
             flush();
             const name = LEGACY[command[2].toUpperCase()] || command[2].toUpperCase();
             if (name === 'ARTIFACT' && /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$/.test(command[3]?.trim() || '')) tokens.push({ type: 'artifact', id: command[3].trim(), local: true, interactive: true, line: i + 1 });
-            else if (COMMANDS.has(name)) tokens.push({ type: 'command', name, args: command[3]?.trim() || '', line: i + 1 });
+            else if (COMMANDS.has(name)) {
+                let args = command[3]?.trim() || '';
+                const tag = /\s*\[([^\]\r\n]+)\]\s*$/.exec(args), reaction = tag?.[1].trim();
+                if (tag) args = args.slice(0, tag.index).trim();
+                if (name === 'VISUAL' && (/^CLOSE$/i.test(args) || !/^(?:CLOSE\s+)?[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$/i.test(args))) errors.push({ line: i + 1, message: 'Use #VISUAL id or #VISUAL CLOSE id [reaction].' });
+                else tokens.push({ type: 'command', name, args, ...(reaction ? { reaction } : {}), line: i + 1 });
+            }
             else errors.push({ line: i + 1, message: `Unknown command ${command[1]}${command[2]} ignored.` });
             continue;
         }

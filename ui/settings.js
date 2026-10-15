@@ -12,7 +12,9 @@ export const DEFAULT_SETTINGS = {
     rowSpacing: 8, rowRise: 6.5, rowDepthScale: .95,
     spriteBreathing: true, breathingAmount: 1.6, breathingDuration: 4200, expressionTransition: 280,
     spriteBlinking: true, blinkIntervalMin: 2800, blinkIntervalMax: 6500, blinkDuration: 130,
-    typewriterEffect: true, typewriterSpeed: 22, autoAdvance: false, autoAdvanceDelay: 3500, textEffects: true, screenEffects: true,
+    typewriterEffect: true, typewriterSpeed: 22, autoAdvance: false, textEffects: true, screenEffects: true,
+    dialogueSecondsPerCharacter: .1, narrationWordsPerMinute: 220,
+    hurriedReactionSound: '', scaredReactionSound: '', lazyReactionSound: '', boredReactionSound: '', normalReactionSound: '',
     reducedMotion: false, overlayOpacity: .9, dialogueBoxWidth: 52, dialogueBoxHeight: 180, dialogueFont: '', textScale: 1.15,
     textColor: '', narrationColor: '', dialogueBoxTexture: '', dialogueBoxImageOnly: false, showBoxChrome: true, showBoxBackground: true,
     themeVersion: 1, themeColors: {}, intenseEmotions: INTENSE_EMOTIONS,
@@ -30,6 +32,7 @@ export function loadSettings(context) {
     if (previous.reducedMotion === undefined && typeof matchMedia === 'function') settings.reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (previous.playerNameOverride && !previous.playerName) settings.playerName = previous.playerNameOverride;
     delete settings.injectFormatHint;
+    delete settings.autoAdvanceDelay;
     settings.playerAliases = Array.isArray(settings.playerAliases) ? settings.playerAliases : [];
     if (!settings.characters || typeof settings.characters !== 'object' || Array.isArray(settings.characters)) settings.characters = {};
     if (!previous.themeVersion) {
@@ -48,7 +51,8 @@ export function loadSettings(context) {
 
 const FIELDS = {
     General: [['enabled', 'Enable Visual Novel+', 'checkbox'], ['automaticPlayback', 'Open completed responses automatically', 'checkbox'], ['playerName', 'Player identity', 'text'], ['playerAliases', 'Player aliases (comma separated)', 'aliases'], ['showPlayerBust', 'Show player bust', 'checkbox'], ['castMemoryTurns', 'Cast memory (VN responses; 0 keeps until exit)', 'number', 0, 50], ['layout', 'Bust layout', STAGE_LAYOUT_OPTIONS], ['displayMode', 'Default presentation', ['vn', 'cinematic', 'prose', 'black']]],
-    Presentation: [['typewriterEffect', 'Typewriter', 'checkbox'], ['typewriterSpeed', 'Typewriter delay (ms)', 'number', 0, 200], ['autoAdvance', 'Auto advance', 'checkbox'], ['autoAdvanceDelay', 'Auto delay (ms)', 'number', 500, 60000], ['reducedMotion', 'Reduced motion', 'checkbox'], ['textEffects', 'Emotion text effects', 'checkbox'], ['intenseEmotions', 'Emotion tags that shake (comma separated)', 'aliases'], ['screenEffects', 'Screen effects', 'checkbox'], ['dialogueFont', 'Font name or CSS family stack', 'text'], ['textColor', 'Dialogue color override (empty inherits theme)', 'text'], ['narrationColor', 'Narration color override (empty inherits theme)', 'text'], ['textScale', 'Text scale', 'number', .6, 2], ['letterSpacing', 'Letter spacing (px)', 'number', -1, 5], ['dialogueBoxWidth', 'Dialogue width (% viewport)', 'number', 25, 94], ['dialogueBoxHeight', 'Dialogue minimum height (px)', 'number', 100, 450], ['overlayOpacity', 'Dialogue opacity', 'number', .1, 1], ['dialogueBoxTexture', 'Texture path under characters/', 'text'], ['dialogueBoxImageOnly', 'Textbox image only (no fill or frame)', 'checkbox'], ['showBoxChrome', 'Dialogue border and accent', 'checkbox'], ['showBoxBackground', 'Dialogue panel background', 'checkbox']],
+    Timing: [['autoAdvance', 'Auto: follow narrative timing', 'checkbox'], ['dialogueSecondsPerCharacter', 'Silent dialogue (seconds per character)', 'number', .01, 1], ['narrationWordsPerMinute', 'Narration reading speed (words/minute)', 'number', 60, 1000], ...['hurried', 'scared', 'lazy', 'bored', 'normal'].map(tag => [`${tag}ReactionSound`, `${tag}: optional reaction SFX name`, 'text'])],
+    Presentation: [['typewriterEffect', 'Typewriter', 'checkbox'], ['typewriterSpeed', 'Typewriter delay (ms)', 'number', 0, 200], ['reducedMotion', 'Reduced motion', 'checkbox'], ['textEffects', 'Emotion text effects', 'checkbox'], ['intenseEmotions', 'Emotion tags that shake (comma separated)', 'aliases'], ['screenEffects', 'Screen effects', 'checkbox'], ['dialogueFont', 'Font name or CSS family stack', 'text'], ['textColor', 'Dialogue color override (empty inherits theme)', 'text'], ['narrationColor', 'Narration color override (empty inherits theme)', 'text'], ['textScale', 'Text scale', 'number', .6, 2], ['letterSpacing', 'Letter spacing (px)', 'number', -1, 5], ['dialogueBoxWidth', 'Dialogue width (% viewport)', 'number', 25, 94], ['dialogueBoxHeight', 'Dialogue minimum height (px)', 'number', 100, 450], ['overlayOpacity', 'Dialogue opacity', 'number', .1, 1], ['dialogueBoxTexture', 'Texture path under characters/', 'text'], ['dialogueBoxImageOnly', 'Textbox image only (no fill or frame)', 'checkbox'], ['showBoxChrome', 'Dialogue border and accent', 'checkbox'], ['showBoxBackground', 'Dialogue panel background', 'checkbox']],
     Characters: [['bustScale', 'Global bust scale', 'number', .2, 2], ['bustHeight', 'Bust height (% viewport)', 'number', 20, 100], ['stageSpacing', 'Stage spacing', 'number', .4, 1.2], ['rowSpacing', 'Row inward spacing (% viewport)', 'number', 3, 14], ['rowRise', 'Row depth rise (% viewport)', 'number', 1, 10], ['rowDepthScale', 'Scale per depth step', 'number', .8, 1], ['stageAlignment', 'Stage alignment', ['bottom', 'top']], ['inactiveBrightness', 'Inactive brightness', 'number', .2, 1], ['missingAsset', 'Missing sprite', ['placeholder', 'hide']], ['spriteBreathing', 'Breathing deformation', 'checkbox'], ['breathingAmount', 'Breathing amount (%)', 'number', 0, 5], ['breathingDuration', 'Breathing cycle (ms)', 'number', 1000, 20000], ['expressionTransition', 'Expression blend (ms)', 'number', 0, 2000], ['spriteBlinking', 'Blinking with alternative image', 'checkbox'], ['blinkIntervalMin', 'Blink interval minimum (ms)', 'number', 500, 30000], ['blinkIntervalMax', 'Blink interval maximum (ms)', 'number', 500, 60000], ['blinkDuration', 'Closed-eye duration (ms)', 'number', 60, 350]],
     Audio: [['musicMuted', 'Mute music (ambience/SFX stay audible)', 'checkbox'], ['musicVolume', 'Music volume', 'number', 0, 1], ['ambientVolume', 'Ambient volume', 'number', 0, 1], ['sfxVolume', 'SFX volume', 'number', 0, 1], ['crossfadeDuration', 'Crossfade (ms)', 'number', 0, 10000], ['characterSounds', 'Emotion / character sounds', 'checkbox']],
     'Artifacts & debugging': [['interactiveArtifacts', 'Allow isolated interactive HTML artifacts', 'checkbox'], ['debug', 'Debug logging', 'checkbox']],
@@ -72,7 +76,7 @@ export function createSettings(settings, callbacks) {
             const caption = document.createElement('span'); caption.textContent = label;
             const input = document.createElement(Array.isArray(type) ? 'select' : 'input'); input.dataset.setting = key;
             if (Array.isArray(type)) for (const value of type) { const option = document.createElement('option'); option.value = typeof value === 'string' ? value : value.value; option.textContent = typeof value === 'string' ? value : value.label; input.append(option); }
-            else { input.type = type === 'aliases' ? 'text' : type; if (type === 'number') { input.min = min; input.max = max; input.step = max <= 5 ? '.05' : '1'; } }
+            else { input.type = type === 'aliases' ? 'text' : type; if (type === 'number') { input.min = min; input.max = max; input.step = min === .01 ? '.01' : max <= 5 ? '.05' : '1'; } }
             if (type === 'checkbox') input.checked = !!settings[key]; else input.value = type === 'aliases' ? settings[key].join(', ') : settings[key];
             input.addEventListener('change', () => {
                 let value = type === 'checkbox' ? input.checked : type === 'number' ? Math.max(min, Math.min(max, Number(input.value))) : type === 'aliases' ? input.value.split(',').map(item => item.trim()).filter(Boolean) : input.value;
@@ -91,6 +95,9 @@ export function createSettings(settings, callbacks) {
         }
         if (group === 'Presentation') {
             const hint = document.createElement('p'); hint.className = 'vn-hint'; hint.textContent = 'Textbox image only uses your character or global texture without a fill, frame, accent, shadow or blur. With no texture configured, the normal box remains. A character can override this with "boxImageOnly":true or false.'; details.append(hint);
+        }
+        if (group === 'Timing') {
+            const hint = document.createElement('p'); hint.className = 'vn-hint'; hint.textContent = 'Auto uses prepared voice clips and their timestamps, or local dialogue/reading/action rules. Without a rule, continue manually. Visuals stay interactive during narration. Only a matching #VISUAL CLOSE enables an object inspection duration. Reaction tags use local aliases and patterns; no model is called.'; details.append(hint);
         }
         if (group === 'Characters') {
             const row = document.createElement('label'); row.className = 'vn-setting';

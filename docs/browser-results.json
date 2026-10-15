@@ -1,5 +1,5 @@
 {
-  "status": "69 passed · 0 failed",
+  "status": "76 passed · 0 failed",
   "tests": [
     "PASS · POV privacy and four characters from one scenario",
     "PASS · backward restores background, expression and audio state",
@@ -69,6 +69,13 @@
     "PASS · ordinary iframe postMessages cannot impersonate the artifact capability channel",
     "PASS · artifact IDs isolate local data and named values do not expire with the recent cast",
     "PASS · environment-local artifact commands load HTML into the same scoped metadata bridge",
-    "PASS · closing a local artifact cancels its pending load and cannot reopen a stale iframe"
+    "PASS · closing a local artifact cancels its pending load and cannot reopen a stale iframe",
+    "PASS · visual overlays preserve the same sandbox and interaction state across dialogue beats",
+    "PASS · an open visual reads and writes message extra at the current paragraph rather than its opening paragraph",
+    "PASS · Auto progresses to reply with an interactive visual still open and never starts a Fish request",
+    "PASS · a paired close stays attached to the spoken beat and waits for actual audio plus a hurried delay",
+    "PASS · manually closing an object preserves narrative position and cannot reopen it at the next paragraph",
+    "PASS · visual-only turns wait for input even with Auto and multiple objects close independently",
+    "PASS · exiting with a pending reaction cancels its timer and removes every visual and bridge"
   ]
 }

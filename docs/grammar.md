@@ -57,6 +57,8 @@ Legacy `@background`, `@music`, `@soundFX`, and `#soundFX` remain supported **in
 
 ## Artifacts
 
+For an object that stays open while dialogue continues, use **`#VISUAL id`** and **`#VISUAL CLOSE id [reaction]`**, loading the environment's `artifacts/id/index.html`. Consecutive commands following dialogue execute within that dialogue beat; close reactions use the actual voice clock or a local duration estimate. **Auto** uses narrative timing rules and waits for input when no rule applies. See [narrative timing and independent visuals](narrative-timing.md) for rules, tags, examples and the distinction from modal artifact beats below. JEV classification is not implemented.
+
 No inspection command is required. Fenced `html` and explicit raw HTML root blocks are artifact beats. For multiline/nested markup, prefer a fence:
 
 ````text

@@ -26,7 +26,7 @@ function artifactClient(nonce) {
     Object.defineProperty(window, 'VNPlus', { value: Object.freeze({ ready, read, getScene: async () => (await read()).scene, extra, get, set: extra.set, push: extra.push, remove: extra.remove }), writable: false });
 }
 
-export function isolatedDocument(html, interactive = false, bootstrap = '') {
+export function isolatedDocument(html, interactive = false, bootstrap = '', transparent = false) {
     const parsed = new DOMParser().parseFromString(html, 'text/html');
     parsed.querySelectorAll('iframe,object,embed,base,meta,link,form').forEach(node => node.remove());
     if (!interactive) parsed.querySelectorAll('script').forEach(node => node.remove());
@@ -36,11 +36,11 @@ export function isolatedDocument(html, interactive = false, bootstrap = '') {
             if (['href', 'xlink:href', 'src', 'poster', 'srcset'].includes(attr.name) && !/^(?:data:|blob:|#)/i.test(attr.value.trim())) node.removeAttribute(attr.name);
         }
     });
-    return `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${artifactPolicy(interactive)}"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:24px;color:#292533;background:#faf7ef;font-family:Georgia,serif;overflow-wrap:anywhere}img,svg{max-width:100%}</style>${interactive && bootstrap ? `<script>${bootstrap}</script>` : ''}${parsed.head.innerHTML}</head><body>${parsed.body.innerHTML}</body></html>`;
+    return `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${artifactPolicy(interactive)}"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:${transparent ? '0' : '24px'};color:#292533;background:${transparent ? 'transparent' : '#faf7ef'};font-family:Georgia,serif;overflow-wrap:anywhere}img,svg{max-width:100%}</style>${interactive && bootstrap ? `<script>${bootstrap}</script>` : ''}${parsed.head.innerHTML}</head><body>${parsed.body.innerHTML}</body></html>`;
 }
 
 export class HTMLRenderer {
-    constructor(root, settings, createSession = null, readLocal = null) { this.root = root; this.settings = settings; this.createSession = createSession; this.readLocal = readLocal; this.generation = 0; }
+    constructor(root, settings, createSession = null, readLocal = null, options = {}) { this.root = root; this.settings = settings; this.createSession = createSession; this.readLocal = readLocal; this.options = options; this.generation = 0; }
     open(token, html = token.html) {
         this.close();
         if (token.local && html === undefined) {
@@ -64,7 +64,7 @@ export class HTMLRenderer {
         frame.setAttribute('sandbox', interactive ? 'allow-scripts' : '');
         frame.setAttribute('allow', "camera 'none'; microphone 'none'; geolocation 'none'; clipboard-read 'none'; clipboard-write 'none'");
         frame.referrerPolicy = 'no-referrer'; frame.title = 'Player-visible artifact';
-        frame.srcdoc = isolatedDocument(html, interactive, session ? `(${artifactClient.toString()})(${JSON.stringify(nonce)});` : '');
+        frame.srcdoc = isolatedDocument(html, interactive, session ? `(${artifactClient.toString()})(${JSON.stringify(nonce)});` : '', this.options.transparent);
         if (session) frame.addEventListener('load', () => {
             if (generation !== this.generation || !frame.isConnected) return;
             const channel = new MessageChannel(); this.port = channel.port1;
@@ -82,8 +82,9 @@ export class HTMLRenderer {
             channel.port1.start(); frame.contentWindow.postMessage({ type: 'vnplus:artifact-init', nonce }, '*', [channel.port2]);
         }, { once: true });
         panel.querySelector('.vn-artifact-content').append(frame); panel.hidden = false;
-        this.root.querySelector('[data-action="close-artifact"]').focus();
+        if (this.options.focus !== false) this.root.querySelector('[data-action="close-artifact"]').focus();
     }
-    close() { this.generation++; this.abort?.abort(); this.abort = null; this.port?.close(); this.port = null; const panel = this.root.querySelector('.vn-artifact'); panel.hidden = true; panel.querySelector('.vn-artifact-content').replaceChildren(); }
+    revoke() { this.generation++; this.abort?.abort(); this.abort = null; this.port?.close(); this.port = null; }
+    close() { this.revoke(); const panel = this.root.querySelector('.vn-artifact'); panel.hidden = true; panel.querySelector('.vn-artifact-content').replaceChildren(); }
     get active() { return !this.root.querySelector('.vn-artifact').hidden; }
 }

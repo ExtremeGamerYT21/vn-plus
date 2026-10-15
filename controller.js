@@ -24,6 +24,8 @@ import { EnvironmentStyle } from './renderers/environment-style.js';
 import { ChatStatePublisher, sceneSnapshot, audioState } from './core/shared-state.js';
 import { contextEntries, contextNames, reduceContext } from './core/context-state.js';
 import { sceneLighting } from './core/scene-context.js';
+import { BeatScheduler, applyCommandState } from './core/narrative-timing.js';
+import { VisualRenderer } from './renderers/visual-renderer.js';
 
 export class VNController {
     constructor(host, base, inventory = {}) {
@@ -41,6 +43,8 @@ export class VNController {
         this.speechSettingsPanel = new SpeechPanel(this.speech, speechCallbacks);
         this.voicePanel = new SpeechPanel(this.speech, speechCallbacks, { expanded: true }); applyTheme(this.root, this.settings);
         this.effects = new EffectsRenderer(this.root, this.settings); this.html = new HTMLRenderer(this.root, this.settings, (token, alive) => this.artifactSession(token, alive), (id, signal) => this.readArtifact(id, signal));
+        this.timing = new BeatScheduler();
+        this.visuals = new VisualRenderer(this.root, this.settings, (token, alive) => this.visualSession(token, alive), (id, signal) => this.readArtifact(id, signal));
         this.reveal = new OmniscientToggle(host.context, () => this.busy || !this.settings.enabled);
         this.selected = latestAssistant(host.context()); this.chatId = chatIdentity(host.context());
         this.generation = 0; this.busy = false; this.seen = new Map(); this.disposers = []; this.messages = [];
@@ -229,6 +233,7 @@ export class VNController {
         this.host.save(this.settings); this.reveal.close(); this.mount();
         applyTheme(this.root, this.settings); if (this.settingsPanel) applyTheme(this.settingsPanel, this.settings);
         if (key === 'speech') { this.speech.configurationChanged(); return; }
+        if (['autoAdvance', 'dialogueSecondsPerCharacter', 'narrationWordsPerMinute'].includes(key) || key.endsWith('ReactionSound')) { this.scheduleAuto(); return; }
         if (key === 'characters') this.speech.clearScene();
         this.updateLayoutControls();
         if (key === 'musicMuted') this.audio.setMusicMuted(this.settings.musicMuted);
@@ -311,9 +316,9 @@ export class VNController {
     invalidate({ preserveWorld = false } = {}) {
         this.playbackState.cancel(); this.playbackState.pending = true;
         this.root.querySelector('.vn-content-notice').hidden = true;
-        this.generation++; clearTimeout(this.autoTimer); this.speech.stop(); this.dialogue.cancel(); this.effects.clear(); this.html.close();
+        this.generation++; this.timing.cancel(); this.speech.stop(); this.dialogue.cancel(); this.effects.clear(); this.html.close();
         if (preserveWorld) { this.stage.cancelPending(); this.audio.cancelPending(); this.audio.cancelOneShots(); }
-        else { this.stage.clear(); this.audio.close(); this.worldIdentity = null; }
+        else { this.stage.clear(); this.audio.close(); this.visuals.clear(); this.worldIdentity = null; }
         this.root.querySelector('.vn-panel').hidden = true; this.root.querySelector('.vn-reply').hidden = true;
         this.transcriptArtifact = false;
         this.playbackState.pending = false; this.publishPlaybackActivity();
@@ -385,20 +390,14 @@ export class VNController {
     }
     present(result) {
         if (!result || !result.beat || this.root.hidden || this.busy) return;
-        clearTimeout(this.autoTimer); this.html.close(); this.dialogue.cancel(); this.effects.clear(); this.audio.cancelOneShots();
+        this.timing.cancel(); this.html.close(); this.dialogue.cancel(); this.effects.clear(); this.audio.cancelOneShots();
         this.root.querySelector('.vn-status').hidden = true; this.root.querySelector('.vn-reply').hidden = true;
         const { state, token } = result.beat;
+        this.runtimeState = structuredClone(state);
         this.worldIdentity = JSON.stringify([chatIdentity(this.host.context()), this.environment.id]);
         const playback = this.speech.playBeat(result.done || token.type !== 'dialogue' || token.thought ? -1 : result.beat.index);
-        if (!this.playbackState.binding?.current() || this.playbackState.binding.index !== this.selected) this.playbackState.bind(this.environment, this.selected);
-        const sharedEpoch = this.playbackState.begin();
         const source = { message: this.selected, swipe: readMessage(this.host.context(), this.selected)?.swipe ?? 0, beat: result.beat.index, position: this.playback.position };
-        void Promise.allSettled([this.stage.render(state, this.playback.timeline.maxSlots), this.audio.sync(state)]).then(results => {
-            for (const result of results) if (result.status === 'rejected') this.log(result.reason?.message || String(result.reason));
-            if (sharedEpoch !== this.playbackState.epoch || this.root.hidden || this.busy || !this.playbackState.binding?.current()) return;
-            this.playbackState.commit({ ...sceneSnapshot({ state, source, registry: this.registry, settings: this.settings, environment: this.environment, stage: this.stage, audio: this.audio }), basis: 'playback', updating: false }, sharedEpoch);
-            this.publishContextActivity();
-        });
+        this.renderState(state, source);
         for (const effect of result.effects) { if (effect.type === 'sfx') void this.audio.sfx(effect.name); else this.effects.trigger(effect); }
         this.root.querySelector('[data-action="back"]').disabled = this.playback.position <= 0;
         this.root.querySelector('[data-action="next"]').disabled = false; this.root.querySelector('[data-action="skip"]').disabled = false;
@@ -410,12 +409,53 @@ export class VNController {
         dialogue.hidden = false;
         const props = state.speaker ? this.registry.get(state.speaker) : {};
         void this.dialogue.render(token, props, state.textEffect, () => this.scheduleAuto(), !result.forward, playback);
+        const generation = this.generation, cursor = this.playback.cursor, navigation = this.playback;
+        this.timing.start({ token, settings: this.settings, playback, visualChecks: result.beat.visualChecks,
+            commands: result.attached || result.beat.attached.map(command => ({ ...command, oneShots: [] })),
+            valid: () => !this.disposed && !this.root.hidden && !this.busy && generation === this.generation && navigation === this.playback && cursor === this.playback.cursor && this.playbackState.binding?.current(),
+            paused: () => this.html.active || !this.root.querySelector('.vn-panel').hidden || !this.root.querySelector('.vn-reply').hidden || document.hidden,
+            canAdvance: () => !this.dialogue.typing && !this.speech.speaking,
+            onCommand: (command, profile) => this.executeAttached(command, profile, source),
+            onAdvance: () => this.present(this.playback.forward()),
+        });
         if (result.forward && (!result.previouslySeen || result.replaying) && token.type === 'dialogue') {
             const flair = this.settings.textEffects ? EMOTION_FLAIR[token.emotion] || {} : {};
             if (flair.screenFlash) this.effects.trigger({ type: 'flash', value: flair.screenFlash });
             const sound = props.sounds?.[token.emotion] || props.sound || flair.sound || token.emotion;
             if (this.settings.characterSounds && !token.thought && !this.settings.tts.enabled) void this.audio.sfx(sound, props.assetFolder || state.speaker);
         }
+    }
+    renderState(state, source, profile) {
+        if (!this.playbackState.binding?.current() || this.playbackState.binding.index !== this.selected) this.playbackState.bind(this.environment, this.selected);
+        const sharedEpoch = this.playbackState.begin();
+        this.visuals.sync(state.visuals, profile);
+        void Promise.allSettled([this.stage.render(state, this.playback.timeline.maxSlots), this.audio.sync(state)]).then(results => {
+            for (const result of results) if (result.status === 'rejected') this.log(result.reason?.message || String(result.reason));
+            if (sharedEpoch !== this.playbackState.epoch || this.root.hidden || this.busy || !this.playbackState.binding?.current()) return;
+            this.playbackState.commit({ ...sceneSnapshot({ state, source, registry: this.registry, settings: this.settings, environment: this.environment, stage: this.stage, audio: this.audio }), basis: 'playback', updating: false }, sharedEpoch);
+            this.publishContextActivity();
+        });
+    }
+    executeAttached(command, profile, source) {
+        const before = this.playback.timeline.beats[command.index - 1].state;
+        this.runtimeState = applyCommandState(this.runtimeState, before, command.state);
+        this.renderState(this.runtimeState, source, profile);
+        for (const effect of command.oneShots) { if (effect.type === 'sfx') void this.audio.sfx(effect.name); else this.effects.trigger(effect); }
+        if (command.token.name === 'VISUAL' && /^CLOSE\s+/i.test(command.token.args)) {
+            const sound = this.settings[`${profile.category}ReactionSound`]; if (sound) void this.audio.sfx(sound);
+        }
+    }
+    visualSession(token, alive) {
+        // An overlay follows the viewed paragraph; each request captures its own timeline anchor.
+        return { request: async (method, args) => {
+            const beat = this.playback?.restore().beat, generation = this.generation, index = this.selected, environment = this.environment.id;
+            const current = () => alive() && !this.root.hidden && !this.disposed && !this.busy && generation === this.generation && index === this.selected && environment === this.environment.id && beat === this.playback?.restore().beat;
+            if (!beat || !current()) throw new Error('The visual scene changed. Try again in the current scene.');
+            const scene = await this.artifactScene({ ...beat, state: this.runtimeState || beat.state }, index);
+            if (!current()) throw new Error('The visual scene changed. Try again in the current scene.');
+            const session = this.host.extra.artifactSession({ index, beat: beat.index, environment, id: token.id, alive: current, scene: () => scene });
+            return session.request(method, args);
+        } };
     }
     async readArtifact(id, signal) {
         if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$/.test(id)) throw new Error('Invalid local artifact ID.');
@@ -451,11 +491,12 @@ export class VNController {
         value.music.asset = music; value.ambient.asset = ambient; value.basis = 'artifact'; value.updating = false; return value;
     }
     scheduleAuto() {
-        clearTimeout(this.autoTimer);
-        if (this.settings.autoAdvance && !this.dialogue.typing && !this.speech.speaking && !this.busy && !this.root.hidden && !this.html.active && this.root.querySelector('.vn-panel').hidden && this.root.querySelector('.vn-reply').hidden) this.autoTimer = setTimeout(() => void this.action('next'), this.settings.autoAdvanceDelay);
+        this.root.querySelector('[data-action="auto"]').setAttribute('aria-pressed', String(this.settings.autoAdvance));
+        const input = this.settingsPanel?.querySelector('[data-setting="autoAdvance"]'); if (input) input.checked = this.settings.autoAdvance;
+        this.timing.wake();
     }
     showReply() {
-        clearTimeout(this.autoTimer); this.root.querySelector('.vn-reply').hidden = false;
+        this.root.querySelector('.vn-reply').hidden = false;
         this.root.querySelector('[data-action="retry"]').disabled = this.busy || this.selected !== this.host.context().chat.length - 1;
         this.root.querySelector('#vnplus-reply').focus();
     }
@@ -475,7 +516,7 @@ export class VNController {
         return this.speech.prepare(this.speechSceneId(message), compileTimeline(parsed.tokens, registry, this.settings, seed), registry);
     }
     panel(kind) {
-        clearTimeout(this.autoTimer); this.dialogue.skip(); clearTimeout(this.autoTimer);
+        this.dialogue.skip();
         const panel = this.root.querySelector('.vn-panel'), content = panel.querySelector('.vn-panel-content'); content.replaceChildren();
         panel.querySelector('.vn-panel-title').textContent = kind === 'debug' ? 'Scene inspector · POV only' : 'Player perspective transcript';
         if (kind === 'debug') {
@@ -503,7 +544,7 @@ export class VNController {
             }
             if (action === 'replay' && this.root.hidden) { await this.open(this.selected); if (this.playback && !this.busy) this.present(this.playback.replay()); return; }
             if (action === 'speech') {
-                clearTimeout(this.autoTimer); this.dialogue.skip(); clearTimeout(this.autoTimer);
+                this.dialogue.skip();
                 const panel = this.root.querySelector('.vn-panel'); panel.querySelector('.vn-panel-title').textContent = 'Fish Audio voices';
                 panel.querySelector('.vn-panel-content').replaceChildren(this.voicePanel.node); this.voicePanel.refresh(); panel.hidden = false;
                 panel.querySelector('button').focus(); return;
@@ -519,6 +560,7 @@ export class VNController {
             if (action === 'retry') { await this.host.retry(this.selected); return; }
             if (!this.playback || this.html.active || !this.root.querySelector('.vn-panel').hidden || !this.root.querySelector('.vn-reply').hidden && action === 'next') return;
             if (action === 'next' && this.dialogue.skip()) return;
+            if (action === 'next') this.timing.finishCommands();
             const result = action === 'back' ? this.playback.back() : action === 'replay' ? this.playback.replay() : action === 'skip' ? this.playback.skipViewed() : action === 'next' ? this.playback.forward() : null;
             this.present(result);
         } catch (error) { this.log(error.message); this.root.querySelector('.vn-reply-status').textContent = error.message; }
