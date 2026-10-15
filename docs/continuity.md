@@ -1,5 +1,7 @@
 # Scene continuity
 
+Since 2.13, entering VN reconstructs state from the current selected chat messages. **General → Cast memory** defaults to three completed POV responses: speakers/explicit entrants refresh their presence, inactive older cast drops away, and explicit exits/scene clears/resets always win. Header location changes also clear the previous cast; same-place time changes do not. Set the window to 0 to keep cast until an exit or scene/location transition. Media and header lookup still search all prior context. The chat-local `vn_plus` state rebuilds even while VN is closed; `vn_plus_playback` separately describes the paragraph on screen. See [shared state](shared-state.md).
+
 While VN mode stays open in the same chat and environment, a new response preserves the existing world during preparation and generation. The previous dialogue and interactive panels close while generation runs, but music/ambience, artwork and character animation records stay alive. Obsolete pending loads are cancelled without stopping the active loops or removing the current images.
 
 - **Music and ambience:** a repeated recording reuses its existing audio player, current time, mute state and playback. Matching compares the actual resolved URL, so differently worded commands that select the same file do not restart it. Speed changes update playback rate in place. A genuinely different recording uses the normal crossfade.

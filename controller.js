@@ -1,7 +1,6 @@
 import { chatIdentity, latestAssistant, readMessage, sceneKey } from './core/message-reader.js';
 import { parsePOV } from './core/vn-parser.js';
 import { compileTimeline } from './core/scene-timeline.js';
-import { inheritedScene, worldHistory, inheritedWorld } from './core/scene-history.js';
 import { Playback } from './core/playback.js';
 import { normalizeStageLayout } from './core/stage-layout.js';
 import { contentEnvironments, activateContentProfile, saveContentProfile, CONTENT_PROFILE_KEYS } from './core/content-environments.js';
@@ -23,6 +22,8 @@ import { SpeechEngine } from './renderers/speech-engine.js';
 import { SpeechPanel } from './ui/speech-panel.js';
 import { EnvironmentStyle } from './renderers/environment-style.js';
 import { ChatStatePublisher, sceneSnapshot, audioState } from './core/shared-state.js';
+import { contextEntries, contextNames, reduceContext } from './core/context-state.js';
+import { sceneLighting } from './core/scene-context.js';
 
 export class VNController {
     constructor(host, base, inventory = {}) {
@@ -43,25 +44,82 @@ export class VNController {
         this.reveal = new OmniscientToggle(host.context, () => this.busy || !this.settings.enabled);
         this.selected = latestAssistant(host.context()); this.chatId = chatIdentity(host.context());
         this.generation = 0; this.busy = false; this.seen = new Map(); this.disposers = []; this.messages = [];
+        this.playbackState = new ChatStatePublisher(host, value => this.root.dispatchEvent(new CustomEvent('vnplus:playback-changed', { bubbles: true, detail: value })), 'vn_plus_playback');
+        this.playbackState.bind(this.environment);
         this.sharedState = new ChatStatePublisher(host, value => this.root.dispatchEvent(new CustomEvent('vnplus:state-changed', { bubbles: true, detail: value })));
         this.sharedState.bind(this.environment);
-        this.audio.onChange = () => this.publishSharedActivity();
+        this.contextResolver = this.createContentResolver(this.environment); this.contextRegistry = this.createRegistry(this.contextResolver, this.environment);
+        this.audio.onChange = () => this.publishPlaybackActivity();
         this.disposers.push(bindControls(this.root, { action: action => void this.action(action), unlock: () => void this.audio.unlock(), escape: () => this.escape(), layout: value => { this.settings.layout = normalizeStageLayout(value); this.settingsChanged('layout'); }, environment: value => void this.selectEnvironment(value) }));
         this.bindHost(); this.mount(); this.updateMusicButton(); this.updateLayoutControls(); this.updateEnvironmentControls();
         void this.loadEnvironmentStyle();
+        void this.refreshContext();
     }
     log(message) { this.messages.push(message); if (this.messages.length > 50) this.messages.shift(); if (this.settings.debug) console.debug('[VN+]', message); }
     get sceneVariables() { return structuredClone(this.stage.variables || {}); }
     get sharedVariables() { return this.sharedState.snapshot; }
-    publishSharedActivity() {
-        if (this.sharedState.pending) return;
-        const value = this.sharedState.snapshot;
+    get playbackVariables() { return this.playbackState.snapshot; }
+    scheduleContextRefresh() {
+        if (this.busy) { this.sharedState.update({ active: !this.root.hidden, generating: true, updating: false }); this.publishContextActivity(); return; }
+        // Mark old output unavailable synchronously; coalesce host events before resolving assets.
+        this.contextRevision = null; this.contextProjection = null; this.sharedState.bind(this.environment);
+        this.sharedState.update({ active: !this.root.hidden, generating: this.busy, updating: !this.busy });
+        clearTimeout(this.contextTimer);
+        if (!this.busy && !this.disposed) this.contextTimer = setTimeout(() => void this.refreshContext(), 40);
+    }
+    async refreshContext() {
+        if (this.disposed || this.busy) return;
+        clearTimeout(this.contextTimer);
+        const context = this.host.context(), entries = contextEntries(context), resolver = this.contextResolver, registry = this.contextRegistry, environment = this.environment;
+        const revision = JSON.stringify([chatIdentity(context), environment.id, entries, this.settings.castMemoryTurns, this.settings.showPlayerBust, this.settings.playerName, this.settings.playerAliases, this.settings.characters, this.settings.displayMode]);
+        if (revision === this.contextRevision && this.sharedState.binding?.current()) { this.publishContextActivity(); return; }
+        this.contextRevision = revision; this.contextProjection = null;
+        this.sharedState.bind(environment); this.sharedState.update({ active: !this.root.hidden, generating: this.busy, updating: true });
+        const epoch = this.sharedState.begin();
+        const current = () => !this.disposed && !this.busy && epoch === this.sharedState.epoch && resolver === this.contextResolver && this.sharedState.binding?.current();
+        try {
+            await registry.prepare(contextNames(entries));
+            if (!current()) return;
+            const state = reduceContext(entries, registry, this.settings);
+            const [background, music, ambient] = await Promise.all([state.background ? resolver.background(state.background) : null,
+                state.music ? resolver.audio('music', state.music.name) : null, state.ambient ? resolver.audio('ambient', state.ambient.name) : null]);
+            const properties = background ? await resolver.backgroundProperties(background) : { inside: false };
+            if (!current()) return;
+            // Catch context edits even when another extension did not emit a host event.
+            if (JSON.stringify(contextEntries(this.host.context())) !== JSON.stringify(entries)) { this.contextRevision = null; void this.refreshContext(); return; }
+            const tint = document.createElement('span'); tint.hidden = true; tint.style.backgroundColor = CSS.supports('color', state.tint) ? state.tint : 'transparent';
+            this.root.append(tint); const color = getComputedStyle(tint).backgroundColor; tint.remove();
+            this.contextProjection = { state, registry, environment, available: entries.some(entry => entry.ready || entry.header),
+                source: entries.length ? { message: entries.at(-1).index, swipe: entries.at(-1).swipe, beat: null, position: null } : null,
+                urls: { background, music, ambient }, stage: { backgroundUrl: background, variables: { lighting: sceneLighting(state.scene, properties.inside) },
+                    appliedTint: state.tint, ambientColor: color === 'rgba(0, 0, 0, 0)' ? '#ffffff' : color } };
+            this.sharedState.commit(this.contextSnapshot(), epoch);
+        } catch (error) {
+            if (!current()) return;
+            this.contextRevision = null; this.sharedState.cancel(); this.sharedState.update({ available: false, updating: false }); this.log(`Context reconstruction: ${error.message}`);
+        }
+    }
+    contextSnapshot() {
+        const projection = this.contextProjection;
+        if (!projection) return this.sharedState.snapshot;
+        const channels = {};
+        for (const kind of ['music', 'ambient']) channels[kind] = this.audio.channels[kind].url === projection.urls[kind] ? this.audio.channels[kind] : {};
+        const value = sceneSnapshot({ ...projection, settings: this.settings, audio: { channels }, active: !this.root.hidden, generating: this.busy });
+        value.available = projection.available; value.updating = false; value.basis = 'context';
+        for (const kind of ['music', 'ambient']) { value[kind].asset = projection.urls[kind]; value[kind].rate = projection.state[kind]?.rate || 1; }
+        return value;
+    }
+    publishContextActivity() { if (!this.disposed && this.contextProjection && !this.sharedState.pending) this.sharedState.update(this.contextSnapshot()); }
+    publishPlaybackActivity() {
+        this.publishContextActivity();
+        if (this.playbackState.pending) return;
+        const value = this.playbackState.snapshot;
         const patch = { active: !this.root.hidden, generating: this.busy };
         for (const kind of ['music', 'ambient']) if (value?.[kind]) {
             const current = audioState(value[kind], this.audio.channels[kind], kind === 'music' && this.settings.musicMuted, this.settings[`${kind}Volume`]);
             patch[kind] = { ...current, asset: current.asset || value[kind].asset };
         }
-        this.sharedState.update(patch);
+        this.playbackState.update(patch);
     }
     mount() {
         const target = document.querySelector('#extensions_settings');
@@ -100,14 +158,22 @@ export class VNController {
         }
     }
     bindHost() {
-        const subscribe = (name, callback) => this.disposers.push(this.host.subscribe(name, callback));
+        const contextEvents = new Set(['MESSAGE_RECEIVED', 'MESSAGE_SWIPED', 'MESSAGE_UPDATED', 'MESSAGE_EDITED', 'MESSAGE_SWIPE_DELETED', 'CHARACTER_MESSAGE_RENDERED', 'MESSAGE_DELETED', 'CHAT_CHANGED', 'CHAT_LOADED', 'MORE_MESSAGES_LOADED', 'APP_READY']);
+        const subscribe = (name, callback) => this.disposers.push(this.host.subscribe(name, (...args) => {
+            const changedChat = name === 'CHAT_CHANGED' || name === 'CHAT_LOADED';
+            if (contextEvents.has(name) && !changedChat) this.scheduleContextRefresh();
+            const result = callback(...args);
+            if (changedChat) this.scheduleContextRefresh();
+            return result;
+        }));
         subscribe('GENERATION_STARTED', (type, options, dryRun) => {
             if (dryRun || ['quiet', 'impersonate'].includes(type)) return;
+            this.sharedState.cancel(); this.sharedState.update({ generating: true, updating: false });
             this.busy = true; this.parsed = null; this.speech.clearScene(); this.reveal.close(); this.invalidate({ preserveWorld: this.canPreserveWorld() }); this.mount();
             if (!this.root.hidden) this.wait('Waiting for a completed player perspective…');
         });
         const completed = () => {
-            this.busy = false; this.publishSharedActivity(); this.mount();
+            this.busy = false; this.scheduleContextRefresh(); this.publishPlaybackActivity(); this.mount();
             if (!this.root.hidden || this.settings.automaticPlayback) {
                 const index = this.pendingIndex ?? this.selected; this.pendingIndex = null;
                 void this.open(index >= 0 ? index : latestAssistant(this.host.context()));
@@ -136,13 +202,13 @@ export class VNController {
         for (const event of ['CHAT_CHANGED', 'CHAT_LOADED']) subscribe(event, () => {
             const identity = chatIdentity(this.host.context());
             if (identity === this.chatId && event === 'CHAT_LOADED') {
-                if (!this.sharedState.binding?.current()) this.sharedState.bind(this.environment);
+                if (!this.playbackState.binding?.current()) this.playbackState.bind(this.environment);
                 this.mount(); if (!this.root.hidden && !this.busy) void this.open(this.selected); return;
             }
             this.chatId = identity; this.selected = latestAssistant(this.host.context()); this.busy = false; this.pendingIndex = null;
             this.speech.clearScene();
             this.reveal.close(); this.invalidate(); this.playback = null; this.parsed = null; this.sceneRevision = null; this.seen.clear(); this.mount();
-            this.sharedState.bind(this.environment); this.publishSharedActivity();
+            this.playbackState.bind(this.environment); this.publishPlaybackActivity();
             if (!this.root.hidden) void this.open(this.selected);
         });
         subscribe('MORE_MESSAGES_LOADED', () => { this.mount(); if (!this.root.hidden && !this.busy) void this.open(this.selected); }); subscribe('APP_READY', () => this.mount());
@@ -156,6 +222,7 @@ export class VNController {
         this.observer.observe(document.body, { childList: true, subtree: true });
     }
     settingsChanged(key) {
+        if (['characters', 'showPlayerBust', 'playerName', 'playerAliases', 'displayMode', 'castMemoryTurns'].includes(key)) this.scheduleContextRefresh();
         if (key === 'environment') { void this.selectEnvironment(this.settings.environment); return; }
         if (CONTENT_PROFILE_KEYS.includes(key) || key === 'breathingCenter' || key === 'themeReset') saveContentProfile(this.settings, this.environment.id);
         if (key === 'themeReset') for (const name of ['dialogueFont', 'textColor', 'narrationColor']) { const input = this.settingsPanel?.querySelector(`[data-setting="${name}"]`); if (input) input.value = this.settings[name]; }
@@ -170,7 +237,7 @@ export class VNController {
         if (!this.settings.enabled) { this.close(); return; }
         if (key === 'musicMuted') return;
         if (key === 'layout' || key === 'breathingCenter') { this.applyLayout(); return; }
-        if (['characters', 'showPlayerBust', 'playerName', 'playerAliases', 'displayMode', 'autoCreateCharacters'].includes(key)) { this.sceneRevision = null; if (!this.root.hidden) void this.open(this.selected); }
+        if (['characters', 'showPlayerBust', 'playerName', 'playerAliases', 'displayMode', 'castMemoryTurns', 'autoCreateCharacters'].includes(key)) { this.sceneRevision = null; if (!this.root.hidden) void this.open(this.selected); }
         else if (!this.root.hidden && this.playback) this.present(this.playback.restore());
     }
     async refreshAssets() {
@@ -201,7 +268,11 @@ export class VNController {
         const resume = this.playback && message ? { key: sceneKey(this.host.context(), message), position: this.playback.position } : this.environmentResume;
         this.speech.clearScene(); this.invalidate(); this.resolver.dispose();
         activateContentProfile(this.settings, next.id, this.environment.id); this.environment = next;
-        this.sharedState.bind(next); this.publishSharedActivity();
+        this.contextProjection = null; this.sharedState.bind(next);
+        this.playbackState.bind(next); this.publishPlaybackActivity();
+        this.sharedState.cancel(); this.contextProjection = null; this.contextRevision = null; this.contextResolver.dispose();
+        this.contextResolver = this.createContentResolver(next); this.contextRegistry = this.createRegistry(this.contextResolver, next);
+        this.scheduleContextRefresh();
         this.resolver = this.createContentResolver(next); this.registry = this.createRegistry(this.resolver, next);
         void this.loadEnvironmentStyle();
         this.stage.resolver = this.resolver; this.stage.registry = this.registry; this.stage.sprites.resolver = this.resolver;
@@ -238,38 +309,38 @@ export class VNController {
     }
     canPreserveWorld() { return !this.root.hidden && this.worldIdentity === JSON.stringify([chatIdentity(this.host.context()), this.environment.id]); }
     invalidate({ preserveWorld = false } = {}) {
-        this.sharedState.cancel(); this.sharedState.pending = true;
+        this.playbackState.cancel(); this.playbackState.pending = true;
         this.root.querySelector('.vn-content-notice').hidden = true;
         this.generation++; clearTimeout(this.autoTimer); this.speech.stop(); this.dialogue.cancel(); this.effects.clear(); this.html.close();
         if (preserveWorld) { this.stage.cancelPending(); this.audio.cancelPending(); this.audio.cancelOneShots(); }
         else { this.stage.clear(); this.audio.close(); this.worldIdentity = null; }
         this.root.querySelector('.vn-panel').hidden = true; this.root.querySelector('.vn-reply').hidden = true;
         this.transcriptArtifact = false;
-        this.sharedState.pending = false; this.publishSharedActivity();
+        this.playbackState.pending = false; this.publishPlaybackActivity();
     }
     wait(message) {
         this.root.querySelector('.vn-status').textContent = message; this.root.querySelector('.vn-status').hidden = false;
         this.root.querySelector('.vn-dialogue').hidden = true; this.root.querySelector('.vn-position').textContent = '';
         for (const action of ['next', 'back', 'skip']) this.root.querySelector(`[data-action="${action}"]`).disabled = true;
     }
-    async open(index = this.selected) {
+    async open(index) {
         if (!this.settings.enabled) return;
         this.updateMusicButton();
         this.updateLayoutControls();
         if (this.root.hidden) { this.previousFocus = document.activeElement; this.root.hidden = false; document.body.classList.add('vnplus-immersive'); this.root.querySelector('[data-action="exit"]').focus(); }
         this.reveal.close();
         const context = this.host.context(), identity = chatIdentity(context);
-        if (identity !== this.chatId) { this.invalidate(); this.chatId = identity; this.sceneRevision = null; this.playback = null; this.seen.clear(); this.sharedState.bind(this.environment); }
-        else if (!this.sharedState.binding?.current()) this.sharedState.bind(this.environment);
+        if (identity !== this.chatId) { this.invalidate(); this.chatId = identity; this.sceneRevision = null; this.playback = null; this.seen.clear(); this.playbackState.bind(this.environment); }
+        else if (!this.playbackState.binding?.current()) this.playbackState.bind(this.environment);
+        void this.refreshContext();
         this.selected = Number.isInteger(index) && index >= 0 ? index : latestAssistant(context);
-        if (this.busy) { this.publishSharedActivity(); this.wait('Waiting for a completed player perspective…'); return; }
+        if (this.busy) { this.publishPlaybackActivity(); this.wait('Waiting for a completed player perspective…'); return; }
         const message = readMessage(context, this.selected);
         if (!message || message.status !== 'ready') { this.speech.clearScene(); this.invalidate(); this.sceneRevision = null; this.playback = null; this.parsed = null; this.parserErrors = []; this.wait('Player perspective is unavailable. A completed POV section after ///// is required.'); return; }
         if (this.speech.prepared && this.speech.prepared.sourceId !== this.speechSceneId(message)) this.speech.clearScene();
-        const inherited = inheritedScene(context, message.index);
-        const history = worldHistory(context, message.index);
+        const history = contextEntries(context, message.index);
         const sourceRevision = `${this.environment.id}:${identity}:${message.index}:${message.swipe}:${message.pov}`;
-        const revision = JSON.stringify([sourceRevision, inherited, history]);
+        const revision = JSON.stringify([sourceRevision, history, this.settings.castMemoryTurns]);
         if (this.sceneRevision === revision && this.playback) {
             try { this.speech.prepare(this.speechSceneId(message), this.playback.timeline, this.registry); } catch (error) { this.speech.clearScene(); this.speech.notify(error.message); }
             this.present(this.playback.restore()); return;
@@ -277,7 +348,7 @@ export class VNController {
         const historyPosition = this.sceneRevision && this.sceneSourceRevision === sourceRevision && this.playback ? this.playback.position : null;
         this.invalidate({ preserveWorld: this.canPreserveWorld() }); this.parsed = null; this.parserErrors = []; const generation = this.generation; this.wait('Preparing scene…');
         const parsed = parsePOV(message.pov);
-        const names = [...history, ...parsed.tokens].filter(token => token.character || token.name === 'ENTER' || token.name === 'EXIT').map(token => token.character || token.args);
+        const names = contextNames(history);
         await this.registry.prepare(names);
         if (generation !== this.generation || this.busy || this.root.hidden) return;
         if (this.registry.discoveryError) { this.characterFolderStatus(this.registry.discoveryError); this.log(this.registry.discoveryError); }
@@ -298,7 +369,7 @@ export class VNController {
                 this.characterFolderStatus(error.message, true); this.log(error.message);
             }
         }
-        const seed = inheritedWorld(history, this.registry, this.settings, inherited.scene);
+        const seed = reduceContext(history, this.registry, this.settings, { beforeLast: true });
         const timeline = compileTimeline(parsed.tokens, this.registry, this.settings, seed), sourceKey = sceneKey(context, message), key = `${this.environment.id}:${sourceKey}`;
         try { this.speech.prepare(this.speechSceneId(message), timeline, this.registry); } catch (error) { this.speech.clearScene(); this.speech.notify(error.message); }
         if (!this.seen.has(key)) { if (this.seen.size >= 32) this.seen.delete(this.seen.keys().next().value); this.seen.set(key, new Set()); }
@@ -319,12 +390,13 @@ export class VNController {
         const { state, token } = result.beat;
         this.worldIdentity = JSON.stringify([chatIdentity(this.host.context()), this.environment.id]);
         const playback = this.speech.playBeat(result.done || token.type !== 'dialogue' || token.thought ? -1 : result.beat.index);
-        const sharedEpoch = this.sharedState.begin();
+        const sharedEpoch = this.playbackState.begin();
         const source = { message: this.selected, swipe: readMessage(this.host.context(), this.selected)?.swipe ?? 0, beat: result.beat.index, position: this.playback.position };
         void Promise.allSettled([this.stage.render(state, this.playback.timeline.maxSlots), this.audio.sync(state)]).then(results => {
             for (const result of results) if (result.status === 'rejected') this.log(result.reason?.message || String(result.reason));
-            if (sharedEpoch !== this.sharedState.epoch || this.root.hidden || this.busy || !this.sharedState.binding?.current()) return;
-            this.sharedState.commit(sceneSnapshot({ state, source, registry: this.registry, settings: this.settings, environment: this.environment, stage: this.stage, audio: this.audio }), sharedEpoch);
+            if (sharedEpoch !== this.playbackState.epoch || this.root.hidden || this.busy || !this.playbackState.binding?.current()) return;
+            this.playbackState.commit({ ...sceneSnapshot({ state, source, registry: this.registry, settings: this.settings, environment: this.environment, stage: this.stage, audio: this.audio }), basis: 'playback', updating: false }, sharedEpoch);
+            this.publishContextActivity();
         });
         for (const effect of result.effects) { if (effect.type === 'sfx') void this.audio.sfx(effect.name); else this.effects.trigger(effect); }
         this.root.querySelector('[data-action="back"]').disabled = this.playback.position <= 0;
@@ -360,12 +432,12 @@ export class VNController {
         if (!message || message.status !== 'ready') throw new Error('Select a completed assistant response with a POV section.');
         const parsed = parsePOV(message.pov);
         if (parsed.errors.some(error => error.message.startsWith('Incomplete') || error.message.startsWith('Unclosed'))) throw new Error('The selected POV contains unfinished dialogue or artifacts. Wait for a completed response.');
-        const history = worldHistory(this.host.context(), message.index);
-        await registry.prepare([...history, ...parsed.tokens].filter(token => token.character || token.name === 'ENTER' || token.name === 'EXIT').map(token => token.character || token.args));
+        const history = contextEntries(this.host.context(), message.index);
+        await registry.prepare(contextNames(history));
         if (registry.discoveryError) { this.characterFolderStatus(registry.discoveryError); this.log(registry.discoveryError); }
         const current = readMessage(this.host.context(), this.selected);
         if (this.busy || registry !== this.registry || !current || current.pov !== message.pov || current.swipe !== message.swipe || current.index !== message.index) throw new Error('The selected scene changed. Prepare its dialogue again.');
-        const seed = inheritedWorld(history, registry, this.settings, inheritedScene(this.host.context(), message.index).scene);
+        const seed = reduceContext(history, registry, this.settings, { beforeLast: true });
         return this.speech.prepare(this.speechSceneId(message), compileTimeline(parsed.tokens, registry, this.settings, seed), registry);
     }
     panel(kind) {
@@ -438,10 +510,12 @@ export class VNController {
         void this.stage.render(state, this.playback.timeline.maxSlots).catch(error => this.log(error.message));
     }
     dispose() {
-        this.close(); this.stage.dispose(); this.observer.disconnect(); clearTimeout(this.mountTimer); this.disposers.forEach(dispose => dispose());
+        clearTimeout(this.contextTimer); this.sharedState.cancel();
+        this.close(); this.disposed = true; this.audio.onChange = null; this.stage.dispose(); this.observer.disconnect(); clearTimeout(this.mountTimer); this.disposers.forEach(dispose => dispose());
         this.root.remove(); this.settingsPanel?.remove(); document.querySelectorAll('.vn-message-tools').forEach(node => node.remove()); this.seen.clear();
         this.resolver.dispose(); this.catalogResolver.dispose();
         this.environmentStyle.dispose();
+        this.contextResolver.dispose();
         this.speechSettingsPanel.dispose(); this.voicePanel.dispose(); this.speech.dispose();
     }
 }

@@ -74,13 +74,12 @@ test('old async work cannot write into a new chat even if chat ID or metadata al
     publisher.bind(environment); const older = publisher.begin(), newer = publisher.begin();
     assert.equal(publisher.commit(snapshot(), older), false); assert.equal(publisher.commit(snapshot(), newer), true);
 });
-test('chat-local cache rehydrates inactive and environment changes discard the previous world', () => {
+test('persisted output is discarded on binding so only reconstructed context can become available', () => {
     const fixture = hostFixture(), publisher = new ChatStatePublisher(fixture.host);
     publisher.bind(environment); publisher.commit(snapshot(), publisher.begin());
     const restored = new ChatStatePublisher(fixture.host); restored.bind(environment);
-    assert.equal(restored.snapshot.active, false); assert.equal(restored.snapshot.available, true);
-    assert.equal(restored.snapshot.music.playing, false); assert.equal(restored.snapshot.music.loaded, false);
-    assert.equal(restored.snapshot.player.emotion, 'sad');
+    assert.equal(restored.snapshot.active, false); assert.equal(restored.snapshot.available, false);
+    assert.equal(restored.snapshot.music, null); assert.equal(restored.snapshot.player, null);
     restored.bind({ id: 'other', name: 'Other' }); assert.equal(restored.snapshot.available, false);
     assert.equal(fixture.context.chatMetadata.variables.vn_plus_music, ''); assert.equal(fixture.context.chatMetadata.variables.vn_plus_inside, '');
 });

@@ -1,6 +1,8 @@
 # Chat-local VN state
 
-VN+ 2.12 writes a JSON string named **`vn_plus`** through `SillyTavern.getContext().variables.local.set`. It lives in the active chat's `chatMetadata.variables` alongside normal `/setvar` variables, persists through SillyTavern's debounced metadata save, and never writes global variables. VN+ owns the `vn_plus` and `vn_plus_*` names; consumers should treat them as read-only.
+VN+ writes a JSON string named **`vn_plus`** through `SillyTavern.getContext().variables.local.set`. It lives in the active chat's `chatMetadata.variables` alongside normal `/setvar` variables, persists through SillyTavern's debounced metadata save, and never writes global variables. VN+ owns the `vn_plus` and `vn_plus_*` names; consumers should treat them as read-only.
+
+Since **2.13**, this is the latest state reconstructed from the chat's currently selected messages, including the entire latest completed POV. It rebuilds on startup, opening VN, host message edits/swipes/deletion/receipt, generation completion, history loading, chat changes and environment/identity/cast settings changes, even while VN is closed. Stored variable output is never trusted as input. During asynchronous rebuilding, old fields are cleared and `available: false, updating: true` tells consumers to wait for the new result.
 
 Read the latest snapshot from another extension:
 
@@ -24,25 +26,28 @@ For older ST contexts without `variables.local.set`, VN+ uses `chatMetadata.vari
 | Field | Meaning |
 | --- | --- |
 | `schemaVersion` | `1`; consumers should check this before relying on a schema. |
-| `available` | A presented VN scene is cached. False before the first scene in a chat/environment. |
+| `available`, `updating` | Structured POV/header state is available from current context; a reconstruction is pending. Check `available && !updating` before consuming scene data. |
+| `basis` | `context` for `vn_plus`; `playback` for `vn_plus_playback`. |
 | `active`, `generating` | VN overlay is open; a host generation is in progress. |
 | `environment` | `{ id, name }` of the selected content environment. |
-| `source` | `{ message, swipe, beat, position }`, all zero-based. |
+| `source` | `{ message, swipe, beat, position }`. Message/swipe are zero-based. Context uses the latest assistant message and null beat/position; playback also supplies zero-based beat/position. |
 | `scene` | Last reached header: date/dateLabel, phase, time/timeLabel, year/month/day, hour/minute/minutes, season and location. Null without a header. |
 | `timeOfDay` | `night`, `dawn`, `day`, `dusk` or `unknown`, from story time even indoors. |
-| `characters` | Present busts in slot order, using canonical character IDs and cached emotions. Hidden player busts and the narrator are excluded. `speaking` identifies the current text speaker, including thoughts, rather than proof of audible TTS. |
+| `characters` | Inferred cast in slot order, using canonical IDs and latest emotions. By default a character must speak or explicitly enter within the last three completed POV responses. Exits, scene clears/resets and changed header locations remove previous cast. Same-location time changes retain cast. Hidden player busts and the narrator are excluded. `speaking` identifies a text speaker rather than proof of audible TTS. |
 | `player` | `{ id, name, emotion, present }`. Last known player emotion survives a hidden bust or exit; it is null until known and clears on `#SCENE RESET`. |
 | `speaker` | Current canonical text speaker, or null for narration/artifacts. |
 | `background` | `{ name, asset, inside, outside }`. `name` is the command/request; `asset` is the resolved URL or null if missing/cleared. Unclassified backgrounds are outside. |
 | `lighting` | `{ inside, level, brightness, period, ambientColor, tint, tintOpacity }`. `level` is 0–1, `brightness` is the rendered multiplier. Indoors both are 1 and `period` is `indoor`. |
-| `music`, `ambient` | `{ name, asset, rate, loaded, playing, muted, volume }`. These describe looping channels. `loaded` means an audio source is allocated; `playing` means it is started, unpaused, not ended and without a media error. Muting is separate from playing. Volume is the target channel volume, not a crossfade's instantaneous volume. |
+| `music`, `ambient` | `{ name, asset, rate, loaded, playing, muted, volume }`. Name/asset/rate describe the latest context request, including while closed. Loaded/playing describe a live audio source only when it matches that resolved recording. Muting is separate from playing. Volume is the target channel volume, not the instantaneous crossfade volume. |
 | `presentation` | `{ mode, black, camera: { zoom, x, y }, textEffect }`. |
 
-`ambientColor` is the actual CSS tint colour in the VN renderer, normalized by the browser; untinted scenes use `#ffffff`. `tint` and `tintOpacity` describe the overlay separately (currently opacity 0.28). Time-of-day lighting currently changes neutral brightness, without adding a warm/cool colour model. `presentation.black` describes the separate black fade/mode.
+`ambientColor` is the context's CSS tint colour, normalized by the browser; untinted scenes use `#ffffff`. `tint` and `tintOpacity` describe the overlay separately (currently opacity 0.28). Time-of-day lighting changes neutral brightness, without adding a warm/cool colour model. `presentation.black` describes the separate black fade/mode.
 
-Scene snapshots publish after background classification and media/sprite resolution for the current paragraph. Later audio start/pause/error events and mute changes update playback status. Navigation back, replay, response/swipe/history edits, exits, stops and resets are reflected when presented. Repeating the same state does not trigger metadata saves or change events. Breathing, blinking, text reveal and audio playback frames do not write variables.
+Context snapshots publish after current message reduction, background classification and media lookup; they do not play audio, stage sprites, open artifacts, create character folders or generate voices. Host event bursts coalesce before rebuilding. Audio start/pause/error and mute events update activity separately. Breathing, blinking, text reveal and playback frames do not write variables. During generation the last completed context remains available with `generating: true`; unfinished streamed text is not used.
 
-The cache describes the **last presented scene**, not unseen future paragraphs or an automatically generated interpretation of a closed chat. Closing VN keeps scene/cast/emotions but sets `active`, `music.playing`, `ambient.playing` and both `loaded` flags false. A reload restores the cache inactive. Switching chats binds to that chat's own cache, and switching environments clears the previous environment's snapshot until a new scene is presented. Delayed results from an old chat/environment/paragraph cannot overwrite the current cache. Raw dialogue, canonical prose, HTML artifacts, character properties, voice IDs and credentials are not included. Header metadata is included as requested.
+The context cache includes all completed paragraphs of the latest selected response, even when you are replaying an earlier paragraph/message. Closing VN sets `active` and live audio status false while context continues updating. Reloads reconstruct from the chat; switching chats/environments clears the previous output before rebuilding. Delayed results from an old context cannot overwrite the current result. Raw dialogue, canonical prose, HTML artifacts, character properties, voice IDs and credentials are not included. Only requested structured header metadata can come from canonical text. Inference uses commands, headers and speaker activity; free-form prose is not interpreted for implicit entrances/exits. **General → Cast memory** controls the response window (default 3; 0 keeps until an explicit exit, scene clear/reset or changed header location). Background/time/music searches are not limited by that cast window.
+
+For the paragraph actually on screen and its actual audio selection, read **`vn_plus_playback`** using the same JSON API. It has the same scene fields with `basis: "playback"`, follows back/replay/explicit historical message selection, and emits **`vnplus:playback-changed`**. Its music/ambience describe the current rendered channels. It cannot overwrite `vn_plus`. Opening VN without specifying a historical message selects the latest assistant response; explicit message buttons and internal playback controls still replay the selected message without looking ahead. Playback inherits the same recent-cast and header-location rules from context up to that response.
 
 Listen for changes after VN+ has stored the snapshot and scalar variables:
 
@@ -64,7 +69,7 @@ The following convenience variables work with `{{getvar::NAME}}` or `/getvar NAM
 
 | Variable | Value |
 | --- | --- |
-| `vn_plus_available`, `vn_plus_active`, `vn_plus_generating` | `true` / `false` |
+| `vn_plus_available`, `vn_plus_updating`, `vn_plus_active`, `vn_plus_generating` | `true` / `false` |
 | `vn_plus_environment` | Environment ID |
 | `vn_plus_characters` | JSON character array with emotions |
 | `vn_plus_player_emotion`, `vn_plus_speaker` | Emotion / canonical speaker ID |

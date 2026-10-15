@@ -1,5 +1,5 @@
 {
-  "status": "52 passed · 0 failed",
+  "status": "60 passed · 0 failed",
   "tests": [
     "PASS · POV privacy and four characters from one scenario",
     "PASS · backward restores background, expression and audio state",
@@ -52,6 +52,14 @@
     "PASS · shared snapshots publish mute, audio start, generation and closing while retaining the cached scene",
     "PASS · shared scene publication rejects obsolete async resolutions across chat switches",
     "PASS · shared publication rebinds when SillyTavern reloads metadata for the same chat",
-    "PASS · shared cache survives reinitialization but environment switching clears the previous environment"
+    "PASS · context is reconstructed after reinitialization and an environment change",
+    "PASS · closed VN reconstructs current context instead of trusting a stored snapshot or accumulating every old speaker",
+    "PASS · edits while VN is closed synchronously invalidate old variables and rebuild media time and emotion",
+    "PASS · historical playback has its own variables and opening without an index uses the latest context",
+    "PASS · completed generation updates context while closed but streaming text and past effects never run",
+    "PASS · opening reconstructs context edits even when the editing extension emitted no event",
+    "PASS · deleting the latest response rebuilds closed context from the remaining selected messages",
+    "PASS · the cast memory setting rebuilds closed context and supports persistent presence until exit",
+    "PASS · obsolete context asset loads cannot write into another chat and a chat without POV has no stale state"
   ]
 }

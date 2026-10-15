@@ -12,6 +12,8 @@ The current response's canonical header supplies its initial values. Without one
 
 ## Variables
 
+The renderer variables below describe the paragraph on screen. Since 2.13, the latest context-derived scene is also published as the chat-local `vn_plus` JSON, even when VN is closed; `vn_plus_playback` describes the displayed paragraph separately. See [the shared-state API and freshness rules](shared-state.md).
+
 The scene inspector's `variables` object includes:
 
 ```json

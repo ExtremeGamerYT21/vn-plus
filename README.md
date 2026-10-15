@@ -1,4 +1,6 @@
-# Visual Novel+ 2.12.0
+# Visual Novel+ 2.13.0
+
+Version 2.13 makes `vn_plus` a reconstruction of the **latest selected chat context**, updated on startup, chat/message/history changes and whenever VN opens, including while VN is closed. Stored output is never reused as input. The latest background/music/header and recent cast/emotions come from current selected swipes; generation holds the last completed context. Pending rebuilds clear old values and report `available: false, updating: true`. Historical playback has its own `vn_plus_playback` JSON and `vnplus:playback-changed` event. **General → Cast memory** defaults to the last three completed VN responses; `0` retains characters until an exit or scene/location change. Opening without an explicit message selects the latest response. No server restart is needed; refresh SillyTavern after updating.
 
 Version 2.12 publishes the cached VN scene through SillyTavern's **chat-local shared variables**. Other extensions can read `vn_plus` as JSON, subscribe to `vnplus:state-changed`, or use scalar macros such as `{{getvar::vn_plus_time}}` and `{{getvar::vn_plus_player_emotion}}`. Cast/emotions, header metadata, backgrounds, indoor/outdoor lighting, ambient tint, music/ambience and playback status follow the presented paragraph and remain cached when VN closes. See [the shared state API](docs/shared-state.md) for all fields and integration examples. Refresh SillyTavern after updating; no server restart is needed.
 
@@ -233,7 +235,7 @@ Music mute is a saved preference and remains active across scene changes/reopeni
 ## Privacy, storage and lifecycle
 
 - No prompt injection, story rewriting, LLM generation calls or independent conversation store. Optional Fish Audio speech sends only manually selected spoken POV dialogue through the bundled server bridge when you request generation.
-- Only regular settings persist. Seen-beat sets (up to 32 response fingerprints), asset results and diagnostics are bounded in memory. No new global localStorage scene/transcript keys are written. Legacy stored keys are ignored rather than deleted.
+- Settings and the chat-local shared state variables persist through SillyTavern. Shared output is rebuilt from current context after startup rather than reused as input. Seen-beat sets (up to 32 response fingerprints), asset results and diagnostics are bounded in memory. No global localStorage scene/transcript keys are written. Legacy stored keys are ignored rather than deleted.
 - Swipes/edits reconstruct the selected source; chat changes clear staging/audio; refresh reconstructs the scene from the saved message. Branch identity includes chat and character/group IDs.
 - Canonical text is shown only by a deliberate reveal. Reveal closes on generation, editing, swiping, chat changes or entering VN. A missing/incomplete POV produces a safe waiting/unavailable view.
 - HTML artifacts have isolated, opaque-origin iframes. Static mode strips scripts. Interactive mode requires both explicit `html interactive` markup and a user setting; it still has no same-origin or host API access. See [artifact constraints](docs/grammar.md#artifacts).

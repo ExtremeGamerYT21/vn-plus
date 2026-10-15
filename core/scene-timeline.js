@@ -38,7 +38,11 @@ export function compileTimeline(tokens, registry, settings, inherited = {}, reco
     };
     for (const token of tokens) {
         const oneShots = [];
-        if (token.type === 'header') state.scene = clone(token.value);
+        if (token.type === 'header') {
+            const location = scene => String(scene?.location || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
+            if (location(state.scene) && location(state.scene) !== location(token.value)) { state.characters = Object.create(null); state.speaker = null; }
+            state.scene = clone(token.value);
+        }
         else if (token.type === 'dialogue') state.speaker = enter(token.character, token.emotion);
         else if (token.type === 'narration' || token.type === 'artifact') state.speaker = null;
         else if (token.type === 'command') {

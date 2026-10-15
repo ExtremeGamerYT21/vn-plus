@@ -28,27 +28,25 @@ export function sceneSnapshot({ state, registry, settings, environment, stage, a
 export function sharedVariables(value) {
     return {
         [SHARED_STATE_KEY]: JSON.stringify(value),
-        vn_plus_available: String(value.available), vn_plus_active: String(value.active), vn_plus_generating: String(value.generating),
+        vn_plus_available: String(value.available), vn_plus_updating: String(!!value.updating), vn_plus_active: String(value.active), vn_plus_generating: String(value.generating),
         vn_plus_environment: value.environment.id,
         vn_plus_characters: JSON.stringify(value.characters || []),
         vn_plus_player_emotion: value.player?.emotion || '', vn_plus_speaker: value.speaker || '',
         vn_plus_date: value.scene?.date || '', vn_plus_time: value.scene?.time || '', vn_plus_location: value.scene?.location || '',
         vn_plus_time_of_day: value.timeOfDay || 'unknown', vn_plus_background: value.background?.name || '',
         vn_plus_inside: value.available ? String(!!value.background?.inside) : '', vn_plus_outside: value.available ? String(!!value.background?.outside) : '',
-        vn_plus_lighting_level: value.lighting ? String(value.lighting.level) : '', vn_plus_ambient_light_color: value.lighting?.ambientColor || '',
+        vn_plus_lighting_level: value.available && value.lighting ? String(value.lighting.level) : '', vn_plus_ambient_light_color: value.available ? value.lighting?.ambientColor || '' : '',
         vn_plus_music: value.music?.name || '', vn_plus_music_playing: String(!!value.music?.playing), vn_plus_ambient: value.ambient?.name || '',
     };
 }
 
 export class ChatStatePublisher {
-    constructor(host, notify = () => {}) { this.host = host; this.notify = notify; this.epoch = 0; }
+    constructor(host, notify = () => {}, key = SHARED_STATE_KEY) { this.host = host; this.notify = notify; this.key = key; this.epoch = 0; }
     bind(environment) {
         this.epoch++; this.pending = false; this.binding = this.host.captureChatVariables?.();
-        let cached;
-        try { cached = JSON.parse(this.binding?.read(SHARED_STATE_KEY)); } catch { /* first scene or invalid external value */ }
-        this.value = cached?.schemaVersion === 1 && cached.environment?.id === environment.id && Array.isArray(cached.characters)
-            ? cached : { schemaVersion: 1, available: false, environment: { id: environment.id, name: environment.name }, source: null,
-                scene: null, characters: [], speaker: null, player: null, background: null, lighting: null, music: null, ambient: null, presentation: null };
+        // Persisted output is never an input. Reconstruct from the currently selected chat swipes.
+        this.value = { schemaVersion: 1, basis: this.key === SHARED_STATE_KEY ? 'context' : 'playback', available: false, updating: false, environment: { id: environment.id, name: environment.name }, source: null,
+            scene: null, characters: [], speaker: null, player: null, background: null, lighting: null, music: null, ambient: null, presentation: null };
         this.value.active = false; this.value.generating = false;
         for (const kind of ['music', 'ambient']) if (this.value[kind]) { this.value[kind].playing = false; this.value[kind].loaded = false; }
         this.flush();
@@ -61,8 +59,8 @@ export class ChatStatePublisher {
     cancel() { this.epoch++; this.pending = false; }
     update(patch) { if (!this.value || this.pending) return; this.value = { ...this.value, ...structuredClone(patch) }; this.flush(); }
     flush() {
-        const values = sharedVariables(this.value);
-        const changed = this.binding?.read(SHARED_STATE_KEY) !== values[SHARED_STATE_KEY];
+        const values = this.key === SHARED_STATE_KEY ? sharedVariables(this.value) : { [this.key]: JSON.stringify(this.value) };
+        const changed = this.binding?.read(this.key) !== values[this.key];
         if (this.binding?.write(values) && changed) this.notify(structuredClone(this.value));
     }
     get snapshot() { return structuredClone(this.value); }
