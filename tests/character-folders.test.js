@@ -133,3 +133,22 @@ test('host sends the selected environment and names only through the local chara
     assert.equal(createHost(() => context, { localContent: false }).scaffoldCharacters, undefined);
     host.request = async () => new Response('', { status: 404 }); await assert.rejects(host.scaffoldCharacters({}), /Restart SillyTavern/);
 });
+test('live discovery reads every folder and alias without creating files or changing a catalog', async t => {
+    const { root, create, folder } = await fixture(t);
+    await mkdir(folder('jason_weber')); const properties = '{"displayName":"Jason","aliases":["Jason Weber"],"voiceId":"test-jason-voice"}';
+    await writeFile(path.join(folder('jason_weber'), 'properties.json'), properties);
+    await writeFile(path.join(root, 'assets.local.json'), 'INVALID LOCAL CATALOG');
+    const result = await create({ environment: 'world-one', names: [], createMissing: false });
+    assert.equal(result.characters.length, 1); assert.equal(result.characters[0].id, 'jason_weber');
+    assert.equal(await readFile(path.join(root, 'assets.local.json'), 'utf8'), 'INVALID LOCAL CATALOG');
+    assert.deepEqual(await readdir(folder('jason_weber')), ['properties.json']);
+    assert.deepEqual(await readdir(path.dirname(folder('jason_weber'))), ['jason_weber']);
+    assert.equal(await readFile(path.join(folder('jason_weber'), 'properties.json'), 'utf8'), properties);
+});
+test('read-only discovery accepts authenticated non-admins and cannot be switched to file creation', async t => {
+    const { root } = await fixture(t), routes = new Map(); registerCharacterFolders({ post: (url, handler) => routes.set(url, handler) }, root);
+    const response = () => ({ status(code) { this.code = code; return this; }, sendStatus(code) { this.code = code; }, json(value) { this.value = value; } });
+    const anonymous = response(); await routes.get('/characters/resolve')({}, anonymous); assert.equal(anonymous.code, 401);
+    const result = response(); await routes.get('/characters/resolve')({ user: { directories: {}, profile: { admin: false } }, body: { environment: 'world-one', names: ['Do Not Create'], createMissing: true } }, result);
+    assert.deepEqual(result.value, { characters: [] }); assert.deepEqual(await readdir(path.join(root, 'environments/world-one/characters')), []);
+});

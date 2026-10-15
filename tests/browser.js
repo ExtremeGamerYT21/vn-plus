@@ -507,6 +507,24 @@ await check('Fish settings use property voices, protect credentials and connect 
         controller.settings.characterSounds = originalCharacterSounds; controller.audio.sfx = originalSFX;
     }
 });
+await check('voice preparation discovers unindexed player aliases, canonical voices and edited IDs without generating audio', async () => {
+    const previous = { characters: controller.settings.characters, automatic: controller.settings.autoCreateCharacters, discover: controller.registry.discover };
+    let voice = 'discovered-jason-voice', discoveries = 0;
+    controller.settings.characters = { jason: { displayName: 'Jason', assetFolder: 'andrew' } }; controller.settings.autoCreateCharacters = false;
+    controller.registry.discover = async () => { discoveries++; return { characters: [{ id: 'jason_weber', properties: { displayName: 'Jason', aliases: ['Jason Weber', 'J. Weber'], voiceId: voice } }] }; };
+    try {
+        context.chat[0].mes = 'SECRET\n/////\nJason: "First."\nJason Weber: "Second."\nJ. Weber: "Third."';
+        await controller.open(0); await controller.prepareSpeech();
+        equal(controller.speech.prepared.segments.map(segment => segment.character), ['jason_weber', 'jason_weber', 'jason_weber']);
+        assert(controller.speech.prepared.segments.every(segment => segment.voice === voice));
+        equal(controller.playback.restore().beat.state.characters.jason_weber.slot, 0);
+        voice = 'edited-jason-voice'; await controller.prepareSpeech(); assert(discoveries >= 3);
+        assert(controller.speech.prepared.segments.every(segment => segment.voice === voice)); assert(!controller.speech.job);
+    } finally {
+        controller.settings.characters = previous.characters; controller.settings.autoCreateCharacters = previous.automatic; controller.registry.discover = previous.discover;
+        controller.registry.properties.delete('jason_weber'); controller.registry.knownProperties.delete('jason_weber'); controller.registry.discoveredIds.clear(); controller.speech.clearScene();
+    }
+});
 await check('MP3 export is real decodable audio and finishing keeps original sample timing', async () => {
     const original = Float32Array.from({ length: SAMPLE_RATE }, (_, i) => .1 * Math.sin(2 * Math.PI * 440 * i / SAMPLE_RATE));
     const before = original.slice(), mp3 = await encodeMP3(original, 128), decoded = await decodeChapter(mp3);

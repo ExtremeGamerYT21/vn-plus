@@ -1,4 +1,4 @@
-# Visual Novel+ 2.5.0
+# Visual Novel+ 2.5.1
 
 A procedural visual novel presentation layer for SillyTavern. It reads **only** the player perspective after an exact `/////` line in the selected assistant message. Canonical narration, conversation storage, generation, and outgoing context remain under SillyTavern and your separate POV workflow.
 
@@ -148,6 +148,8 @@ The narrator has no bust or cast slot. `Narrator:` and `Narration:` labels are n
 Text shakes only for tags in **Presentation → Emotion tags that shake**, such as rage, terror, panic or unhinged. Calm tags and narration stay still, including when an old global jitter setting or a shake/jitter text command is present. Reduced motion disables shaking.
 
 Set `"voiceId":"YOUR_FISH_VOICE_ID"` in a character’s properties or registry override to voice that character. With no ID, the character is mute. Fish settings are under **Extensions → Visual Novel+ → Fish Audio voices**, also available from the VN toolbar’s **Voices** button. The optional server bridge keeps the key in SillyTavern’s secret store; generation is manual and only includes selected finalized spoken dialogue. See [Fish setup, generation, timing review and audio finishing](docs/speech.md).
+
+Version 2.5.1 discovers all character folders and property aliases in the selected environment directly through a read-only bridge endpoint, even when the local inventory is missing or outdated. A file such as `jason_weber/properties.json` with `displayName: "Jason"` or an alias `Jason` resolves to that character's voice; a virtual player override named `jason` no longer masks it. Exact real folder IDs take priority over aliases. **Prepare selected dialogue** rereads these properties, so edited voice IDs are picked up without rebuilding the inventory. Restart SillyTavern after updating the server bridge. Indexed properties still work when live discovery is unavailable.
 
 ## Sprite motion and blinking
 

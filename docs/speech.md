@@ -11,6 +11,10 @@ VN+ generates voices for the selected finalized POV dialogue. Each character sup
 
 Replace the placeholder with a real Fish voice ID. A voice-page URL such as `https://fish.audio/pt/m/4744963f03b24efeb8e29b86aca419a0/` also works; only its ID is sent to Fish. IDs are scoped to the selected environment’s character properties, just like artwork. Use registry overrides or a personal environment when customizing bundled characters to avoid modifying Git-tracked content.
 
+Folder IDs, `displayName` and every entry in `aliases` resolve to the same canonical character and voice. For example, `characters/jason_weber/properties.json` with `displayName: "Jason"` and `aliases: ["Jason Weber", "J. Weber"]` voices all three speaker labels using its `voiceId`. The player name is a fallback identity, and virtual player settings no longer hide a real character file. An override keyed by the canonical ID (`jason_weber`) still applies, including an explicitly blank voice ID.
+
+The version 2.5.1 bridge reads all properties in the selected environment before resolving aliases, without writing files or generating speech. It works with a missing/stale inventory and with automatic folder creation disabled. **Prepare selected dialogue** repeats this read to pick up voice-ID edits. Alias discovery is available to authenticated users; folder creation remains an administrator operation. Restart SillyTavern once after updating the bridge. If live discovery is unavailable, indexed/local properties remain usable and its failure is recorded in the character settings status.
+
 ## One-time server bridge setup
 
 The frontend uses a small bundled SillyTavern server plugin so API credentials remain in SillyTavern’s per-user secret store. It sends requests to Fish’s fixed HTTPS endpoint. No key is placed in VN settings, manifests, logs, voice prompts, downloaded audio or timing metadata.

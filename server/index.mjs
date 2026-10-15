@@ -24,7 +24,7 @@ export function validateRequest(input) {
 export function registerBridge(router, secrets, fetcher = fetch) {
     const active = new Set();
     const user = (req, res) => { if (!req.user?.directories) { res.sendStatus(401); return null; } return req.user.directories; };
-    router.get('/status', (req, res) => { const directories = user(req, res); if (directories) res.json({ available: true, configured: !!secrets.readSecret(directories, SECRET_KEY), version: 2 }); });
+    router.get('/status', (req, res) => { const directories = user(req, res); if (directories) res.json({ available: true, configured: !!secrets.readSecret(directories, SECRET_KEY), version: 3 }); });
     router.post('/secret', (req, res) => {
         const directories = user(req, res); if (!directories) return;
         const value = req.body?.value;

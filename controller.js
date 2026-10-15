@@ -28,7 +28,7 @@ export class VNController {
         this.environments = contentEnvironments(inventory);
         this.environment = this.environments.find(entry => entry.id === this.settings.environment) || this.environments.find(entry => entry.id === inventory.defaultEnvironment) || this.environments[0];
         activateContentProfile(this.settings, this.environment.id);
-        this.resolver = this.createContentResolver(this.environment); this.registry = new CharacterRegistry(this.resolver, this.settings);
+        this.resolver = this.createContentResolver(this.environment); this.registry = this.createRegistry(this.resolver, this.environment);
         this.root = createOverlay(); this.stage = new StageRenderer(this.root, this.resolver, this.registry, this.settings);
         this.dialogue = new DialogueRenderer(this.root, this.resolver, this.settings); this.audio = new AudioEngine(this.resolver, this.settings, message => this.log(message));
         this.speech = new SpeechEngine(host, this.settings); this.speech.onEnded = () => this.scheduleAuto();
@@ -155,6 +155,10 @@ export class VNController {
         await this.selectEnvironment(id, true);
     }
     createContentResolver(environment) { return new AssetResolver(new URL(environment.path ? `${environment.path}/` : './', this.base), environment.inventory, environment.id); }
+    createRegistry(resolver, environment) {
+        const discover = this.host.resolveCharacters ? () => this.host.resolveCharacters({ environment: environment.path ? environment.id : null }) : null;
+        return new CharacterRegistry(resolver, this.settings, discover);
+    }
     async selectEnvironment(id, force = false) {
         const next = this.environments.find(entry => entry.id === id);
         if (!next) { this.settings.environment = this.environment.id; this.updateEnvironmentControls(); return false; }
@@ -163,7 +167,7 @@ export class VNController {
         const resume = this.playback && message ? { key: sceneKey(this.host.context(), message), position: this.playback.position } : this.environmentResume;
         this.speech.clearScene(); this.invalidate(); this.resolver.dispose();
         activateContentProfile(this.settings, next.id, this.environment.id); this.environment = next;
-        this.resolver = this.createContentResolver(next); this.registry = new CharacterRegistry(this.resolver, this.settings);
+        this.resolver = this.createContentResolver(next); this.registry = this.createRegistry(this.resolver, next);
         this.stage.resolver = this.resolver; this.stage.registry = this.registry; this.stage.sprites.resolver = this.resolver;
         this.dialogue.resolver = this.resolver; this.audio.resolver = this.resolver;
         this.playback = null; this.sceneRevision = null; this.parsed = null; this.environmentResume = resume;
@@ -230,6 +234,7 @@ export class VNController {
         const names = parsed.tokens.filter(token => token.character || token.name === 'ENTER').map(token => token.character || token.args);
         await this.registry.prepare(names);
         if (generation !== this.generation || this.busy || this.root.hidden) return;
+        if (this.registry.discoveryError) { this.characterFolderStatus(this.registry.discoveryError); this.log(this.registry.discoveryError); }
         const registry = this.registry, environment = this.environment;
         const unknown = [...new Set(parsed.tokens.filter(token => token.type === 'dialogue').map(token => token.character))].filter(name => !registry.knows(name));
         if (this.settings.autoCreateCharacters && this.host.scaffoldCharacters && unknown.length) {
@@ -302,6 +307,7 @@ export class VNController {
         const parsed = parsePOV(message.pov);
         if (parsed.errors.some(error => error.message.startsWith('Incomplete') || error.message.startsWith('Unclosed'))) throw new Error('The selected POV contains unfinished dialogue or artifacts. Wait for a completed response.');
         await registry.prepare(parsed.tokens.filter(token => token.character).map(token => token.character));
+        if (registry.discoveryError) { this.characterFolderStatus(registry.discoveryError); this.log(registry.discoveryError); }
         const current = readMessage(this.host.context(), this.selected);
         if (this.busy || registry !== this.registry || !current || current.pov !== message.pov || current.swipe !== message.swipe || current.index !== message.index) throw new Error('The selected scene changed. Prepare its dialogue again.');
         return this.speech.prepare(this.speechSceneId(message), compileTimeline(parsed.tokens, registry, this.settings), registry);

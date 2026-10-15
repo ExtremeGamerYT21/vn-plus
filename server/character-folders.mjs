@@ -35,12 +35,13 @@ async function json(file, fallback) {
 export function createCharacterFolders(root, color = () => colors[randomInt(colors.length)]) {
     let queue = Promise.resolve();
     const run = async input => {
+        const createMissing = input?.createMissing !== false;
         const environment = input?.environment;
         if (environment !== null && !validEnvironmentId(environment)) throw new Error('Invalid content environment.');
         if (!Array.isArray(input?.names) || input.names.length > 128) throw new Error('Supply up to 128 character names.');
         const names = [...new Set(input.names.map(name => { characterFolderId(name); return name.trim(); }))].filter(name => !isNarratorName(name));
         const contentRoot = await realpath(root), published = await json(path.join(contentRoot, 'assets.json'), {});
-        const catalogPath = path.join(contentRoot, 'assets.local.json'), local = await json(catalogPath, {});
+        const catalogPath = path.join(contentRoot, 'assets.local.json'), local = createMissing ? await json(catalogPath, {}) : {};
         if (environment === null && local.files !== undefined && !Array.isArray(local.files)) throw new Error('Invalid local catalog.');
         if (environment !== null && local.environments !== undefined && !object(local.environments)) throw new Error('Invalid local environment catalog.');
         const previous = environment === null || !Object.hasOwn(local.environments || {}, environment) ? {} : local.environments[environment];
@@ -53,8 +54,9 @@ export function createCharacterFolders(root, color = () => colors[randomInt(colo
             const environments = await directory(contentRoot, 'environments');
             environmentRoot = await directory(environments, environment);
         }
-        const charactersRoot = await directory(environmentRoot, 'characters', true);
-        const metadata = environment === null ? {} : await json(path.join(environmentRoot, 'environment.json'), {});
+        if (!createMissing && !await stat(path.join(environmentRoot, 'characters'))) return { characters: [] };
+        const charactersRoot = await directory(environmentRoot, 'characters', createMissing);
+        const metadata = !createMissing || environment === null ? {} : await json(path.join(environmentRoot, 'environment.json'), {});
         const entries = [];
         for (const entry of await readdir(charactersRoot, { withFileTypes: true })) {
             if (!entry.isDirectory() || entry.isSymbolicLink() || entry.name === 'shared') continue;
@@ -62,6 +64,7 @@ export function createCharacterFolders(root, color = () => colors[randomInt(colo
             const properties = await json(path.join(folder, 'properties.json'), {});
             entries.push({ id: entry.name, properties });
         }
+        if (!createMissing) return { characters: entries.map(entry => ({ ...entry, created: false })) };
         const result = [], indexed = [];
         for (const name of names) {
             const key = characterNameKey(name);
@@ -99,10 +102,15 @@ export function createCharacterFolders(root, color = () => colors[randomInt(colo
 
 export function registerCharacterFolders(router, root) {
     const create = createCharacterFolders(root);
+    router.post('/characters/resolve', async (req, res) => {
+        if (!req.user?.directories) return res.sendStatus(401);
+        try { res.json(await create({ environment: req.body?.environment, names: [], createMissing: false })); }
+        catch { res.status(400).json({ error: 'Unable to read character aliases. Check this environment and its properties.json files.' }); }
+    });
     router.post('/characters', async (req, res) => {
         if (!req.user?.directories) return res.sendStatus(401);
         if (!req.user.profile?.admin) return res.status(403).json({ error: 'Automatic character folders require a SillyTavern administrator account for this shared installation.' });
-        try { res.json(await create(req.body)); }
+        try { res.json(await create({ ...req.body, createMissing: true })); }
         catch (error) { res.status(400).json({ error: error instanceof SyntaxError ? 'Fix the invalid JSON in character properties or assets.local.json first.' : 'Unable to create character folders. Check the selected environment, names and folder permissions.' }); }
     });
 }

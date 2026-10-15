@@ -8,11 +8,16 @@ const aliases = value => Array.isArray(value) ? value.filter(item => typeof item
 export const EMOTION_ALIASES = { neutral: 'default', normal: 'default', mad: 'angry', furious: 'rage', annoyed: 'angry', joy: 'happy', excited: 'happy', cheerful: 'happy', depressed: 'sad', upset: 'sad', shocked: 'surprised', startled: 'surprised', shy: 'embarrassed', flustered: 'embarrassed', anxious: 'nervous', worried: 'nervous', terrified: 'scared', afraid: 'scared', loving: 'love', weeping: 'crying', amused: 'laughing', sleepy: 'tired' };
 
 export class CharacterRegistry {
-    constructor(resolver, settings) { this.resolver = resolver; this.settings = settings; this.properties = new Map(); this.knownProperties = new Set(); }
+    constructor(resolver, settings, discover = null) { this.resolver = resolver; this.settings = settings; this.discover = discover; this.properties = new Map(); this.knownProperties = new Set(); this.discoveredIds = new Set(); this.discoveryError = ''; }
     entries() { return Object.entries(this.settings.characters || {}).map(([id, props]) => ({ ...props, id: slug(id) })); }
     identify(name) {
         const key = slug(name);
         const identity = characterNameKey(name), matches = alias => !!identity && characterNameKey(alias) === identity;
+        // Actual character folders and their effective aliases precede virtual player overrides.
+        const ids = [...this.knownProperties].sort();
+        const exact = ids.find(id => matches(id)); if (exact) return exact;
+        const file = ids.find(id => { const props = this.get(id); return [props.displayName, ...aliases(props.aliases)].some(matches); });
+        if (file) return file;
         const configured = this.entries().find(entry => [entry.id, entry.displayName, ...aliases(entry.aliases)].some(matches));
         if (configured) return configured.id;
         for (const [id, props] of this.properties) if ([props.displayName, ...aliases(props.aliases)].some(matches)) return id;
@@ -40,6 +45,16 @@ export class CharacterRegistry {
             if (value && typeof value === 'object' && !Array.isArray(value)) this.knownProperties.add(id);
             this.properties.set(id, value && typeof value === 'object' ? value : {});
         }));
+        if (this.discover) {
+            try {
+                const result = await this.discover();
+                if (!Array.isArray(result?.characters)) throw new Error('Invalid character discovery response.');
+                for (const id of this.discoveredIds) { this.properties.delete(id); this.knownProperties.delete(id); }
+                this.discoveredIds.clear();
+                for (const entry of result.characters) { this.acceptCharacter(entry); this.discoveredIds.add(entry.id); }
+                this.discoveryError = '';
+            } catch (error) { this.discoveryError = error.message || 'Unable to discover character aliases.'; }
+        }
     }
     expressionCandidates(id, emotion) {
         const props = this.get(id), exact = slug(emotion) || 'default';

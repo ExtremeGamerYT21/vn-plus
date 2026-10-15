@@ -55,6 +55,28 @@ test('each short chapter maps only its voiced characters to fresh speaker indice
     assert.ok(plan.every(chapter => chapter.body.prosody.normalize_loudness));
     assert.equal(chapterRequests(speechSegments(input.timeline, input.registry, 'scene'), { ...SPEECH_DEFAULTS, splitChapters: false }).length, 1);
 });
+test('unindexed player aliases resolve to the real character voice instead of a virtual Jason override', async () => {
+    const config = settings(); config.characters = { jason: { displayName: 'Jason', assetFolder: 'andrew' } }; let currentVoice = 'jason-voice-one';
+    const registry = new CharacterRegistry({ inventory: {}, json: async () => null }, config, async () => ({ characters: [
+        { id: 'jason_weber', properties: { displayName: 'Jason', aliases: ['Jason Weber', 'J. Weber', 'Weber'], voiceId: currentVoice } },
+    ] }));
+    const text = 'Jason: "One."\nJason Weber: "Two."\nJ. Weber: "Three."\nWeber: "Four."';
+    await registry.prepare(['Jason']);
+    assert.equal(registry.identify('Jason'), 'jason_weber'); assert.ok(registry.isPlayer('jason_weber'));
+    const lines = () => speechSegments(compileTimeline(parsePOV(text).tokens, registry, config), registry, 'scene');
+    assert.deepEqual(lines().map(line => line.character), Array(4).fill('jason_weber'));
+    assert.deepEqual(chapterRequests(lines(), config.tts)[0].body.reference_id, ['jason-voice-one']);
+    currentVoice = 'jason-voice-two'; await registry.prepare(['Jason']);
+    assert.ok(lines().every(line => line.voice === 'jason-voice-two'));
+});
+test('real folder IDs precede colliding aliases and discovery failure preserves indexed voices', async () => {
+    const config = settings(), registry = new CharacterRegistry({ inventory: { characters: { jason_weber: {} } }, json: async file => file.includes('/jason_weber/') ? { displayName: 'Jason', aliases: ['Jason'], voiceId: 'kept-voice' } : null }, config, async () => { throw new Error('Discovery offline'); });
+    await registry.prepare(['Jason']); assert.equal(registry.discoveryError, 'Discovery offline');
+    assert.equal(registry.identify('Jason'), 'jason_weber');
+    registry.acceptCharacter({ id: 'a_different_character', properties: { aliases: ['jason_weber'] } });
+    assert.equal(registry.identify('jason_weber'), 'jason_weber');
+    assert.equal(speechSegments(compileTimeline(parsePOV('Jason: "Hello."').tokens, registry, config), registry, 'scene')[0].voice, 'kept-voice');
+});
 test('a narrator voice property cannot turn narration into a voiced character', () => {
     const input = fixture('Narrator: "A moment passes."\nStory voice: "Another moment."\nNina: "Hello."', {
         narrator: { voiceId: 'narrator-voice' }, story: { displayName: 'Narrator', aliases: ['Story voice'], voiceId: 'story-voice' }, nina: { voiceId: 'nina-voice' },

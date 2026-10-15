@@ -3,10 +3,14 @@ export function createHost(getContext, { localContent = true } = {}) {
     return {
         context: getContext,
         request(url, options = {}) {
-            if (!/^\/api\/plugins\/vn-plus-tts\/(status|secret|synthesize|characters)$/.test(url)) throw new Error('Invalid VN+ server route.');
+            if (!/^\/api\/plugins\/vn-plus-tts\/(status|secret|synthesize|characters(?:\/resolve)?)$/.test(url)) throw new Error('Invalid VN+ server route.');
             return fetch(url, { ...options, headers: { ...(getContext().getRequestHeaders?.() || { 'Content-Type': 'application/json' }), ...options.headers } });
         },
-        ...(localContent ? { async scaffoldCharacters(input) {
+        ...(localContent ? { async resolveCharacters(input) {
+            const response = await this.request('/api/plugins/vn-plus-tts/characters/resolve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal: AbortSignal.timeout(15000) });
+            if (!response.ok) throw new Error('Live character aliases could not be loaded. Restart SillyTavern to load the updated VN+ server bridge; indexed properties remain available.');
+            return response.json();
+        }, async scaffoldCharacters(input) {
             const response = await this.request('/api/plugins/vn-plus-tts/characters', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal: AbortSignal.timeout(15000) });
             if (!response.ok) {
                 let detail; try { detail = await response.json(); } catch { /* older or missing bridge */ }
