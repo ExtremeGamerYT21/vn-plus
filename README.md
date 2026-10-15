@@ -1,4 +1,6 @@
-# Visual Novel+ 2.15.0
+# Visual Novel+ 2.16.0
+
+Version 2.16 collects important-scene journal entries from the existing POV transformer’s optional trailing `vnplus-journal` JSON block. No additional model request is made. Each response stores only its diary additions in `extra.vn_plus`, with duplicate suppression, inherited story dates, selected-swipe/revision/branch isolation and an end-of-response visibility boundary. The diary API combines these with manual notes. See [journal setup and transformer instructions](docs/journal.md). Import the optional journal-display RegEx preset to hide metadata in ordinary chat too. Refresh SillyTavern after updating; no server restart is needed.
 
 Version 2.15 adds deterministic narrative timing and **independent interactive visuals**. Auto follows actual prepared voice audio, or configurable dialogue/reading/action rules, and pauses when there is no timing rule. `#VISUAL see_watch` opens a local object while dialogue continues; `#VISUAL CLOSE see_watch [hurried]` attaches its close to the preceding spoken beat. Reaction aliases/patterns control timing, animation and optional SFX. Paired watch/newspaper/note inspections use reproducible duration ranges; unpaired objects stay open. JEV remains unimplemented. See [timing, commands and setup](docs/narrative-timing.md) and the [working pocket watch](examples/watch.html). Refresh SillyTavern after updating; no server restart is needed.
 

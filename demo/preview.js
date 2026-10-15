@@ -7,6 +7,7 @@ import { mergeContentInventories } from '../core/content-inventory.js';
 const lightingDemo = new URLSearchParams(location.search).has('lighting');
 const artifactDemo = new URLSearchParams(location.search).has('artifact');
 const timingDemo = new URLSearchParams(location.search).has('timing');
+const journalDemo = new URLSearchParams(location.search).has('journal');
 const script = artifactDemo ? '[3 August 1991 | Diary preview | 12:26 p.m. | Summer | Shop]\n#BACKGROUND kitchen\n' + '```html interactive id=diary\n' + await fetch('../examples/diary.html').then(response => response.text()) + '\n```' : lightingDemo ? `[3 August 1991 | Lighting preview | 12:26 p.m. | Summer | Street]
 #BACKGROUND street
 Nina: "Outside at midday."
@@ -30,7 +31,11 @@ document.querySelector('#send_but').addEventListener('click', () => { document.q
 const catalog = new AssetResolver(new URL('../', import.meta.url));
 const [published, local] = await Promise.all([catalog.json('assets.json'), catalog.json('assets.local.json')]);
 const inventory = mergeContentInventories(published || {}, local || {}); catalog.dispose();
-context.extensionSettings.visual_novel_plus.interactiveArtifacts = artifactDemo || timingDemo;
+context.extensionSettings.visual_novel_plus.interactiveArtifacts = artifactDemo || timingDemo || journalDemo;
+if (journalDemo) {
+    context.chat = [{ mes: 'Private canonical text.\n/////\n[3 August 1991 | Before First Year | 12:26 p.m. | Summer | Shop]\n#BACKGROUND kitchen\nThe wand responds to your hand.\n```vnplus-journal\n' + JSON.stringify({ entries: [{ id: '1991-08-03-first-wand', title: 'My first wand', text: 'A wand finally chose me today. Going to Hogwarts suddenly feels real.' }] }) + '\n```' }, { mes: 'Private canonical text.\n/////\n#ARTIFACT diary' }];
+    document.querySelector('#chat').innerHTML = context.chat.map((message, index) => `<div class="mes" mesid="${index}"><div class="mes_block"><div class="mes_buttons"></div><div class="mes_text"></div></div></div>`).join('');
+}
 if (timingDemo) context.chat[0].mes = `Private canonical text.\n/////\n[3 August 1991 | Before First Year | 12:26 p.m. | Summer | Shop]
 #BACKGROUND kitchen
 #VISUAL see_watch
@@ -42,8 +47,9 @@ Henry: "There is still time to catch the train." [normal]`;
 if (timingDemo) document.querySelector('.mes_text').textContent = splitMessage(context.chat[0].mes).pov;
 const controller = new VNController(createHost(() => context, { localContent: false }), new URL('../', import.meta.url), inventory);
 if (timingDemo) controller.visuals.readLocal = async () => fetch('../examples/watch.html').then(response => response.text());
+if (journalDemo) controller.html.readLocal = async () => fetch('../examples/diary.html').then(response => response.text());
 if (new URLSearchParams(location.search).has('css')) {
     controller.environmentStyle.read = async () => fetch('../examples/dialogue.css').then(response => response.text());
     await controller.loadEnvironmentStyle();
 }
-await controller.open(0);
+await controller.open(journalDemo ? 1 : 0);

@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Diary</title>
 <style>
-body{max-width:760px;margin:32px auto;padding:0 24px;background:#eee5d1;color:#302c25;font:17px/1.6 Georgia,serif}h1{margin-bottom:0}#when{color:#6a6252}textarea{box-sizing:border-box;width:100%;min-height:150px;padding:14px;background:#fffaf0;color:inherit;border:1px solid #a69a7d;font:inherit;resize:vertical}button{padding:9px 20px;background:#403c31;color:#fffaf0;border:0;font:inherit;cursor:pointer}button:disabled{opacity:.5}article{border-top:1px solid #bdb093;padding:18px 0}article p{white-space:pre-wrap}article small{color:#6a6252}#status{min-height:1.6em}
+body{max-width:760px;margin:32px auto;padding:0 24px;background:#eee5d1;color:#302c25;font:17px/1.6 Georgia,serif}h1{margin-bottom:0}#when{color:#6a6252}textarea{box-sizing:border-box;width:100%;min-height:150px;padding:14px;background:#fffaf0;color:inherit;border:1px solid #a69a7d;font:inherit;resize:vertical}button{padding:9px 20px;background:#403c31;color:#fffaf0;border:0;font:inherit;cursor:pointer}button:disabled{opacity:.5}article{border-top:1px solid #bdb093;padding:18px 0}article h2{font-size:1.1em;margin:4px 0}article p{white-space:pre-wrap}article small{color:#6a6252}#status{min-height:1.6em}
 </style></head><body>
 <h1>Diary</h1><p id="when">Opening diary…</p>
 <textarea aria-label="Diary entry" placeholder="Write an entry…"></textarea>
@@ -9,23 +9,33 @@ body{max-width:760px;margin:32px auto;padding:0 24px;background:#eee5d1;color:#3
 <script>
 (async () => {
     const button = document.querySelector('#save'), input = document.querySelector('textarea'), status = document.querySelector('#status');
+    let signature;
     const dateLabel = scene => [scene?.dateLabel, scene?.timeLabel].filter(Boolean).join(' · ') || 'Undated';
     function render(entries) {
         const root = document.querySelector('#entries'); root.replaceChildren();
         for (const entry of [...entries].reverse()) {
             const article = document.createElement('article'), date = document.createElement('small'), text = document.createElement('p');
-            date.textContent = entry.when; text.textContent = entry.text; article.append(date, text); root.append(article);
+            date.textContent = entry.when;
+            if (entry.title) { const title = document.createElement('h2'); title.textContent = entry.title; article.append(title); }
+            text.textContent = entry.text; article.append(date, text); root.append(article);
         }
+    }
+    async function refresh() {
+        const snapshot = await VNPlus.read(); document.querySelector('#when').textContent = dateLabel(snapshot.scene?.scene);
+        const entries = snapshot.data.entries || [], next = JSON.stringify(entries);
+        if (signature !== next) { signature = next; render(entries); }
+        return snapshot;
     }
     try {
         await VNPlus.ready;
-        const snapshot = await VNPlus.read(); document.querySelector('#when').textContent = dateLabel(snapshot.scene?.scene); render(snapshot.data.entries || []); button.disabled = false;
+        await refresh(); button.disabled = false;
+        setInterval(() => { refresh().catch(() => {}); }, 1500);
         button.addEventListener('click', async () => {
             if (!input.value.trim()) return;
             button.disabled = true;
             try {
                 const current = await VNPlus.read();
-                const saved = await VNPlus.extra.push('entries', { text: input.value, when: dateLabel(current.scene?.scene) }); render(saved.data.entries); input.value = ''; status.textContent = 'Entry saved to this timeline.';
+                await VNPlus.extra.push('entries', { text: input.value, when: dateLabel(current.scene?.scene) }); await refresh(); input.value = ''; status.textContent = 'Entry saved to this timeline.';
             } catch (error) { status.textContent = error.message; }
             finally { button.disabled = false; }
         });

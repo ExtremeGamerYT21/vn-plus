@@ -1,5 +1,6 @@
 import { chatIdentity, latestAssistant } from './message-reader.js';
 import { sharedVariables } from './shared-state.js';
+import { appendJournal } from './journal-format.js';
 
 export function messageRevision(message) {
     const text = String(message?.mes || ''); let a = 2166136261, b = 2246822507;
@@ -86,6 +87,16 @@ export class MessageExtraStore {
         this.pending = setTimeout(() => { this.pending = null; if (current()) void this.host.saveChat?.(); }, 300);
     }
     dispose() { clearTimeout(this.pending); }
+    syncJournal(index, environment, journal) {
+        const binding = this.capture(index), previous = binding.read('journals') || {};
+        if (JSON.stringify(own(previous, environment) || null) === JSON.stringify(journal)) return false;
+        binding.mutate(record => {
+            record.journals ??= {};
+            if (journal) Object.defineProperty(record.journals, environment, { value: jsonData(journal), enumerable: true, configurable: true, writable: true });
+            else delete record.journals[environment];
+        });
+        return true;
+    }
     artifactSession({ index, beat, environment, id, scene, alive = () => true }) {
         if (!keyPattern.test(id)) throw new Error('Artifact ID must use letters, digits, underscores, dots or hyphens.');
         const thisStore = this, binding = this.capture(index), anchor = binding.anchor(), current = () => alive() && binding.current();
@@ -94,13 +105,18 @@ export class MessageExtraStore {
             const data = Object.create(null), context = this.host.context(), seen = new Set();
             for (let at = 0; at <= index; at++) {
                 const message = context.chat[at], record = own(own(own(message?.extra, 'vn_plus'), 'revisions'), messageRevision(message));
+                const journal = own(record?.journals, environment);
+                const eligible = id === 'diary' && journal && (at < index || journal.beat <= beat);
+                let journalApplied = false;
                 for (const event of record?.events || []) {
+                    if (eligible && !journalApplied && event.beat >= journal.beat) { appendJournal(data, journal); journalApplied = true; }
                     if (event.environment !== environment || event.artifact !== id || (at === index && event.beat > beat)) continue;
                     if (seen.has(event.id)) continue; seen.add(event.id);
                     if (event.op === 'set') data[event.key] = structuredClone(event.value);
                     else if (event.op === 'delete') delete data[event.key];
                     else if (event.op === 'push') { data[event.key] ??= []; if (Array.isArray(data[event.key])) data[event.key].push(structuredClone(event.value)); }
                 }
+                if (eligible && !journalApplied) appendJournal(data, journal);
             }
             const state = structuredClone(scene());
             return { anchor: { ...anchor, beat }, scene: state, variables: state?.available ? sharedVariables(state) : {}, data };

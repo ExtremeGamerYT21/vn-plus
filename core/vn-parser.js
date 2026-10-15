@@ -1,5 +1,6 @@
 import { isNarratorName } from './character-registry.js';
 import { parseSceneHeader } from './scene-context.js';
+import { parseJournal } from './journal-format.js';
 const COMMANDS = new Set(['BACKGROUND', 'MUSIC', 'AMBIENT', 'SFX', 'FADE', 'FLASH', 'SHAKE', 'TEXT', 'ENTER', 'EXIT', 'MODE', 'CAMERA', 'TINT', 'SCENE', 'VISUAL']);
 const LEGACY = { SOUNDFX: 'SFX' };
 const ROOT_HTML = /^\s*(?:<!doctype\s+html\b|<(?:html|article|section|div|main|svg|table|canvas|figure|pre|p|style|h[1-6]|details)\b)/i;
@@ -25,7 +26,7 @@ function completedDialogue(text) {
 export function parsePOV(pov) {
     const tokens = [], errors = [];
     const lines = (pov || '').match(/[^\n]*\n|[^\n]+$/g) || [];
-    let current = null, html = null, fence = null;
+    let current = null, html = null, fence = null, journal = null, journalBlocks = 0;
     const htmlDepth = (line, tag) => {
         const tags = line.match(new RegExp(`<\\/?${tag}\\b[^>]*>`, 'gi')) || [];
         return tags.reduce((depth, value) => depth + (value.startsWith('</') ? -1 : /\/\s*>$/.test(value) ? 0 : 1), 0);
@@ -58,16 +59,24 @@ export function parsePOV(pov) {
         const line = lines[i], clean = line.replace(/\r?\n$/, ''), trimmed = clean.trim();
         if (fence) {
             if (new RegExp(`^\\s*${fence.marker}{${fence.count},}\\s*$`).test(clean)) {
-                if (fence.html) tokens.push({ type: 'artifact', html: fence.text, interactive: fence.interactive, ...(fence.id ? { id: fence.id } : {}), line: fence.line });
+                if (fence.journal) {
+                    try {
+                        if (++journalBlocks > 1 || lines.slice(i + 1).some(line => line.trim())) throw new Error('Journal metadata must be a single block at the end of the POV.');
+                        journal = { entries: parseJournal(fence.text), line: fence.line };
+                    } catch (error) { journal = null; errors.push({ line: fence.line, message: `Journal metadata ignored: ${error.message}` }); }
+                }
+                else if (fence.html) tokens.push({ type: 'artifact', html: fence.text, interactive: fence.interactive, ...(fence.id ? { id: fence.id } : {}), line: fence.line });
                 else if (fence.text.trim()) tokens.push({ type: 'narration', text: fence.text, line: fence.line });
                 fence = null;
             } else fence.text += line;
             continue;
         }
         const startFence = /^\s*(`{3,}|~{3,})([^\r\n]*)$/.exec(clean);
-        if (startFence) {
+        if (startFence && /^vnplus-journal(?:\s|$)/i.test(startFence[2].trim()) && current?.type === 'dialogue' && !completedDialogue(current.text)) { current.text += line; continue; }
+        if (startFence && !html) {
             flush();
             fence = { marker: startFence[1][0], count: startFence[1].length, html: /^html(?:\s|$)/i.test(startFence[2].trim()), interactive: /\binteractive\b/i.test(startFence[2]), text: '', line: i + 1 };
+            fence.journal = /^vnplus-journal(?:\s|$)/i.test(startFence[2].trim());
             const id = /(?:^|\s)id=([a-zA-Z0-9][a-zA-Z0-9_.-]{0,63})(?=\s|$)/.exec(startFence[2]);
             if (id) fence.id = id[1];
             continue;
@@ -121,5 +130,5 @@ export function parsePOV(pov) {
     }
     flush();
     if (fence || html) errors.push({ line: (fence || html).line, message: 'Unclosed artifact/code block withheld until complete.' });
-    return { tokens, errors };
+    return { tokens, errors, ...(journal ? { journal } : {}) };
 }

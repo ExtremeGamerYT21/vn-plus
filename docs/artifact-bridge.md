@@ -25,6 +25,8 @@ Local HTML uses the same resource policy as fenced artifacts: inline styles/scri
 
 ## Named fenced artifacts
 
+Since 2.16, the reserved `diary` ID also receives important-scene entries emitted by the existing POV transformer as a trailing `vnplus-journal` JSON block. VN+ collects per-response deltas locally, with no extra model call. Entries obey the end-of-response timeline boundary and coexist with manual notes. See [journal format, transformer prompt and setup](journal.md).
+
 Inline HTML can use the same persistence:
 
 ````text

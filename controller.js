@@ -26,6 +26,7 @@ import { contextEntries, contextNames, reduceContext } from './core/context-stat
 import { sceneLighting } from './core/scene-context.js';
 import { BeatScheduler, applyCommandState } from './core/narrative-timing.js';
 import { VisualRenderer } from './renderers/visual-renderer.js';
+import { collectJournals } from './core/journal-collector.js';
 
 export class VNController {
     constructor(host, base, inventory = {}) {
@@ -74,6 +75,7 @@ export class VNController {
     async refreshContext() {
         if (this.disposed || this.busy) return;
         clearTimeout(this.contextTimer);
+        try { collectJournals(this.host, this.environment.id); } catch (error) { this.log(`Journal collection: ${error.message}`); }
         const context = this.host.context(), entries = contextEntries(context), resolver = this.contextResolver, registry = this.contextRegistry, environment = this.environment;
         const revision = JSON.stringify([chatIdentity(context), environment.id, entries, this.settings.castMemoryTurns, this.settings.showPlayerBust, this.settings.playerName, this.settings.playerAliases, this.settings.characters, this.settings.displayMode]);
         if (revision === this.contextRevision && this.sharedState.binding?.current()) { this.publishContextActivity(); return; }
@@ -320,7 +322,7 @@ export class VNController {
         if (preserveWorld) { this.stage.cancelPending(); this.audio.cancelPending(); this.audio.cancelOneShots(); }
         else { this.stage.clear(); this.audio.close(); this.visuals.clear(); this.worldIdentity = null; }
         this.root.querySelector('.vn-panel').hidden = true; this.root.querySelector('.vn-reply').hidden = true;
-        this.transcriptArtifact = false;
+        this.transcriptArtifact = false; this.standaloneArtifact = false;
         this.playbackState.pending = false; this.publishPlaybackActivity();
     }
     wait(message) {
@@ -391,6 +393,7 @@ export class VNController {
     present(result) {
         if (!result || !result.beat || this.root.hidden || this.busy) return;
         this.timing.cancel(); this.html.close(); this.dialogue.cancel(); this.effects.clear(); this.audio.cancelOneShots();
+        this.standaloneArtifact = false;
         this.root.querySelector('.vn-status').hidden = true; this.root.querySelector('.vn-reply').hidden = true;
         const { state, token } = result.beat;
         this.runtimeState = structuredClone(state);
@@ -448,23 +451,25 @@ export class VNController {
     visualSession(token, alive) {
         // An overlay follows the viewed paragraph; each request captures its own timeline anchor.
         return { request: async (method, args) => {
-            const beat = this.playback?.restore().beat, generation = this.generation, index = this.selected, environment = this.environment.id;
-            const current = () => alive() && !this.root.hidden && !this.disposed && !this.busy && generation === this.generation && index === this.selected && environment === this.environment.id && beat === this.playback?.restore().beat;
+            const result = this.playback?.restore(), beat = result?.beat, position = this.playback?.position, generation = this.generation, index = this.selected, environment = this.environment.id;
+            const current = () => alive() && !this.root.hidden && !this.disposed && !this.busy && generation === this.generation && index === this.selected && environment === this.environment.id && position === this.playback?.position && beat === this.playback?.restore().beat;
             if (!beat || !current()) throw new Error('The visual scene changed. Try again in the current scene.');
             const scene = await this.artifactScene({ ...beat, state: this.runtimeState || beat.state }, index);
             if (!current()) throw new Error('The visual scene changed. Try again in the current scene.');
-            const session = this.host.extra.artifactSession({ index, beat: beat.index, environment, id: token.id, alive: current, scene: () => scene });
+            const session = this.host.extra.artifactSession({ index, beat: result.done ? this.playback.timeline.beats.length : beat.index, environment, id: token.id, alive: current, scene: () => scene });
             return session.request(method, args);
         } };
     }
     async readArtifact(id, signal) {
         if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$/.test(id)) throw new Error('Invalid local artifact ID.');
-        const response = await fetch(this.resolver.url(`artifacts/${id}/index.html`), { signal, cache: 'no-store' });
+        let response = await fetch(this.resolver.url(`artifacts/${id}/index.html`), { signal, cache: 'no-store' });
+        if (id === 'diary' && response.status === 404) response = await fetch(new URL('examples/diary.html', this.base), { signal, cache: 'no-store' });
         if (!response.ok) throw new Error(`Add artifacts/${id}/index.html to this environment (HTTP ${response.status}).`);
         const html = await response.text(); if (new TextEncoder().encode(html).byteLength > 1048576) throw new Error('Local artifact HTML exceeds 1 MiB.');
         return html;
     }
     artifactSession(token, open = () => true) {
+        if (token.standalone) return this.visualSession(token, open);
         const beat = this.playback?.timeline.beats.find(item => item.token === token);
         if (!beat) throw new Error('This artifact is not part of the selected scene.');
         const generation = this.generation, environment = this.environment.id, index = this.selected;
@@ -551,9 +556,15 @@ export class VNController {
             }
             if (action === 'debug' || action === 'transcript') { if (this.root.hidden) await this.open(this.selected); this.panel(action); return; }
             if (action === 'close-panel') { this.root.querySelector('.vn-panel').hidden = true; this.root.querySelector('.vn-dialogue').focus(); this.scheduleAuto(); return; }
-            if (action === 'close-artifact') { this.html.close(); if (this.transcriptArtifact) { this.transcriptArtifact = false; this.panel('transcript'); } else if (this.playback && !this.busy) this.present(this.playback.forward()); return; }
+            if (action === 'close-artifact') { this.html.close(); if (this.standaloneArtifact) { this.standaloneArtifact = false; this.scheduleAuto(); } else if (this.transcriptArtifact) { this.transcriptArtifact = false; this.panel('transcript'); } else if (this.playback && !this.busy) this.present(this.playback.forward()); return; }
             if (action === 'close-reply') { this.root.querySelector('.vn-reply').hidden = true; const result = this.playback?.restore(); if (result?.done) this.present(this.playback.back()); else this.present(result); return; }
             if (this.busy) return;
+            if (action === 'diary') {
+                if (this.root.hidden) await this.open(this.selected);
+                if (!this.playback?.restore().beat) return;
+                this.dialogue.skip(); this.standaloneArtifact = true; this.transcriptArtifact = false;
+                this.html.open({ type: 'artifact', id: 'diary', local: true, interactive: true, standalone: true }); return;
+            }
             if (action === 'reply') { this.dialogue.skip(); this.showReply(); return; }
             if (action === 'auto') { this.settings.autoAdvance = !this.settings.autoAdvance; this.host.save(this.settings); this.root.querySelector('[data-action="auto"]').setAttribute('aria-pressed', String(this.settings.autoAdvance)); this.scheduleAuto(); return; }
             if (action === 'send') { const input = this.root.querySelector('#vnplus-reply'); if (input.value.trim()) { this.host.send(input.value); input.value = ''; this.root.querySelector('.vn-reply-status').textContent = ''; } return; }

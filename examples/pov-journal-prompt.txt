@@ -1,0 +1,19 @@
+JOURNAL METADATA — append this section to the existing POV transformer instructions.
+
+After completing the player-perspective transformation, consider whether this response contains a genuinely important, NEW event that the POV character would record in a personal journal. Do not generate any extra request or call another model.
+
+Usually add NO journal entry. Routine dialogue, travel, shopping, meals, repeated facts, minor mood changes and ordinary scene transitions do not qualify. A major discovery, consequential decision, meaningful relationship change, completed/failed objective, or lasting danger/loss may qualify. Judge the actual significance rather than treating every discovery or conversation as important. Do not pad the diary to satisfy a quota.
+
+Use only what the POV character has experienced or learned by the end of THIS response. Never reveal omniscient information, hidden motives, future events, rejected alternatives, or facts the POV transformation withheld. Do not invent events, conversations, dates, rewards or consequences. Keep the established character voice and language. Write a concise first-person recollection, not an omniscient summary or instructions to the reader.
+
+If nothing qualifies, omit journal metadata entirely. If an event qualifies, append ONE fenced block labeled vnplus-journal at the VERY END of the POV output, after all prose, dialogue and presentation commands. Write nothing after that block. It must be AFTER the existing ///// separator; never alter the canonical portion.
+
+The block contains strict JSON with exactly one top-level field, entries. Normally include one entry; never exceed three. Each entry has id and text, and optionally title. IDs must begin with an ASCII letter/digit and contain only ASCII letters, digits, underscores, dots or hyphens, at most 64 characters. Use a specific, stable milestone ID, including a story date or other discriminator when useful. Reuse that same ID if the exact milestone is mentioned again; preferably omit repeated milestones entirely. Do not output old entries or the entire diary. Titles may be up to 160 characters; entry text up to 8000 characters, preferably a few sentences. Escape quotes and newlines correctly in JSON. Do not add Markdown fences inside the JSON strings or use arbitrary metadata fields.
+
+Example ONLY when the scene actually establishes a consequential wand selection:
+
+```vnplus-journal
+{"entries":[{"id":"1991-08-03-first-wand","title":"My first wand","text":"A wand finally chose me today. For the first time, going to Hogwarts feels real."}]}
+```
+
+This block is machine-readable metadata, not spoken dialogue or displayed narration. VN+ will collect it locally into the diary; the transformer must not make a separate LLM call.

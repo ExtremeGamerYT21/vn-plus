@@ -7,7 +7,7 @@ export function createOverlay() {
       <div class="vn-world"><div class="vn-background"></div><div class="vn-stage"></div><div class="vn-tint"></div><div class="vn-darkness"></div></div>
       <div class="vn-flash"></div>
       <header class="vn-top"><div><span class="vn-brand">VN<span>+</span></span><span class="vn-scene-label">PLAYER PERSPECTIVE</span></div>
-        <nav aria-label="Scene tools"><select class="vn-environment-picker" aria-label="VN content environment" data-environment-picker title="Choose this scene's character artwork, backgrounds and audio"></select><select class="vn-layout-picker" aria-label="VN bust layout" data-layout-picker></select><button data-action="speech">Voices</button><button data-action="transcript">Transcript</button><button data-action="debug">Inspect</button><button data-action="mute-music" aria-pressed="false">Mute music</button><button data-action="exit">Exit VN</button></nav></header>
+        <nav aria-label="Scene tools"><select class="vn-environment-picker" aria-label="VN content environment" data-environment-picker title="Choose this scene's character artwork, backgrounds and audio"></select><select class="vn-layout-picker" aria-label="VN bust layout" data-layout-picker></select><button data-action="diary">Diary</button><button data-action="speech">Voices</button><button data-action="transcript">Transcript</button><button data-action="debug">Inspect</button><button data-action="mute-music" aria-pressed="false">Mute music</button><button data-action="exit">Exit VN</button></nav></header>
       <div class="vn-status" role="status" hidden></div>
       <div class="vn-content-notice" role="status" hidden></div>
       <div class="vn-dialogue" tabindex="0" role="button" aria-label="Advance dialogue">

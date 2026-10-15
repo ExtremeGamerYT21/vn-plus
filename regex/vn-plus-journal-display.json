@@ -1,0 +1,15 @@
+{
+  "id": "85e93772-8494-44e9-8a32-09b0c01500a4",
+  "scriptName": "VN+ · Hide trailing journal metadata",
+  "findRegex": "/^[\\t ]*(?:`{3,}|~{3,})vnplus-journal\\b[^\\r\\n]*(?:\\r?\\n|$)[\\s\\S]*$/gim",
+  "replaceString": "",
+  "trimStrings": [],
+  "placement": [2],
+  "disabled": false,
+  "markdownOnly": true,
+  "promptOnly": false,
+  "runOnEdit": true,
+  "substituteRegex": 0,
+  "minDepth": null,
+  "maxDepth": null
+}

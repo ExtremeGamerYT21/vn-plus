@@ -1,5 +1,5 @@
 {
-  "status": "76 passed · 0 failed",
+  "status": "82 passed · 0 failed",
   "tests": [
     "PASS · POV privacy and four characters from one scenario",
     "PASS · backward restores background, expression and audio state",
@@ -76,6 +76,12 @@
     "PASS · a paired close stays attached to the spoken beat and waits for actual audio plus a hurried delay",
     "PASS · manually closing an object preserves narrative position and cannot reopen it at the next paragraph",
     "PASS · visual-only turns wait for input even with Auto and multiple objects close independently",
-    "PASS · exiting with a pending reaction cancels its timer and removes every visual and bridge"
+    "PASS · exiting with a pending reaction cancels its timer and removes every visual and bridge",
+    "PASS · POV journal deltas collect while VN is closed without generation or changes to source text",
+    "PASS · the real diary template reconstructs transformer entries from previous messages through its sandbox API",
+    "PASS · repeated context events cannot duplicate journal entries or expire them with the cast window",
+    "PASS · streaming journal metadata is withheld until finalization and stays out of VN prose and transcript",
+    "PASS · an independent diary receives the current scene delta only after playback reaches its end",
+    "PASS · the Diary toolbar opens the built-in template without a script command and closes without advancing"
   ]
 }
