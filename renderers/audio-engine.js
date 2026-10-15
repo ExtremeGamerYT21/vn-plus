@@ -40,17 +40,26 @@ export class AudioEngine {
             channel.volume = volume; return;
         }
         // Rate-only changes never restart a track.
-        if (track && channel.loadedName === track.name && channel.audio) { channel.key = key; channel.track = track; channel.audio.playbackRate = track.rate; return; }
+        if (track && channel.loadedName === track.name && channel.audio) {
+            channel.key = key; channel.track = track; channel.audio.playbackRate = track.rate;
+            if (channel.volume !== volume) this.fade(channel.audio, volume, this.settings.crossfadeDuration); channel.volume = volume; return;
+        }
+        const previousVolume = channel.volume;
         channel.key = key; channel.track = track; channel.volume = volume; const request = (channel.request || 0) + 1; channel.request = request;
         if (!track) { if (channel.audio) this.fade(channel.audio, 0, this.settings.crossfadeDuration, true); channel.audio = null; return; }
         const epoch = this.epoch, url = await this.resolver.audio(kind, track.name);
         if (epoch !== this.epoch || request !== channel.request || key !== channel.key) return;
         if (!url) { if (channel.audio) this.fade(channel.audio, 0, this.settings.crossfadeDuration, true); channel.audio = null; this.report(`Missing ${kind}: ${track.name}`); return; }
+        if (channel.audio && channel.url === url) {
+            channel.loadedName = track.name; channel.audio.playbackRate = track.rate;
+            if (previousVolume !== volume) this.fade(channel.audio, volume, this.settings.crossfadeDuration);
+            return;
+        }
         const previous = channel.audio, audio = this.audioFactory();
         audio.src = url; audio.loop = true; audio.volume = 0; audio.playbackRate = track.rate;
         audio.muted = kind === 'music' && !!this.settings.musicMuted;
         if (kind === 'music') this.musicSources.add(audio);
-        audio.preservesPitch = false; channel.audio = audio; channel.loadedName = track.name; this.sources.add(audio);
+        audio.preservesPitch = false; channel.audio = audio; channel.loadedName = track.name; channel.url = url; this.sources.add(audio);
         // Keep at most current + fading source per channel during rapid navigation.
         if (channel.fading && channel.fading !== previous) this.stop(channel.fading);
         channel.fading = previous;
@@ -66,5 +75,13 @@ export class AudioEngine {
         try { await audio.play(); } catch { this.stop(audio); }
     }
     cancelOneShots() { this.sfxEpoch++; for (const audio of [...this.sources]) if (!audio.loop) this.stop(audio); }
+    cancelPending() {
+        this.epoch++;
+        for (const channel of Object.values(this.channels)) {
+            channel.request = (channel.request || 0) + 1;
+            channel.key = channel.audio ? `${channel.loadedName}:${channel.audio.playbackRate}` : undefined;
+            channel.track = channel.audio ? { name: channel.loadedName, rate: channel.audio.playbackRate } : null;
+        }
+    }
     close() { this.epoch++; this.sfxEpoch++; for (const audio of [...this.sources]) this.stop(audio); this.channels = { music: {}, ambient: {} }; }
 }

@@ -24,13 +24,15 @@ export class StageRenderer {
         this.root.style.setProperty('--vn-align', this.settings.stageAlignment === 'top' ? 'flex-start' : 'flex-end');
         background.style.transform = this.settings.reducedMotion || !this.settings.screenEffects ? '' : `translate(${state.camera.x}%, ${state.camera.y}%) scale(${state.camera.zoom})`;
         this.root.querySelector('.vn-tint').style.background = CSS.supports('color', state.tint) ? state.tint : 'transparent';
-        if (background.dataset.asset !== (state.background || '')) background.style.backgroundImage = '';
         background.dataset.asset = state.background || '';
         const backgroundRequest = state.background ? this.resolver.background(state.background).then(async url => {
             const properties = url ? await this.resolver.backgroundProperties(url) : { inside: false };
-            if (current()) { background.style.backgroundImage = url ? `url("${url}")` : ''; this.publishContext(state, properties.inside); }
+            if (current()) {
+                if (url !== this.backgroundUrl) { background.style.backgroundImage = url ? `url("${url}")` : ''; this.backgroundUrl = url; }
+                this.publishContext(state, properties.inside);
+            }
         }) : Promise.resolve();
-        if (!state.background) { background.style.backgroundImage = ''; this.publishContext(state, false); }
+        if (!state.background) { background.style.backgroundImage = ''; this.backgroundUrl = null; this.publishContext(state, false); }
         const characters = Object.values(state.characters).filter(character => !this.registry.isNarrator(character.id) && !this.registry.isNarrator(character.name));
         const visibleIds = new Set(characters.map(character => character.id));
         for (const [id, node] of this.nodes) if (!visibleIds.has(id)) { this.sprites.remove(node); node.remove(); this.nodes.delete(id); }
@@ -61,11 +63,12 @@ export class StageRenderer {
             await this.sprites.render(node, character.id, character.expression, this.registry.expressionCandidates(character.id, character.expression), props);
         })]);
     }
+    cancelPending() { this.generation++; this.sprites.cancelPending(); }
     clear() {
         this.generation++;
         this.sprites.clear();
         this.nodes.forEach(node => node.remove()); this.nodes.clear();
-        const background = this.root.querySelector('.vn-background'); background.style.backgroundImage = ''; background.dataset.asset = '';
+        const background = this.root.querySelector('.vn-background'); background.style.backgroundImage = ''; background.dataset.asset = ''; this.backgroundUrl = null;
         this.publishContext({}, false);
         this.root.querySelector('.vn-tint').style.background = ''; this.root.classList.remove('vn-black');
     }

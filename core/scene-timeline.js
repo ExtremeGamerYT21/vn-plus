@@ -11,13 +11,13 @@ export function trackSpec(args) {
     return args ? { name: match ? args.slice(0, match.index) : args, rate: SPEEDS[match?.[1]?.toLowerCase()] || 1 } : null;
 }
 
-export function compileTimeline(tokens, registry, settings, inherited = {}) {
+export function compileTimeline(tokens, registry, settings, inherited = {}, recordBeats = true) {
     let state = emptyState(settings.displayMode);
-    state.background = inherited.background ?? null; state.music = clone(inherited.music ?? null);
-    state.scene = clone(inherited.scene ?? null);
+    for (const key of ['background', 'music', 'ambient', 'scene', 'textEffect', 'mode', 'black', 'camera', 'tint']) if (Object.hasOwn(inherited, key)) state[key] = clone(inherited[key]);
+    state.characters = Object.assign(Object.create(null), clone(inherited.characters || {}));
     const beats = [], errors = [], views = [];
     const names = tokens.filter(token => token.type === 'dialogue' || (token.type === 'command' && token.name === 'ENTER')).map(token => token.character || token.args);
-    const cast = [...new Set(names.filter(name => !registry.isNarrator(name)).map(name => registry.identify(name)))];
+    const cast = [...new Set([...Object.keys(state.characters), ...names.filter(name => !registry.isNarrator(name)).map(name => registry.identify(name))])];
     const maxSlots = Math.max(1, cast.filter(id => !registry.isNarrator(id) && (settings.showPlayerBust || !registry.isPlayer(id))).length);
     const enter = (name, emotion) => {
         const id = registry.identify(name);
@@ -65,9 +65,11 @@ export function compileTimeline(tokens, registry, settings, inherited = {}) {
                 }
             }
         }
-        const index = beats.length;
-        beats.push({ index, token, state: clone(state), oneShots });
-        if (token.type !== 'command' && token.type !== 'header') views.push(index);
+        if (recordBeats) {
+            const index = beats.length;
+            beats.push({ index, token, state: clone(state), oneShots });
+            if (token.type !== 'command' && token.type !== 'header') views.push(index);
+        }
     }
-    return { beats, views, maxSlots, errors };
+    return { beats, views, maxSlots, errors, finalState: clone(state) };
 }

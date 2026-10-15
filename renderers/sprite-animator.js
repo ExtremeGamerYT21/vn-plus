@@ -89,6 +89,7 @@ export class SpriteAnimator {
         const key = JSON.stringify([expression, emotions, props.assetFolder || id, props.blink || null, this.settings.spriteBlinking, this.reduced]);
         if (key === record.key) { if (this.reduced) { this.settle(record); this.stopBlink(record); } else this.scheduleBlink(node, record); return record.pending; }
         record.key = key; const revision = ++record.revision;
+        record.loading = true;
         this.stopBlink(record); this.settle(record); for (const cancel of [...record.loads]) cancel();
         record.pending = (async () => {
             const url = await this.resolver.sprite(id, emotions, props);
@@ -113,19 +114,22 @@ export class SpriteAnimator {
             node.classList.remove('vn-no-sprite'); node.dataset.sprite = url; node.dataset.expression = expression;
             this.configureBreathing(record);
             void this.prepareBlink(node, record, revision, url, emotions);
-        })();
+        })().finally(() => { if (record.revision === revision) record.loading = false; });
         return record.pending;
     }
     async prepareBlink(node, record, revision, openURL, emotions) {
-        const old = record.frame?.querySelector('.vn-sprite-blink'); old?.remove();
-        if (this.reduced || !this.settings.spriteBlinking || record.props.blink === false || record.props.blink?.enabled === false) return;
-        const resolved = decodeURIComponent(new URL(openURL).pathname.split('/').at(-1)).replace(/\.[^.]+$/, '');
-        const url = await this.resolver.blinkSprite(record.id, [emotions[0], resolved], record.props);
-        if (!url || !this.valid(node, record, revision)) return;
-        const image = await this.load(url, record);
-        if (!image || !this.valid(node, record, revision)) return;
-        image.className = 'vn-sprite-blink'; image.alt = ''; image.hidden = true; image.setAttribute('aria-hidden', 'true');
-        record.frame.append(image); this.scheduleBlink(node, record);
+        record.blinkLoading = true;
+        try {
+            const old = record.frame?.querySelector('.vn-sprite-blink'); old?.remove();
+            if (this.reduced || !this.settings.spriteBlinking || record.props.blink === false || record.props.blink?.enabled === false) return;
+            const resolved = decodeURIComponent(new URL(openURL).pathname.split('/').at(-1)).replace(/\.[^.]+$/, '');
+            const url = await this.resolver.blinkSprite(record.id, [emotions[0], resolved], record.props);
+            if (!url || !this.valid(node, record, revision)) return;
+            const image = await this.load(url, record);
+            if (!image || !this.valid(node, record, revision)) return;
+            image.className = 'vn-sprite-blink'; image.alt = ''; image.hidden = true; image.setAttribute('aria-hidden', 'true');
+            record.frame.append(image); this.scheduleBlink(node, record);
+        } finally { if (record.revision === revision) record.blinkLoading = false; }
     }
     scheduleBlink(node, record) {
         if (this.reduced || document.hidden || !this.settings.spriteBlinking || !record.frame?.querySelector('.vn-sprite-blink') || record.blinkTimer || record.openTimer) return;
@@ -151,6 +155,12 @@ export class SpriteAnimator {
         const record = this.records.get(node); if (!record) return;
         record.revision++; this.stopBlink(record); this.settle(record); this.removeFrame(record.frame); for (const cancel of [...record.loads]) cancel(); this.records.delete(node);
         if (!this.mesh.surfaces.size) this.stopBreathingClock();
+    }
+    cancelPending() {
+        for (const record of this.records.values()) if (record.loading || record.blinkLoading || record.loads.size) {
+            record.revision++; record.key = ''; record.loading = record.blinkLoading = false;
+            for (const cancel of [...record.loads]) cancel();
+        }
     }
     clear() { for (const node of [...this.records.keys()]) this.remove(node); }
     dispose() { this.clear(); this.stopBreathingClock(); this.media?.removeEventListener('change', this.onMotion); document.removeEventListener('visibilitychange', this.onVisibility); this.mesh.dispose(); }

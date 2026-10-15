@@ -28,7 +28,7 @@ document.querySelector('#send_but').addEventListener('click', () => { sends++; d
 function mountChat() { document.querySelector('#chat').innerHTML = context.chat.map((message, index) => `<div class="mes" mesid="${index}"><div class="mes_block"><div class="mes_buttons"></div></div></div>`).join(''); }
 mountChat();
 let controller = new VNController(createHost(() => context, { localContent: false }), new URL('../', import.meta.url), inventory);
-class FakeAudio { constructor() { this.volume = 1; this.paused = true; } async play() { this.paused = false; } pause() { this.paused = true; } removeAttribute() {} load() {} }
+class FakeAudio { constructor() { this.volume = 1; this.paused = true; this.plays = 0; } async play() { this.paused = false; this.plays++; } pause() { this.paused = true; } removeAttribute() {} load() {} }
 controller.audio.audioFactory = () => new FakeAudio();
 let failures = 0, passes = 0;
 async function check(name, run) {
@@ -616,7 +616,7 @@ await check('background and music inherit earlier POV commands and history edits
         await controller.open(3);
         await eventually(() => controller.root.querySelector('.vn-background').style.backgroundImage.includes('street'));
         await eventually(() => controller.audio.channels.music.audio?.src.endsWith('/buzz.mp3'));
-        equal(controller.audio.channels.music.audio.playbackRate, .75); equal(controller.root.querySelectorAll('.vn-character').length, 0);
+        equal(controller.audio.channels.music.audio.playbackRate, .75); equal(controller.root.querySelectorAll('.vn-character').length, 1); assert(controller.stage.nodes.has('ashley'));
         equal(oldEffects, 0); equal(JSON.stringify(context.chat), original);
         await controller.action('next'); equal(controller.playback.position, 1);
         context.chat[2].mes = 'SECRET\n/////\n#BACKGROUND kitchen\n#MUSIC club\nEdited history.';
@@ -738,6 +738,71 @@ await check('the settings CSS toggle and Refresh assets reload styling without a
         await controller.refreshAssets(); await eventually(() => controller.environmentStyleStatus.status === 'loaded'); assert(reads > before); equal(controller.playback.position, position);
         assert(controller.settingsPanel.querySelector('[data-environment-css-status]').textContent.includes('loaded'));
     } finally { controller.settings.environmentCss = enabled; controller.environmentStyle.read = original; await controller.loadEnvironmentStyle(); }
+});
+await check('repeated response commands reuse music ambience background and character frames through generation', async () => {
+    context.chat = [{ mes: 'SECRET\n/////\n#BACKGROUND kitchen\n#MUSIC buzz\n#AMBIENT outside_noise\n#ENTER Nina\nNina: "First." [happy]' }]; mountChat();
+    await controller.open(0); await controller.audio.unlock();
+    await eventually(() => controller.audio.channels.music.audio && controller.audio.channels.ambient.audio && controller.stage.nodes.get('nina')?.dataset.sprite);
+    const node = controller.stage.nodes.get('nina'), record = controller.stage.sprites.records.get(node);
+    await eventually(() => !record.loading && !record.blinkLoading);
+    const frame = record.frame, music = controller.audio.channels.music.audio, ambient = controller.audio.channels.ambient.audio;
+    music.currentTime = 37.5; ambient.currentTime = 42; const musicPlays = music.plays, ambientPlays = ambient.plays;
+    const background = controller.root.querySelector('.vn-background'), image = background.style.backgroundImage, writes = [];
+    const observer = new MutationObserver(records => writes.push(...records)); observer.observe(background, { attributes: true, attributeOldValue: true, attributeFilter: ['style'] });
+    try {
+        emit('GENERATION_STARTED', 'normal'); assert(node.isConnected); assert(frame.isConnected); equal(background.style.backgroundImage, image); assert(!music.paused); assert(!ambient.paused);
+        context.chat.push({ mes: 'SECRET\n/////\n#BACKGROUND KITCHEN\n#MUSIC BUZZ\n#AMBIENT outside noise\n#ENTER Nina\nNina: "Next response." [happy]' });
+        emit('MESSAGE_RECEIVED', 1); emit('GENERATION_ENDED');
+        await eventually(() => controller.selected === 1 && controller.parsed && controller.root.querySelector('.vn-text').textContent.includes('Next response.'));
+        await eventually(() => controller.audio.channels.music.loadedName === 'BUZZ' && controller.audio.channels.ambient.loadedName === 'outside noise');
+        await Promise.all([...controller.stage.sprites.records.values()].map(value => value.pending));
+        assert(controller.stage.nodes.get('nina') === node); assert(controller.stage.sprites.records.get(node) === record); assert(record.frame === frame);
+        assert(controller.audio.channels.music.audio === music); assert(controller.audio.channels.ambient.audio === ambient);
+        equal(music.currentTime, 37.5); equal(ambient.currentTime, 42); equal(music.plays, musicPlays); equal(ambient.plays, ambientPlays);
+        equal(background.style.backgroundImage, image); assert(writes.every(write => write.oldValue.includes('background-image')));
+    } finally { observer.disconnect(); }
+});
+await check('cast and ambience carry between responses and rebuild after refresh while exits and resets are respected', async () => {
+    context.chat = [
+        { mes: 'SECRET\n/////\n#BACKGROUND kitchen\n#MUSIC buzz\n#AMBIENT outside_noise\n#ENTER Nina\n#ENTER Ashley\n#SFX door\nNina: "Earlier." [happy]' },
+        { mes: 'SECRET\n/////\nStill in the same room.' },
+        { mes: 'SECRET\n/////\n#EXIT Nina\nAshley: "She left."' },
+        { mes: 'SECRET\n/////\n#SCENE another\n#ENTER Nina\nNina: "Another scene."' },
+        { mes: 'SECRET\n/////\n#SCENE RESET\nCleared.' },
+    ]; mountChat();
+    await controller.open(1); await eventually(() => controller.stage.nodes.size === 2 && controller.audio.channels.ambient.audio);
+    assert(controller.stage.nodes.has('nina')); assert(controller.stage.nodes.has('ashley'));
+    const nina = controller.stage.nodes.get('nina'); await controller.open(2); assert(!nina.isConnected); assert(controller.stage.nodes.has('ashley'));
+    await controller.open(3); assert(!controller.stage.nodes.has('ashley')); assert(controller.stage.nodes.has('nina'));
+    await controller.open(4); equal(controller.stage.nodes.size, 0); assert(!controller.audio.channels.music.audio); assert(!controller.audio.channels.ambient.audio);
+    controller.dispose(); controller = new VNController(createHost(() => context, { localContent: false }), new URL('../', import.meta.url), inventory); controller.audio.audioFactory = () => new FakeAudio();
+    const sfx = controller.audio.sfx; let oldSounds = 0; controller.audio.sfx = async () => oldSounds++;
+    try {
+        await controller.open(1); await eventually(() => controller.stage.nodes.size === 2 && controller.audio.channels.ambient.audio);
+        equal(oldSounds, 0); equal(controller.playback.timeline.views.length, 1); equal(controller.playback.restore().beat.state.characters.nina.expression, 'happy');
+        controller.close(); equal(controller.stage.nodes.size, 0); equal(controller.audio.sources.size, 0);
+    } finally { controller.audio.sfx = sfx; }
+});
+await check('new generation cancels obsolete world loads while retaining the current music and sprite', async () => {
+    context.chat = [{ mes: 'SECRET\n/////\n#BACKGROUND kitchen\n#MUSIC buzz\nNina: "Current." [happy]' }]; mountChat(); await controller.open(0); await controller.audio.unlock();
+    await eventually(() => controller.audio.channels.music.audio && controller.stage.nodes.get('nina')?.dataset.sprite);
+    const node = controller.stage.nodes.get('nina'), music = controller.audio.channels.music.audio; music.currentTime = 51;
+    const background = controller.resolver.background, audio = controller.resolver.audio, sprite = controller.resolver.sprite;
+    let releaseBackground, releaseAudio, releaseSprite;
+    controller.resolver.background = name => name === 'pending' ? new Promise(resolve => releaseBackground = resolve) : background.call(controller.resolver, name);
+    controller.resolver.audio = (kind, name) => name === 'pending' ? new Promise(resolve => releaseAudio = resolve) : audio.call(controller.resolver, kind, name);
+    controller.resolver.sprite = (id, emotions, props) => emotions[0] === 'pending' ? new Promise(resolve => releaseSprite = resolve) : sprite.call(controller.resolver, id, emotions, props);
+    try {
+        context.chat.push({ mes: 'SECRET\n/////\n#BACKGROUND pending\n#MUSIC pending\nNina: "Obsolete." [pending]' }); await controller.open(1);
+        await eventually(() => releaseBackground && releaseAudio && releaseSprite);
+        emit('GENERATION_STARTED', 'normal'); assert(controller.audio.channels.music.audio === music); assert(node.isConnected);
+        context.chat.push({ mes: 'SECRET\n/////\n#BACKGROUND kitchen\n#MUSIC buzz\nNina: "Newest." [happy]' }); emit('MESSAGE_RECEIVED', 2); emit('GENERATION_ENDED');
+        await eventually(() => controller.parsed && controller.root.querySelector('.vn-text').textContent.includes('Newest.'));
+        await eventually(() => controller.stage.nodes.get('nina')?.dataset.expression === 'happy');
+        releaseBackground(controller.resolver.url('backgrounds/street.png')); releaseAudio(controller.resolver.url('sfx/music/club.mp3')); releaseSprite(controller.resolver.url('characters/nina/sad.webp')); await pause(50);
+        assert(controller.audio.channels.music.audio === music); equal(music.currentTime, 51); assert(controller.stage.nodes.get('nina') === node); equal(node.dataset.expression, 'happy');
+        assert(controller.root.querySelector('.vn-background').style.backgroundImage.includes('kitchen.png'));
+    } finally { controller.resolver.background = background; controller.resolver.audio = audio; controller.resolver.sprite = sprite; }
 });
 controller.dispose();
 document.querySelector('#test-status').textContent = `${passes} passed · ${failures} failed`;

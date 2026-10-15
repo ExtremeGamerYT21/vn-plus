@@ -1,8 +1,10 @@
-# Visual Novel+ 2.10.0
+# Visual Novel+ 2.11.0
 
 A procedural visual novel presentation layer for SillyTavern. It reads **only** the player perspective after an exact `/////` line in the selected assistant message. Canonical narration, conversation storage, generation, and outgoing context remain under SillyTavern and your separate POV workflow.
 
 The renderer is rebuilt in plain JavaScript modules. All 590 supplied assets and the existing character properties are preserved. The extension contains the current implementation, its tests, preview and development tools; unused editing variants and old source/style copies have been removed.
+
+Version 2.11 preserves the visible world between responses and while generation runs. Repeating the same music/ambience recording—even under another keyword or filename alias—keeps its audio player and playback position. Repeating a background keeps the image in place, and existing characters keep their nodes, expressions and animation records instead of entering again. Cast, ambience and other persistent presentation state are reconstructed from earlier selected POVs until changed or cleared. Old SFX/artifacts are not replayed. See [scene continuity](docs/continuity.md). Refresh SillyTavern after updating; no server restart is needed.
 
 Version 2.10 loads an optional local `dialogue.css` from each environment. Customize the dialogue box, typography, textures, button placement/order and responsive layout with scoped CSS. Files unload on environment changes and reload with **Refresh assets**. Disable them under **General → Apply environment dialogue.css**. They are Git-ignored and stay local across updates. See [environment CSS and selectors](docs/environment-css.md) and [the sample stylesheet](examples/dialogue.css). The default appearance is unchanged without a custom file.
 
@@ -83,7 +85,7 @@ NINA: "Who is it?" [excited]
 #SFX door
 ```
 
-See [the complete command grammar](docs/grammar.md), including cinematic/prose/black modes and automatic HTML artifacts. Background, music and scene headers are reconstructed from earlier selected messages; current commands override them in sequence. Other presentation state starts fresh for each response.
+See [the complete command grammar](docs/grammar.md), including cinematic/prose/black modes and automatic HTML artifacts. Persistent scene state is reconstructed from earlier selected messages; current commands override it in sequence. Use exits, stops and scene resets to clear it. One-shot effects remain local to the response that requests them.
 
 ## Content environments
 

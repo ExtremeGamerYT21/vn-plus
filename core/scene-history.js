@@ -1,6 +1,6 @@
 import { readMessage } from './message-reader.js';
 import { parsePOV } from './vn-parser.js';
-import { trackSpec } from './scene-timeline.js';
+import { trackSpec, compileTimeline } from './scene-timeline.js';
 import { lastSceneHeader } from './scene-context.js';
 
 export function inheritedScene(context, index) {
@@ -15,6 +15,26 @@ export function inheritedScene(context, index) {
         result.scene ||= lastSceneHeader(message.canonical);
     }
     return result;
+}
+
+/** Transient POV history only: no past prose/artifacts or one-shot effects enter the new scene. */
+export function worldHistory(context, index) {
+    const tokens = [];
+    for (let i = 0; i < index && i < (context.chat?.length || 0); i++) {
+        const message = readMessage(context, i);
+        if (message?.status !== 'ready') continue;
+        for (const token of parsePOV(message.pov).tokens) {
+            if (token.type === 'dialogue') tokens.push({ type: 'dialogue', character: token.character, emotion: token.emotion });
+            else if (token.type === 'command' && !['SFX', 'FLASH', 'SHAKE'].includes(token.name)) tokens.push(token);
+        }
+    }
+    return tokens;
+}
+
+export function inheritedWorld(tokens, registry, settings, scene) {
+    const state = compileTimeline(tokens, registry, settings, {}, false).finalState;
+    state.scene = scene || null; state.speaker = null;
+    return state;
 }
 
 /** Reconstruct only persistent background/music commands from earlier selected POV swipes. */

@@ -59,3 +59,25 @@ test('music mute applies to fading and pending tracks and survives reopening', a
     const load = pending.engine.setChannel('music', { name: 'waiting', rate: 1 }); pending.engine.setMusicMuted(true); release('/waiting'); await load;
     assert.equal(pending.audio[0].muted, true); pending.engine.close();
 });
+
+test('different names resolving to the same recording preserve source time playback count and speed changes', async () => {
+    const { engine, audio } = make({ audio: async () => '/same-recording.mp3' }); await engine.unlock();
+    await engine.setChannel('music', { name: 'forest', rate: 1 }); const source = audio[0]; source.currentTime = 37;
+    engine.settings.musicVolume = .7; await engine.setChannel('music', { name: 'woods music', rate: .75 });
+    assert.equal(engine.channels.music.audio, source); assert.equal(source.currentTime, 37); assert.equal(source.plays, 1); assert.equal(source.playbackRate, .75); assert.equal(source.volume, .7);
+    assert.equal(audio.length, 1); engine.close();
+});
+test('cancelling pending world loads keeps active loops and lets a repeated new request retry', async () => {
+    let release; const { engine, audio } = make({ audio: async (kind, name) => name === 'new' ? new Promise(resolve => release = resolve) : '/old.mp3' }); await engine.unlock();
+    await engine.setChannel('music', { name: 'old', rate: 1 }); const source = audio[0]; source.currentTime = 42;
+    const pending = engine.setChannel('music', { name: 'new', rate: 1 }); engine.cancelPending();
+    release('/obsolete.mp3'); await pending; assert.equal(engine.channels.music.audio, source); assert.equal(source.currentTime, 42); assert.equal(source.paused, false);
+    const next = engine.setChannel('music', { name: 'new', rate: 1 }); release('/new.mp3'); await next;
+    assert.equal(engine.channels.music.audio.src, '/new.mp3'); assert.equal(audio.length, 2); engine.close();
+});
+test('explicit stops and closing still release loops even if the next name resolves to the same recording', async () => {
+    const { engine, audio } = make({ audio: async () => '/same.mp3' }); await engine.setChannel('ambient', { name: 'rain', rate: 1 });
+    const first = audio[0]; await engine.setChannel('ambient', null); assert.equal(engine.channels.ambient.audio, null); assert(first.paused);
+    await engine.setChannel('ambient', { name: 'rainy sounds', rate: 1 }); assert.notEqual(engine.channels.ambient.audio, first);
+    engine.close(); assert.equal(engine.sources.size, 0);
+});
