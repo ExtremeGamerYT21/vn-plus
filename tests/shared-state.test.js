@@ -10,12 +10,6 @@ import { parseSceneHeader, sceneLighting } from '../core/scene-context.js';
 import { DEFAULT_SETTINGS } from '../ui/settings.js';
 
 const environment = { id: 'test', name: 'Test' };
-function hostFixture(native = true) {
-    let context = { characterId: 0, chatId: 'A', chatMetadata: { variables: { unrelated: 'keep' } }, saveMetadataDebounced() { saves++; } };
-    let saves = 0;
-    if (native) context.variables = { local: { set(name, value) { context.chatMetadata.variables[name] = value; saves++; } } };
-    return { host: createHost(() => context), get context() { return context; }, get saves() { return saves; }, switch(next) { context = next; } };
-}
 function snapshot() {
     const settings = { ...structuredClone(DEFAULT_SETTINGS), showPlayerBust: false }, registry = new CharacterRegistry({ inventory: {} }, settings);
     registry.properties.set('jason_weber', { displayName: 'Jason Weber', aliases: ['Jason'], voiceId: 'DO_NOT_EXPORT', secret: 'PRIVATE_PROPERTIES' });
@@ -42,56 +36,28 @@ test('player emotion survives history, aliases, exits and hidden busts, but rese
     assert.equal(seed.playerEmotion, 'angry'); assert.deepEqual(Object.keys(seed.characters), []);
     assert.equal(compileTimeline(parsePOV('#SCENE RESET\nNow.').tokens, registry, settings, seed).finalState.playerEmotion, null);
 });
-test('macro variables serialize structured data and clear absent scalar fields without writing globals', () => {
-    const values = sharedVariables(snapshot());
-    assert.equal(JSON.parse(values.vn_plus).player.emotion, 'sad'); assert.equal(values.vn_plus_time, '21:00');
-    assert.equal(values.vn_plus_inside, 'true'); assert.equal(values.vn_plus_time_of_day, 'night');
-    const fixture = hostFixture(), publisher = new ChatStatePublisher(fixture.host); publisher.bind(environment);
-    assert.equal(fixture.context.chatMetadata.variables.vn_plus_time, '');
-    assert.equal(fixture.context.chatMetadata.variables.unrelated, 'keep'); assert.equal(fixture.context.extensionSettings, undefined);
+test('message publishers deduplicate state changes and export detached event and getter copies', t => {
+    const context = { chatId: 'A', chat: [{ mes: 'SECRET\n/////\nHello.' }] }, host = createHost(() => context), events = [];
+    t.after(() => host.extra.dispose());
+    const publisher = new ChatStatePublisher(host, value => events.push(value)); publisher.bind(environment);
+    publisher.update({ active: false, generating: false }); assert.equal(events.length, 1);
+    publisher.commit(snapshot(), publisher.begin()); publisher.commit(snapshot(), publisher.begin()); assert.equal(events.length, 2);
+    events[1].player.emotion = 'changed'; const copy = publisher.snapshot; copy.characters.length = 0;
+    assert.equal(publisher.snapshot.player.emotion, 'sad'); assert.equal(publisher.snapshot.characters.length, 1);
+    assert.equal(context.chat[0].extra.vn_plus.context.player.emotion, 'sad');
+    assert.equal(context.chat[0].extra.vn_plus.variables.vn_plus_time, '21:00');
 });
-test('native local variable setter persists JSON strings and identical writes are deduplicated', () => {
-    const fixture = hostFixture(), events = [], publisher = new ChatStatePublisher(fixture.host, value => events.push(value));
-    publisher.bind(environment); const first = fixture.saves;
-    publisher.update({ active: false, generating: false }); assert.equal(fixture.saves, first);
-    publisher.commit(snapshot(), publisher.begin()); assert(fixture.saves > first); const next = fixture.saves;
-    publisher.commit(snapshot(), publisher.begin()); assert.equal(fixture.saves, next); assert.equal(events.length, 2);
-    events[1].player.emotion = 'mutated'; assert.equal(publisher.snapshot.player.emotion, 'sad');
-    const copy = publisher.snapshot; copy.characters.length = 0; assert.equal(publisher.snapshot.characters.length, 1);
-});
-test('metadata fallback works without the newer local setter', () => {
-    const fixture = hostFixture(false), publisher = new ChatStatePublisher(fixture.host);
-    publisher.bind(environment); publisher.commit(snapshot(), publisher.begin());
-    assert.equal(JSON.parse(fixture.context.chatMetadata.variables.vn_plus).music.name, 'piano'); assert(fixture.saves > 0);
-});
-test('old async work cannot write into a new chat even if chat ID or metadata alone is reused', () => {
-    const fixture = hostFixture(), publisher = new ChatStatePublisher(fixture.host); publisher.bind(environment);
-    const epoch = publisher.begin(), old = fixture.context.chatMetadata;
-    fixture.context.chatId = 'B'; assert.equal(publisher.commit(snapshot(), epoch), false);
-    assert.equal(JSON.parse(old.variables.vn_plus).available, false);
-    fixture.context.chatId = 'A'; fixture.context.chatMetadata = { variables: {} };
-    assert.equal(publisher.commit(snapshot(), epoch), false); assert.deepEqual(fixture.context.chatMetadata.variables, {});
-    publisher.bind(environment); const older = publisher.begin(), newer = publisher.begin();
-    assert.equal(publisher.commit(snapshot(), older), false); assert.equal(publisher.commit(snapshot(), newer), true);
-});
-test('persisted output is discarded on binding so only reconstructed context can become available', () => {
-    const fixture = hostFixture(), publisher = new ChatStatePublisher(fixture.host);
-    publisher.bind(environment); publisher.commit(snapshot(), publisher.begin());
-    const restored = new ChatStatePublisher(fixture.host); restored.bind(environment);
-    assert.equal(restored.snapshot.active, false); assert.equal(restored.snapshot.available, false);
-    assert.equal(restored.snapshot.music, null); assert.equal(restored.snapshot.player, null);
-    restored.bind({ id: 'other', name: 'Other' }); assert.equal(restored.snapshot.available, false);
-    assert.equal(fixture.context.chatMetadata.variables.vn_plus_music, ''); assert.equal(fixture.context.chatMetadata.variables.vn_plus_inside, '');
-});
-test('cancellation rejects obsolete scenes and pending snapshots suppress interim audio writes', () => {
-    const fixture = hostFixture(), publisher = new ChatStatePublisher(fixture.host); publisher.bind(environment);
+test('cancelled or obsolete message publishers cannot commit pending snapshots', t => {
+    const context = { chatId: 'A', chat: [{ mes: 'SECRET\n/////\nHello.' }] }, host = createHost(() => context); t.after(() => host.extra.dispose());
+    const publisher = new ChatStatePublisher(host); publisher.bind(environment);
     const epoch = publisher.begin(); publisher.update({ active: true }); assert.equal(publisher.snapshot.active, false);
     publisher.cancel(); assert.equal(publisher.commit(snapshot(), epoch), false);
-    publisher.update({ generating: true }); assert.equal(JSON.parse(fixture.context.chatMetadata.variables.vn_plus).generating, true);
+    const pending = publisher.begin(); context.chat[0].mes += ' Edit.'; assert.equal(publisher.commit(snapshot(), pending), false);
+    publisher.bind(environment); assert.equal(publisher.snapshot.available, false);
 });
-test('no selected chat or metadata cannot create a global or anonymous variable cache', () => {
-    for (const context of [{ chatId: null, chatMetadata: {} }, { chatId: '', chatMetadata: {} }, { chatId: 'A' }]) {
-        const publisher = new ChatStatePublisher(createHost(() => context)); publisher.bind(environment);
-        assert.equal(publisher.commit(snapshot(), publisher.begin()), false); assert.equal(context.chatMetadata?.variables, undefined);
+test('anonymous contexts never create message extra or global shared variables', () => {
+    for (const context of [{ chatId: null, chat: [{ mes: 'Hello.' }] }, { chatId: '', chat: [{ mes: 'Hello.' }] }, { chatId: 'A', chat: [] }]) {
+        const host = createHost(() => context), publisher = new ChatStatePublisher(host); publisher.bind(environment);
+        assert.equal(publisher.commit(snapshot(), publisher.begin()), false); assert.equal(context.chat[0]?.extra, undefined); assert.equal(context.chatMetadata, undefined); host.extra.dispose();
     }
 });

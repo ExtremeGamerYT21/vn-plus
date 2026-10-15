@@ -1,5 +1,6 @@
 import { VNController } from '../controller.js';
 import { runSharedChecks } from './browser-shared.js';
+import { runArtifactChecks } from './browser-artifacts.js';
 import { createHost } from '../integration.js';
 import { DEFAULT_SETTINGS } from '../ui/settings.js';
 import { isolatedDocument } from '../renderers/html-renderer.js';
@@ -12,6 +13,16 @@ import { EnvironmentStyle } from '../renderers/environment-style.js';
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const assert = (value, message = 'Assertion failed') => { if (!value) throw new Error(message); };
 const equal = (a, b) => assert(JSON.stringify(a) === JSON.stringify(b), `${JSON.stringify(a)} != ${JSON.stringify(b)}`);
+function chatPayload(chat) {
+    const copy = structuredClone(chat);
+    for (const message of copy) {
+        for (const owner of [message, ...(message.swipe_info || [])]) if (owner.extra) {
+            delete owner.extra.vn_plus;
+            if (!Object.keys(owner.extra).length) delete owner.extra;
+        }
+    }
+    return JSON.stringify(copy);
+}
 const eventually = async (predicate, message = 'State did not become ready') => { for (let i = 0; i < 200; i++) { if (predicate()) return; await pause(20); } throw new Error(message); };
 const inventory = await fetch('../assets.json').then(response => response.json());
 const listeners = new Map(), events = ['GENERATION_STARTED','GENERATION_ENDED','GENERATION_STOPPED','MESSAGE_RECEIVED','MESSAGE_SWIPED','MESSAGE_UPDATED','MESSAGE_EDITED','MESSAGE_SWIPE_DELETED','CHARACTER_MESSAGE_RENDERED','MESSAGE_DELETED','CHAT_CHANGED','CHAT_LOADED','MORE_MESSAGES_LOADED','APP_READY'];
@@ -24,7 +35,7 @@ const context = {
     saveMetadataDebounced() {},
     variables: { local: { get(name) { return context.chatMetadata.variables[name] || ''; }, set(name, value) { context.chatMetadata.variables[name] = value; context.saveMetadataDebounced(); } } },
     extensionSettings: { visual_novel_plus: { ...structuredClone(DEFAULT_SETTINGS), typewriterEffect: false, characterSounds: false, reducedMotion: true, dialogueFont: 'faustina', characters: { jason: { assetFolder: 'andrew', color: '#78c976' } } } },
-    eventTypes: Object.fromEntries(events.map(name => [name, name])), saveSettingsDebounced() {},
+    eventTypes: Object.fromEntries(events.map(name => [name, name])), saveSettingsDebounced() {}, async saveChat() {},
     eventSource: { on(name, callback) { const set = listeners.get(name) || new Set(); set.add(callback); listeners.set(name, set); }, removeListener(name, callback) { listeners.get(name)?.delete(callback); } },
     async generate(type) { assert(type === 'regenerate'); retries++; },
 };
@@ -95,7 +106,7 @@ await check('both layout selectors synchronize and switch live without restartin
 await check('environment selectors isolate content/profiles and preserve the selected paragraph', async () => {
     const picker = controller.root.querySelector('[data-environment-picker]'), settingsPicker = controller.settingsPanel.querySelector('[data-setting="environment"]');
     equal([...picker.options].map(option => option.textContent), ['The Coffin of Andy and Leyley', 'Harry Potter', 'Re:Zero']);
-    const originalChat = JSON.stringify(context.chat), oldMusic = controller.audio.channels.music.audio;
+    const originalChat = chatPayload(context.chat), oldMusic = controller.audio.channels.music.audio;
     controller.settings.characters.nina = { breathing: { centerX: .3, centerY: .6 } }; controller.settingsChanged('breathingCenter');
     await controller.action('next'); equal(controller.playback.position, 1);
     picker.value = 'harry-potter'; picker.dispatchEvent(new Event('change', { bubbles: true }));
@@ -120,7 +131,7 @@ await check('environment selectors isolate content/profiles and preserve the sel
     equal(controller.registry.get('nina').breathing.centerX, .3); equal(controller.settings.environmentProfiles['harry-potter'].characters.nina.color, '#abcdef');
     assert(controller.root.querySelector('.vn-text').style.fontFamily.includes(`vn-${DEFAULT_ENVIRONMENT}-`));
     await eventually(() => controller.audio.channels.music.audio?.src.includes(`/environments/${DEFAULT_ENVIRONMENT}/`));
-    assert(controller.audio.channels.music.audio !== oldMusic); equal(JSON.stringify(context.chat), originalChat);
+    assert(controller.audio.channels.music.audio !== oldMusic); equal(chatPayload(context.chat), originalChat);
     delete controller.settings.characters.nina; controller.settingsChanged('breathingCenter'); await controller.action('back');
 });
 await check('environment switching cancels old sprite, preview and audio loads', async () => {
@@ -187,8 +198,8 @@ await check('interactive HTML runs in an opaque origin without app or storage ac
     } finally { window.removeEventListener('message', listener); controller.html.close(); }
 });
 await check('reveal is deliberate, non-mutating, and closes on generation', async () => {
-    controller.close(); const original = JSON.stringify(context.chat);
-    controller.reveal.toggle(0); assert(controller.reveal.dialog.textContent.includes('SECRET_CANONICAL')); equal(JSON.stringify(context.chat), original);
+    controller.close(); const original = chatPayload(context.chat);
+    controller.reveal.toggle(0); assert(controller.reveal.dialog.textContent.includes('SECRET_CANONICAL')); equal(chatPayload(context.chat), original);
     emit('GENERATION_STARTED', 'normal'); assert(!controller.reveal.dialog); controller.reveal.toggle(0); assert(!controller.reveal.dialog);
     await controller.open(0); assert(controller.root.querySelector('.vn-status').textContent.includes('Waiting')); assert(!controller.root.textContent.includes('SECRET_CANONICAL'));
     emit('GENERATION_ENDED'); await pause(100);
@@ -391,7 +402,7 @@ await check('freestyle narration and internal thoughts preserve identity, stylin
     controller.settings.characterSounds = true; controller.settings.characters.nina = { sound: 'thought-voice.ogg' };
     controller.settings.reducedMotion = true; controller.settings.typewriterEffect = false;
     context.chat[0].mes = 'SECRET_THOUGHT_CANONICAL\n/////\nYou hear footsteps.\nNina: "(I should keep this to myself.)" [happy]\n#SFX door\nNina: "Hello (again)." [happy]\nNina: (Perhaps tomorrow.) [happy]\nNARRATION\nYou turn around.';
-    const originalChat = JSON.stringify(context.chat);
+    const originalChat = chatPayload(context.chat);
     try {
         await controller.open(0);
         const text = controller.root.querySelector('.vn-text'), speaker = controller.root.querySelector('.vn-speaker');
@@ -412,7 +423,7 @@ await check('freestyle narration and internal thoughts preserve identity, stylin
         await controller.action('next'); assert(text.classList.contains('vn-thought')); equal(sounds.length, 2);
         await controller.action('next'); equal(speaker.textContent, 'Narration'); assert(!text.classList.contains('vn-thought'));
         await controller.action('replay'); await controller.action('next'); assert(text.classList.contains('vn-thought')); equal(sounds.length, 2);
-        equal(JSON.stringify(context.chat), originalChat); assert(!controller.root.textContent.includes('SECRET_THOUGHT_CANONICAL'));
+        equal(chatPayload(context.chat), originalChat); assert(!controller.root.textContent.includes('SECRET_THOUGHT_CANONICAL'));
     } finally {
         controller.audio.sfx = originalSFX; controller.settings.characterSounds = originalSounds;
         if (originalNina === undefined) delete controller.settings.characters.nina; else controller.settings.characters.nina = originalNina;
@@ -484,7 +495,7 @@ await check('Fish settings use property voices, protect credentials and connect 
     controller.settings.tts.enabled = true; controller.settings.tts.processing = true; controller.speech.audioFactory = () => new FakeAudio();
     controller.settings.characters = { nina: { voiceId: 'voice-nina' }, ashley: { voiceId: 'https://fish.audio/m/voice-ashley/' } };
     context.chat[0].mes = 'PRIVATE\n/////\nUnknown: "Silent."\nNina: "(Keep quiet.)" [nervous]\nNina: "Hello world." [curious]\nAshley: "Good morning." [happy]\n\nYou take a breath.';
-    const stored = JSON.stringify(context.chat);
+    const stored = chatPayload(context.chat);
     try {
         await controller.open(0); const panel = controller.speechSettingsPanel;
         panel.keyInput.value = 'FAKE_BROWSER_KEY'; [...panel.node.querySelectorAll('button')].find(button => button.textContent === 'Save API key').click();
@@ -500,7 +511,7 @@ await check('Fish settings use property voices, protect credentials and connect 
         const ninaAudio = controller.speech.audio; assert(!ninaAudio.paused);
         await controller.action('next'); await eventually(() => controller.speech.audio && controller.speech.audio !== ninaAudio); assert(ninaAudio.paused);
         await controller.action('next'); assert(!controller.speech.audio); equal(syntheses, 1);
-        await controller.speech.generate(); equal(syntheses, 1); equal(JSON.stringify(context.chat), stored);
+        await controller.speech.generate(); equal(syntheses, 1); equal(chatPayload(context.chat), stored);
         equal(legacySounds, 0);
         emit('GENERATION_STARTED', 'normal'); let rejected = false; try { await controller.prepareSpeech(); } catch { rejected = true; } assert(rejected); equal(syntheses, 1);
         emit('GENERATION_ENDED'); await eventually(() => !controller.busy && controller.speech.prepared?.segments.length === 2);
@@ -615,14 +626,14 @@ await check('background and music inherit earlier POV commands and history edits
         { mes: 'SECRET\n/////\nFirst.\nNARRATION\nSecond.' },
     ];
     mountChat();
-    const original = JSON.stringify(context.chat), sfx = controller.audio.sfx; let oldEffects = 0;
+    const original = chatPayload(context.chat), sfx = controller.audio.sfx; let oldEffects = 0;
     controller.audio.sfx = async () => oldEffects++;
     try {
         await controller.open(3);
         await eventually(() => controller.root.querySelector('.vn-background').style.backgroundImage.includes('street'));
         await eventually(() => controller.audio.channels.music.audio?.src.endsWith('/buzz.mp3'));
         equal(controller.audio.channels.music.audio.playbackRate, .75); equal(controller.root.querySelectorAll('.vn-character').length, 1); assert(controller.stage.nodes.has('ashley'));
-        equal(oldEffects, 0); equal(JSON.stringify(context.chat), original);
+        equal(oldEffects, 0); equal(chatPayload(context.chat), original);
         await controller.action('next'); equal(controller.playback.position, 1);
         context.chat[2].mes = 'SECRET\n/////\n#BACKGROUND kitchen\n#MUSIC club\nEdited history.';
         emit('MESSAGE_UPDATED', 2);
@@ -811,7 +822,13 @@ await check('new generation cancels obsolete world loads while retaining the cur
 });
 controller.dispose();
 document.querySelector('#test-status').textContent = `${passes} passed · ${failures} failed`;
-await runSharedChecks({ check, assert, equal, eventually, context, mountChat, emit, makeController() {
+await runSharedChecks({ check, assert, equal, eventually, context, mountChat, emit, chatPayload, makeController() {
+    const next = new VNController(createHost(() => context, { localContent: false }), new URL('../', import.meta.url), inventory);
+    next.audio.audioFactory = () => new FakeAudio(); return next;
+} });
+document.querySelector('#test-status').textContent = `${passes} passed · ${failures} failed`;
+document.body.dataset.testStatus = 'running';
+await runArtifactChecks({ check, assert, equal, eventually, context, mountChat, emit, makeController() {
     const next = new VNController(createHost(() => context, { localContent: false }), new URL('../', import.meta.url), inventory);
     next.audio.audioFactory = () => new FakeAudio(); return next;
 } });

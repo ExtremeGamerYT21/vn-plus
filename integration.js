@@ -1,29 +1,15 @@
-import { chatIdentity } from './core/message-reader.js';
+import { MessageExtraStore } from './core/message-extra.js';
 
 /** Adapter checked against installed SillyTavern 1.19.0 source. */
 export function createHost(getContext, { localContent = true } = {}) {
-    return {
+    const host = {
         context: getContext,
-        captureChatVariables() {
-            const context = getContext(), identity = chatIdentity(context), metadata = context.chatMetadata;
-            const current = () => {
-                const next = getContext();
-                const chatId = next.getCurrentChatId?.() ?? next.chatId;
-                return !!metadata && next.chatMetadata === metadata && chatIdentity(next) === identity && chatId != null && chatId !== '';
-            };
-            return {
-                current,
-                read: name => current() ? metadata.variables?.[name] : undefined,
-                write(values) {
-                    if (!current()) return false;
-                    for (const [name, value] of Object.entries(values)) {
-                        if (metadata.variables?.[name] === value) continue;
-                        if (context.variables?.local?.set) context.variables.local.set(name, value);
-                        else { metadata.variables ??= {}; metadata.variables[name] = value; context.saveMetadataDebounced?.(); }
-                    }
-                    return true;
-                },
-            };
+        captureMessageExtra(index) { return this.extra.capture(index); },
+        async saveChat() { await getContext().saveChat?.(); },
+        retireSharedVariables(keys) {
+            const context = getContext(); let changed = false;
+            for (const key of keys) if (Object.hasOwn(context.chatMetadata?.variables || {}, key)) { delete context.chatMetadata.variables[key]; changed = true; }
+            if (changed) context.saveMetadataDebounced?.();
         },
         request(url, options = {}) {
             if (!/^\/api\/plugins\/vn-plus-tts\/(status|secret|synthesize|characters(?:\/resolve)?)$/.test(url)) throw new Error('Invalid VN+ server route.');
@@ -61,4 +47,6 @@ export function createHost(getContext, { localContent = true } = {}) {
             await context.generate('regenerate');
         },
     };
+    host.extra = new MessageExtraStore(host);
+    return host;
 }

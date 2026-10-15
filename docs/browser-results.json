@@ -1,5 +1,5 @@
 {
-  "status": "60 passed · 0 failed",
+  "status": "69 passed · 0 failed",
   "tests": [
     "PASS · POV privacy and four characters from one scenario",
     "PASS · backward restores background, expression and audio state",
@@ -60,6 +60,15 @@
     "PASS · opening reconstructs context edits even when the editing extension emitted no event",
     "PASS · deleting the latest response rebuilds closed context from the remaining selected messages",
     "PASS · the cast memory setting rebuilds closed context and supports persistent presence until exit",
-    "PASS · obsolete context asset loads cannot write into another chat and a chat without POV has no stale state"
+    "PASS · obsolete context asset loads cannot write into another chat and a chat without POV has no stale state",
+    "PASS · interactive artifacts read paragraph scene variables and persist data in extra without changing message text",
+    "PASS · artifact data survives iframe closing, controller restart and chat JSON reload",
+    "PASS · named artifacts inherit earlier values and historical messages cannot overwrite the current timeline",
+    "PASS · artifact branch writes are independent from the parent chat",
+    "PASS · copied swipe metadata does not leak an alternative artifact history",
+    "PASS · ordinary iframe postMessages cannot impersonate the artifact capability channel",
+    "PASS · artifact IDs isolate local data and named values do not expire with the recent cast",
+    "PASS · environment-local artifact commands load HTML into the same scoped metadata bridge",
+    "PASS · closing a local artifact cancels its pending load and cannot reopen a stale iframe"
   ]
 }

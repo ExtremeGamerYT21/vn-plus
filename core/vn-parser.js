@@ -58,7 +58,7 @@ export function parsePOV(pov) {
         const line = lines[i], clean = line.replace(/\r?\n$/, ''), trimmed = clean.trim();
         if (fence) {
             if (new RegExp(`^\\s*${fence.marker}{${fence.count},}\\s*$`).test(clean)) {
-                if (fence.html) tokens.push({ type: 'artifact', html: fence.text, interactive: fence.interactive, line: fence.line });
+                if (fence.html) tokens.push({ type: 'artifact', html: fence.text, interactive: fence.interactive, ...(fence.id ? { id: fence.id } : {}), line: fence.line });
                 else if (fence.text.trim()) tokens.push({ type: 'narration', text: fence.text, line: fence.line });
                 fence = null;
             } else fence.text += line;
@@ -68,6 +68,8 @@ export function parsePOV(pov) {
         if (startFence) {
             flush();
             fence = { marker: startFence[1][0], count: startFence[1].length, html: /^html(?:\s|$)/i.test(startFence[2].trim()), interactive: /\binteractive\b/i.test(startFence[2]), text: '', line: i + 1 };
+            const id = /(?:^|\s)id=([a-zA-Z0-9][a-zA-Z0-9_.-]{0,63})(?=\s|$)/.exec(startFence[2]);
+            if (id) fence.id = id[1];
             continue;
         }
         if (html) {
@@ -90,7 +92,8 @@ export function parsePOV(pov) {
         if (command) {
             flush();
             const name = LEGACY[command[2].toUpperCase()] || command[2].toUpperCase();
-            if (COMMANDS.has(name)) tokens.push({ type: 'command', name, args: command[3]?.trim() || '', line: i + 1 });
+            if (name === 'ARTIFACT' && /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$/.test(command[3]?.trim() || '')) tokens.push({ type: 'artifact', id: command[3].trim(), local: true, interactive: true, line: i + 1 });
+            else if (COMMANDS.has(name)) tokens.push({ type: 'command', name, args: command[3]?.trim() || '', line: i + 1 });
             else errors.push({ line: i + 1, message: `Unknown command ${command[1]}${command[2]} ignored.` });
             continue;
         }

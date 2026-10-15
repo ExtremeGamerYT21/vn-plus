@@ -5,7 +5,8 @@ import { splitMessage } from '../core/message-reader.js';
 import { AssetResolver } from '../core/asset-resolver.js';
 import { mergeContentInventories } from '../core/content-inventory.js';
 const lightingDemo = new URLSearchParams(location.search).has('lighting');
-const script = lightingDemo ? `[3 August 1991 | Lighting preview | 12:26 p.m. | Summer | Street]
+const artifactDemo = new URLSearchParams(location.search).has('artifact');
+const script = artifactDemo ? '[3 August 1991 | Diary preview | 12:26 p.m. | Summer | Shop]\n#BACKGROUND kitchen\n' + '```html interactive id=diary\n' + await fetch('../examples/diary.html').then(response => response.text()) + '\n```' : lightingDemo ? `[3 August 1991 | Lighting preview | 12:26 p.m. | Summer | Street]
 #BACKGROUND street
 Nina: "Outside at midday."
 [3 August 1991 | Lighting preview | 11:00 p.m. | Summer | Street]
@@ -18,7 +19,7 @@ const eventNames = ['GENERATION_STARTED','GENERATION_ENDED','GENERATION_STOPPED'
 const context = {
     chat: [{ mes: `Ashley knows exactly who wrote the invitation. You have not discovered this yet.\n\n/////\n\n${script.replace('#ENTER Leyley', '#ENTER Leyley\n#ENTER Visitor')}`, swipe_id: 0 }],
     characterId: 0, chatId: 'preview', name1: 'Jason', extensionSettings: { visual_novel_plus: { ...structuredClone(DEFAULT_SETTINGS), ...(lightingDemo ? { typewriterEffect: false, reducedMotion: true } : {}), characters: { jason: { assetFolder: 'andrew', displayName: 'Jason', color: '#78c976', textColor: '#ecffed' } } } },
-    saveSettingsDebounced() {}, eventTypes: Object.fromEntries(eventNames.map(name => [name, name])),
+    saveSettingsDebounced() {}, async saveChat() {}, eventTypes: Object.fromEntries(eventNames.map(name => [name, name])),
     eventSource: { on(name, callback) { const set = listeners.get(name) || new Set(); set.add(callback); listeners.set(name, set); }, removeListener(name, callback) { listeners.get(name)?.delete(callback); } },
     async generate() { document.querySelector('#demo-result').textContent = 'Retry delegated to the simulated host. No model call was made.'; },
 };
@@ -28,6 +29,7 @@ document.querySelector('#send_but').addEventListener('click', () => { document.q
 const catalog = new AssetResolver(new URL('../', import.meta.url));
 const [published, local] = await Promise.all([catalog.json('assets.json'), catalog.json('assets.local.json')]);
 const inventory = mergeContentInventories(published || {}, local || {}); catalog.dispose();
+context.extensionSettings.visual_novel_plus.interactiveArtifacts = artifactDemo;
 const controller = new VNController(createHost(() => context, { localContent: false }), new URL('../', import.meta.url), inventory);
 if (new URLSearchParams(location.search).has('css')) {
     controller.environmentStyle.read = async () => fetch('../examples/dialogue.css').then(response => response.text());

@@ -40,7 +40,7 @@ export class VNController {
         const speechCallbacks = { prepare: () => this.prepareSpeech(), change: () => this.settingsChanged('speech') };
         this.speechSettingsPanel = new SpeechPanel(this.speech, speechCallbacks);
         this.voicePanel = new SpeechPanel(this.speech, speechCallbacks, { expanded: true }); applyTheme(this.root, this.settings);
-        this.effects = new EffectsRenderer(this.root, this.settings); this.html = new HTMLRenderer(this.root, this.settings);
+        this.effects = new EffectsRenderer(this.root, this.settings); this.html = new HTMLRenderer(this.root, this.settings, (token, alive) => this.artifactSession(token, alive), (id, signal) => this.readArtifact(id, signal));
         this.reveal = new OmniscientToggle(host.context, () => this.busy || !this.settings.enabled);
         this.selected = latestAssistant(host.context()); this.chatId = chatIdentity(host.context());
         this.generation = 0; this.busy = false; this.seen = new Map(); this.disposers = []; this.messages = [];
@@ -390,6 +390,7 @@ export class VNController {
         const { state, token } = result.beat;
         this.worldIdentity = JSON.stringify([chatIdentity(this.host.context()), this.environment.id]);
         const playback = this.speech.playBeat(result.done || token.type !== 'dialogue' || token.thought ? -1 : result.beat.index);
+        if (!this.playbackState.binding?.current() || this.playbackState.binding.index !== this.selected) this.playbackState.bind(this.environment, this.selected);
         const sharedEpoch = this.playbackState.begin();
         const source = { message: this.selected, swipe: readMessage(this.host.context(), this.selected)?.swipe ?? 0, beat: result.beat.index, position: this.playback.position };
         void Promise.allSettled([this.stage.render(state, this.playback.timeline.maxSlots), this.audio.sync(state)]).then(results => {
@@ -415,6 +416,39 @@ export class VNController {
             const sound = props.sounds?.[token.emotion] || props.sound || flair.sound || token.emotion;
             if (this.settings.characterSounds && !token.thought && !this.settings.tts.enabled) void this.audio.sfx(sound, props.assetFolder || state.speaker);
         }
+    }
+    async readArtifact(id, signal) {
+        if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$/.test(id)) throw new Error('Invalid local artifact ID.');
+        const response = await fetch(this.resolver.url(`artifacts/${id}/index.html`), { signal, cache: 'no-store' });
+        if (!response.ok) throw new Error(`Add artifacts/${id}/index.html to this environment (HTTP ${response.status}).`);
+        const html = await response.text(); if (new TextEncoder().encode(html).byteLength > 1048576) throw new Error('Local artifact HTML exceeds 1 MiB.');
+        return html;
+    }
+    artifactSession(token, open = () => true) {
+        const beat = this.playback?.timeline.beats.find(item => item.token === token);
+        if (!beat) throw new Error('This artifact is not part of the selected scene.');
+        const generation = this.generation, environment = this.environment.id, index = this.selected;
+        const id = token.id || `item-${this.host.extra.capture(index).anchor().variantId}-${token.line}`;
+        let point;
+        void this.artifactScene(beat, index).then(value => point = value).catch(error => this.log(`Artifact scene: ${error.message}`));
+        return this.host.extra.artifactSession({ index, beat: beat.index, environment, id,
+            alive: () => open() && !this.disposed && !this.busy && generation === this.generation && index === this.selected && environment === this.environment.id,
+            scene: () => {
+                const value = this.playbackVariables;
+                return value.source?.message === index && value.source?.beat === beat.index ? value : point || { available: false, updating: true, scene: structuredClone(beat.state.scene) };
+            },
+        });
+    }
+    async artifactScene(beat, index) {
+        const resolver = this.resolver, registry = this.registry, environment = this.environment, state = beat.state;
+        const [background, music, ambient] = await Promise.all([state.background ? resolver.background(state.background) : null, state.music ? resolver.audio('music', state.music.name) : null, state.ambient ? resolver.audio('ambient', state.ambient.name) : null]);
+        const properties = background ? await resolver.backgroundProperties(background) : { inside: false };
+        const tint = document.createElement('span'); tint.hidden = true; tint.style.backgroundColor = CSS.supports('color', state.tint) ? state.tint : 'transparent'; this.root.append(tint);
+        const color = getComputedStyle(tint).backgroundColor; tint.remove();
+        const value = sceneSnapshot({ state, registry, settings: this.settings, environment,
+            source: { message: index, swipe: this.host.context().chat[index]?.swipe_id || 0, beat: beat.index, position: null },
+            audio: { channels: { music: {}, ambient: {} } }, stage: { backgroundUrl: background, variables: { lighting: sceneLighting(state.scene, properties.inside) }, appliedTint: state.tint, ambientColor: color === 'rgba(0, 0, 0, 0)' ? '#ffffff' : color } });
+        value.music.asset = music; value.ambient.asset = ambient; value.basis = 'artifact'; value.updating = false; return value;
     }
     scheduleAuto() {
         clearTimeout(this.autoTimer);
@@ -516,6 +550,7 @@ export class VNController {
         this.resolver.dispose(); this.catalogResolver.dispose();
         this.environmentStyle.dispose();
         this.contextResolver.dispose();
+        this.host.extra.dispose();
         this.speechSettingsPanel.dispose(); this.voicePanel.dispose(); this.speech.dispose();
     }
 }

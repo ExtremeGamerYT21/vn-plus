@@ -1,6 +1,8 @@
-# Chat-local VN state
+# VN scene state in message extra
 
-VN+ writes a JSON string named **`vn_plus`** through `SillyTavern.getContext().variables.local.set`. It lives in the active chat's `chatMetadata.variables` alongside normal `/setvar` variables, persists through SillyTavern's debounced metadata save, and never writes global variables. VN+ owns the `vn_plus` and `vn_plus_*` names; consumers should treat them as read-only.
+Since **2.14**, VN+ stores runtime state in each message's **`extra.vn_plus`**, saved through SillyTavern's normal chat API and synchronized into the active swipe metadata. It no longer writes chat-local shared variables. Existing VN-owned `vn_plus`/`vn_plus_*` copies are retired when the message metadata is written; unrelated variables and extra fields are preserved. Settings remain normal extension preferences and Fish keys remain in the server secret store.
+
+The namespace contains `context` (the latest reconstructed context while that message is current), `playback` (the viewed paragraph), `variables` (scalar values), `messageId`, `variantId`, the current `revision`, and a `revisions` table retaining previous source revisions and artifact actions. Root fields mirror the current revision for convenient access. Artifact storage and its API are documented in [persistent HTML artifacts](artifact-bridge.md).
 
 Since **2.13**, this is the latest state reconstructed from the chat's currently selected messages, including the entire latest completed POV. It rebuilds on startup, opening VN, host message edits/swipes/deletion/receipt, generation completion, history loading, chat changes and environment/identity/cast settings changes, even while VN is closed. Stored variable output is never trusted as input. During asynchronous rebuilding, old fields are cleared and `available: false, updating: true` tells consumers to wait for the new result.
 
@@ -8,9 +10,11 @@ Read the latest snapshot from another extension:
 
 ```js
 function readVN() {
-    const raw = SillyTavern.getContext().variables.local.get('vn_plus');
-    try { return raw ? JSON.parse(raw) : null; }
-    catch { return null; }
+    const chat = SillyTavern.getContext().chat;
+    for (let i = chat.length - 1; i >= 0; i--) {
+        if (!chat[i].is_user && !chat[i].is_system) return chat[i].extra?.vn_plus?.context || null;
+    }
+    return null;
 }
 
 const vn = readVN();
@@ -21,13 +25,13 @@ if (vn?.available) {
 }
 ```
 
-For older ST contexts without `variables.local.set`, VN+ uses `chatMetadata.variables` and `saveMetadataDebounced`. No server plugin or API key is required for sharing state.
+No server plugin or API key is required for message metadata. Snapshot changes use debounced chat saves; artifact actions request an immediate chat save. Raw message text is unchanged.
 
 | Field | Meaning |
 | --- | --- |
 | `schemaVersion` | `1`; consumers should check this before relying on a schema. |
 | `available`, `updating` | Structured POV/header state is available from current context; a reconstruction is pending. Check `available && !updating` before consuming scene data. |
-| `basis` | `context` for `vn_plus`; `playback` for `vn_plus_playback`. |
+| `basis` | `context` for extra.vn_plus.context; `playback` for extra.vn_plus.playback; artifact reads can use `artifact`. |
 | `active`, `generating` | VN overlay is open; a host generation is in progress. |
 | `environment` | `{ id, name }` of the selected content environment. |
 | `source` | `{ message, swipe, beat, position }`. Message/swipe are zero-based. Context uses the latest assistant message and null beat/position; playback also supplies zero-based beat/position. |
@@ -47,7 +51,7 @@ Context snapshots publish after current message reduction, background classifica
 
 The context cache includes all completed paragraphs of the latest selected response, even when you are replaying an earlier paragraph/message. Closing VN sets `active` and live audio status false while context continues updating. Reloads reconstruct from the chat; switching chats/environments clears the previous output before rebuilding. Delayed results from an old context cannot overwrite the current result. Raw dialogue, canonical prose, HTML artifacts, character properties, voice IDs and credentials are not included. Only requested structured header metadata can come from canonical text. Inference uses commands, headers and speaker activity; free-form prose is not interpreted for implicit entrances/exits. **General → Cast memory** controls the response window (default 3; 0 keeps until an explicit exit, scene clear/reset or changed header location). Background/time/music searches are not limited by that cast window.
 
-For the paragraph actually on screen and its actual audio selection, read **`vn_plus_playback`** using the same JSON API. It has the same scene fields with `basis: "playback"`, follows back/replay/explicit historical message selection, and emits **`vnplus:playback-changed`**. Its music/ambience describe the current rendered channels. It cannot overwrite `vn_plus`. Opening VN without specifying a historical message selects the latest assistant response; explicit message buttons and internal playback controls still replay the selected message without looking ahead. Playback inherits the same recent-cast and header-location rules from context up to that response.
+For the paragraph actually on screen and its actual audio selection, read **`message.extra.vn_plus.playback`** directly. It has the same scene fields with `basis: "playback"`, follows back/replay/explicit historical message selection, and emits **`vnplus:playback-changed`**. Its music/ambience describe the current rendered channels. It cannot overwrite the current context snapshot. Opening VN without specifying a historical message selects the latest assistant response; explicit message buttons and internal playback controls still replay the selected message without looking ahead. Playback inherits the same recent-cast and header-location rules from context up to that response.
 
 Listen for changes after VN+ has stored the snapshot and scalar variables:
 
@@ -65,7 +69,7 @@ document.addEventListener('vnplus:state-changed', onVNState);
 
 The event bubbles from the VN root. Keep your own listener lifecycle in your extension; VN+ does not call other extensions or add its variables to the model prompt automatically.
 
-The following convenience variables work with `{{getvar::NAME}}` or `/getvar NAME`:
+The following convenience values live inside **`message.extra.vn_plus.variables`**. Read them as ordinary object properties, such as `message.extra.vn_plus.variables.vn_plus_time`. They are no longer `/getvar` or `{{getvar}}` variables.
 
 | Variable | Value |
 | --- | --- |
@@ -82,4 +86,4 @@ The following convenience variables work with `{{getvar::NAME}}` or `/getvar NAM
 | `vn_plus_music`, `vn_plus_ambient` | Requested channel names |
 | `vn_plus_music_playing` | `true` / `false` |
 
-Absent scalar values are empty strings; unknown time of day is `unknown`. `vn_plus` contains richer data, including resolved asset URLs, playback rate, mute and cached scene metadata.
+Absent scalar values are empty strings; unknown time of day is `unknown`. `context` and `playback` contain richer structured data, including resolved asset URLs, playback rate, mute and cached scene metadata. The `variables.vn_plus` field retains a JSON encoding for consumers that prefer it.

@@ -18,3 +18,5 @@ Thumbs.db
 /backgrounds/properties.json
 /environments/*/dialogue.css
 /dialogue.css
+/environments/*/artifacts/
+/artifacts/

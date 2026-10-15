@@ -1,4 +1,6 @@
-# Visual Novel+ 2.13.0
+# Visual Novel+ 2.14.0
+
+Version 2.14 stores VN scene snapshots, scalar variables and persistent artifact actions in **each message's `extra.vn_plus`**, synchronized with its selected swipe and content revision. It stops publishing chat-local variables and retires the old VN-owned copies. Interactive HTML gets `VNPlus.read()`, `VNPlus.getScene()` and `VNPlus.extra.get/set/push/remove` through a scoped sandbox bridge. Named artifacts share their own timeline data across messages; branches, swipes, edits and historical paragraphs stay separate. `#ARTIFACT diary` opens the selected environment's `artifacts/diary/index.html`. See [message state](docs/shared-state.md), [artifact setup/API](docs/artifact-bridge.md), and the [working diary example](examples/diary.html). Refresh SillyTavern after updating; no server restart is needed.
 
 Version 2.13 makes `vn_plus` a reconstruction of the **latest selected chat context**, updated on startup, chat/message/history changes and whenever VN opens, including while VN is closed. Stored output is never reused as input. The latest background/music/header and recent cast/emotions come from current selected swipes; generation holds the last completed context. Pending rebuilds clear old values and report `available: false, updating: true`. Historical playback has its own `vn_plus_playback` JSON and `vnplus:playback-changed` event. **General → Cast memory** defaults to the last three completed VN responses; `0` retains characters until an exit or scene/location change. Opening without an explicit message selects the latest response. No server restart is needed; refresh SillyTavern after updating.
 
@@ -126,7 +128,7 @@ ambient/{track}.{mp3,ogg,...}
 sfx/{sound}.{mp3,ogg,...}
 fonts/{font}.{ttf,woff2,...}
 scenes/{name}.txt                          # optional authoring storage
-artifacts/{name}.html                      # optional authoring storage
+artifacts/{id}/index.html                  # local HTML menu, opened with #ARTIFACT id
 ```
 
 Asset names can be semantic uppercase identifiers; the inventory matches them case-insensitively. New assets not in the inventory are probed and cached. After adding files, **Refresh assets** in settings clears cached misses. `npm run inventory` refreshes the optional `assets.local.json` list, making new property aliases discoverable immediately. Node is needed only for this authoring tool; no Node runtime or build step is required to use the installed extension.
@@ -235,10 +237,10 @@ Music mute is a saved preference and remains active across scene changes/reopeni
 ## Privacy, storage and lifecycle
 
 - No prompt injection, story rewriting, LLM generation calls or independent conversation store. Optional Fish Audio speech sends only manually selected spoken POV dialogue through the bundled server bridge when you request generation.
-- Settings and the chat-local shared state variables persist through SillyTavern. Shared output is rebuilt from current context after startup rather than reused as input. Seen-beat sets (up to 32 response fingerprints), asset results and diagnostics are bounded in memory. No global localStorage scene/transcript keys are written. Legacy stored keys are ignored rather than deleted.
+- Settings persist through SillyTavern; VN runtime variables and artifact actions persist in message.extra.vn_plus. Derived scene snapshots rebuild from current context after startup; artifact actions supply the persistent timeline. Seen-beat sets (up to 32 response fingerprints), asset results and diagnostics are bounded in memory. No global localStorage scene/transcript keys are written. Legacy localStorage keys are ignored; obsolete VN-owned shared variables are retired.
 - Swipes/edits reconstruct the selected source; chat changes clear staging/audio; refresh reconstructs the scene from the saved message. Branch identity includes chat and character/group IDs.
 - Canonical text is shown only by a deliberate reveal. Reveal closes on generation, editing, swiping, chat changes or entering VN. A missing/incomplete POV produces a safe waiting/unavailable view.
-- HTML artifacts have isolated, opaque-origin iframes. Static mode strips scripts. Interactive mode requires both explicit `html interactive` markup and a user setting; it still has no same-origin or host API access. See [artifact constraints](docs/grammar.md#artifacts).
+- HTML artifacts have isolated, opaque-origin iframes. Static mode strips scripts. Interactive mode requires explicit interactive markup/local artifact commands and a user setting. The scoped VNPlus bridge reads scene data and saves artifact values through message extra; direct same-origin/SillyTavern APIs remain unavailable. See [artifact setup and constraints](docs/artifact-bridge.md).
 - The scene inspector contains POV tokens, parser diagnostics, presentation snapshots and resolved/missing assets, never canonical narration.
 
 ## Validation and development

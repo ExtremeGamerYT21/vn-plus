@@ -151,6 +151,6 @@ export function createSettings(settings, callbacks) {
         }
         panel.append(details);
     }
-    const note = document.createElement('p'); note.className = 'vn-hint'; note.textContent = 'Presentation only. Reads the section after an exact ///// line. Set up the supplied display/context RegEx scripts separately. Interactive artifacts require an html interactive fence and this opt-in.'; panel.append(note);
+    const note = document.createElement('p'); note.className = 'vn-hint'; note.textContent = 'Reads the section after an exact ///// line. Set up the supplied display/context RegEx scripts separately. Interactive HTML and local artifacts use this opt-in and can save their own timeline data in message extra.'; panel.append(note);
     return panel;
 }

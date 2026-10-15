@@ -42,8 +42,8 @@ export function sharedVariables(value) {
 
 export class ChatStatePublisher {
     constructor(host, notify = () => {}, key = SHARED_STATE_KEY) { this.host = host; this.notify = notify; this.key = key; this.epoch = 0; }
-    bind(environment) {
-        this.epoch++; this.pending = false; this.binding = this.host.captureChatVariables?.();
+    bind(environment, index) {
+        this.epoch++; this.pending = false; this.binding = this.host.captureMessageExtra?.(index);
         // Persisted output is never an input. Reconstruct from the currently selected chat swipes.
         this.value = { schemaVersion: 1, basis: this.key === SHARED_STATE_KEY ? 'context' : 'playback', available: false, updating: false, environment: { id: environment.id, name: environment.name }, source: null,
             scene: null, characters: [], speaker: null, player: null, background: null, lighting: null, music: null, ambient: null, presentation: null };
@@ -59,9 +59,13 @@ export class ChatStatePublisher {
     cancel() { this.epoch++; this.pending = false; }
     update(patch) { if (!this.value || this.pending) return; this.value = { ...this.value, ...structuredClone(patch) }; this.flush(); }
     flush() {
-        const values = this.key === SHARED_STATE_KEY ? sharedVariables(this.value) : { [this.key]: JSON.stringify(this.value) };
-        const changed = this.binding?.read(this.key) !== values[this.key];
-        if (this.binding?.write(values) && changed) this.notify(structuredClone(this.value));
+        const kind = this.key === SHARED_STATE_KEY ? 'context' : 'playback';
+        const changed = JSON.stringify(this.binding?.read(kind)) !== JSON.stringify(this.value);
+        if (this.binding?.write(kind, this.value)) {
+            if (kind === 'context') this.binding.write('variables', sharedVariables(this.value));
+            this.host.retireSharedVariables?.([...Object.keys(sharedVariables(this.value)), 'vn_plus_playback']);
+            if (changed) this.notify(structuredClone(this.value));
+        }
     }
     get snapshot() { return structuredClone(this.value); }
 }

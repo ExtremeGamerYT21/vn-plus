@@ -1,17 +1,17 @@
 import { DEFAULT_ENVIRONMENT } from '../core/content-environments.js';
 
-export async function runSharedChecks({ check, assert, equal, eventually, context, mountChat, emit, makeController }) {
+export async function runSharedChecks({ check, assert, equal, eventually, context, mountChat, emit, chatPayload, makeController }) {
     let controller = makeController();
     await check('shared chat variables expose resolved media, hidden player emotion, time and actual tint without private dialogue', async () => {
         controller.settings.showPlayerBust = false;
         context.chatId = 'shared-state-A'; context.chat = [{ mes: '[3 August 1991 | Before First Year | 9:00 p.m. | Summer | Shop]\nCANONICAL_SHARED_SECRET\n/////\n#BACKGROUND kitchen\n#MUSIC buzz\n#AMBIENT outside_noise\n#TINT #123456\n#ENTER Ashley\nJason: "PRIVATE_SHARED_DIALOGUE" [sad]\nAshley: "Next." [happy]\n#EXIT Ashley\n#BACKGROUND street\nAfter the exit.' }];
         mountChat(); emit('CHAT_CHANGED'); await controller.open(0);
         await eventually(() => controller.playbackVariables.available && !controller.playbackState.pending);
-        const value = JSON.parse(context.variables.local.get('vn_plus_playback'));
+        const value = context.chat[controller.selected].extra.vn_plus.playback;
         equal(value.player.emotion, 'sad'); equal(value.player.present, false); equal(value.characters.map(character => character.id), ['ashley']);
         equal(value.timeOfDay, 'night'); equal(value.lighting.level, 1); equal(value.background.inside, true);
         equal(value.lighting.ambientColor, 'rgb(18, 52, 86)'); assert(value.background.asset.includes('kitchen.png')); assert(value.music.asset.includes('buzz.mp3'));
-        equal(context.variables.local.get('vn_plus_player_emotion'), 'sad'); equal(context.variables.local.get('vn_plus_time'), '21:00');
+        equal(context.chat.at(-1).extra.vn_plus.variables.vn_plus_player_emotion, 'sad'); equal(context.chat.at(-1).extra.vn_plus.variables.vn_plus_time, '21:00');
         equal(context.chatMetadata.variables.unrelated, 'keep'); assert(!JSON.stringify(value).includes('PRIVATE_SHARED')); assert(!JSON.stringify(value).includes('CANONICAL_SHARED'));
     });
     await check('shared cast and emotions follow backward navigation and explicit exits', async () => {
@@ -35,15 +35,15 @@ export async function runSharedChecks({ check, assert, equal, eventually, contex
         } finally { document.removeEventListener('vnplus:state-changed', listener); }
     });
     await check('shared scene publication rejects obsolete async resolutions across chat switches', async () => {
-        const resolver = controller.resolver, original = resolver.background, oldMetadata = context.chatMetadata;
+        const resolver = controller.resolver, original = resolver.background, oldMetadata = context.chat.at(-1).extra.vn_plus;
         let release; resolver.background = () => new Promise(resolve => release = resolve);
         await controller.action('next'); assert(controller.playbackState.pending);
         context.chatId = 'shared-state-B'; context.chat = [{ mes: 'SECRET\n/////\nA fresh chat.' }];
         mountChat(); emit('CHAT_CHANGED');
         resolver.background = original; release(resolver.url('backgrounds/street.png'));
         await eventually(() => controller.playbackVariables.available && controller.playbackVariables.background.name === null);
-        equal(JSON.parse(oldMetadata.variables.vn_plus).player.emotion, 'sad');
-        equal(context.chatMetadata.variables.vn_plus_player_emotion, ''); equal(context.chatMetadata.variables.vn_plus_music, '');
+        equal(oldMetadata.context.player.emotion, 'sad');
+        equal(context.chat.at(-1).extra.vn_plus.variables.vn_plus_player_emotion, ''); equal(context.chat.at(-1).extra.vn_plus.variables.vn_plus_music, '');
         equal(controller.playbackVariables.characters, []); equal(context.chatMetadata.variables.unrelated, 'keep');
     });
     await check('shared publication rebinds when SillyTavern reloads metadata for the same chat', async () => {
@@ -51,7 +51,7 @@ export async function runSharedChecks({ check, assert, equal, eventually, contex
         Object.defineProperty(context, 'chatMetadata', { configurable: true, get: () => replacement });
         try {
             emit('CHAT_LOADED');
-            await eventually(() => replacement.variables.vn_plus_playback && JSON.parse(replacement.variables.vn_plus_playback).available);
+            await eventually(() => context.chat.at(-1).extra.vn_plus.playback?.available);
             equal(replacement.variables.unrelated, 'replacement'); equal(controller.playbackVariables.background.name, null);
         } finally { Object.defineProperty(context, 'chatMetadata', descriptor); emit('CHAT_LOADED'); }
         await eventually(() => controller.playbackState.binding.current() && !controller.playbackState.pending);
@@ -65,7 +65,7 @@ export async function runSharedChecks({ check, assert, equal, eventually, contex
         await controller.selectEnvironment(controller.environment.id === 'harry-potter' ? DEFAULT_ENVIRONMENT : 'harry-potter');
         equal(controller.sharedVariables.available, false);
         await eventually(() => controller.sharedVariables.available && !controller.sharedVariables.updating);
-        equal(controller.sharedVariables.environment.id, controller.environment.id); equal(context.chatMetadata.variables.vn_plus_background, '');
+        equal(controller.sharedVariables.environment.id, controller.environment.id); equal(context.chat.at(-1).extra.vn_plus.variables.vn_plus_background, '');
     });
     await check('closed VN reconstructs current context instead of trusting a stored snapshot or accumulating every old speaker', async () => {
         await controller.selectEnvironment(DEFAULT_ENVIRONMENT);
@@ -87,20 +87,20 @@ export async function runSharedChecks({ check, assert, equal, eventually, contex
     });
     await check('edits while VN is closed synchronously invalidate old variables and rebuild media time and emotion', async () => {
         context.chat[2].mes = '[3 August 1991 | Before First Year | 11:00 p.m. | Summer | Shop]\nSECRET\n/////\n#BACKGROUND street\n#MUSIC club\nNina: "Edited." [angry]';
-        emit('MESSAGE_UPDATED', 2); equal(context.chatMetadata.variables.vn_plus_available, 'false');
+        emit('MESSAGE_UPDATED', 2); equal(context.chat.at(-1).extra.vn_plus.variables.vn_plus_available, 'false');
         await eventually(() => controller.sharedVariables.available && controller.sharedVariables.background.name === 'street');
         equal(controller.sharedVariables.scene.time, '23:00'); equal(controller.sharedVariables.characters[0].emotion, 'angry');
         equal(controller.sharedVariables.music.name, 'club'); equal(controller.sharedVariables.lighting.level, 0); equal(controller.audio.sources.size, 0);
     });
     await check('historical playback has its own variables and opening without an index uses the latest context', async () => {
-        const original = JSON.stringify(context.chat);
+        const original = chatPayload(context.chat);
         await controller.open(0); await eventually(() => controller.playbackVariables.available && !controller.playbackState.pending);
         equal(controller.playbackVariables.background.name, 'kitchen'); equal(controller.playbackVariables.source.message, 0);
         equal(controller.sharedVariables.background.name, 'street'); equal(controller.sharedVariables.source.message, 3);
         equal(controller.sharedVariables.music.loaded, false);
         await controller.open(); await eventually(() => controller.playbackVariables.source?.message === 3 && !controller.playbackState.pending);
         equal(controller.playbackVariables.characters.map(character => character.id), ['nina']); equal(controller.playbackVariables.background.name, 'street');
-        equal(JSON.stringify(context.chat), original); controller.close();
+        equal(chatPayload(context.chat), original); controller.close();
     });
     await check('completed generation updates context while closed but streaming text and past effects never run', async () => {
         const source = controller.sharedVariables.source.message, sfx = controller.audio.sfx; let effects = 0;
@@ -145,7 +145,7 @@ export async function runSharedChecks({ check, assert, equal, eventually, contex
         resolver.background = original; release(resolver.url('backgrounds/kitchen.png'));
         await eventually(() => controller.sharedVariables.basis === 'context' && !controller.sharedVariables.updating);
         equal(controller.sharedVariables.available, false); equal(controller.sharedVariables.characters, []); equal(controller.sharedVariables.background.name, null);
-        equal(context.chatMetadata.variables.vn_plus_music, ''); equal(controller.audio.sources.size, 0);
+        equal(context.chat.at(-1).extra.vn_plus.variables.vn_plus_music, ''); equal(controller.audio.sources.size, 0);
     });
     controller.dispose();
 }
