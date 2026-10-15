@@ -1,8 +1,9 @@
 import { once } from 'node:events';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
+import { registerCharacterFolders } from './character-folders.mjs';
 
-export const info = { id: 'vn-plus-tts', name: 'VN+ Fish Audio bridge', description: 'Timestamped Fish synthesis using SillyTavern’s per-user secret store.' };
+export const info = { id: 'vn-plus-tts', name: 'VN+ server bridge', description: 'Local character folders and timestamped Fish synthesis with per-user secrets.' };
 export const SECRET_KEY = 'api_key_vn_plus_fish';
 export function validateRequest(input) {
     const { model, timeout = 180, body } = input || {};
@@ -23,7 +24,7 @@ export function validateRequest(input) {
 export function registerBridge(router, secrets, fetcher = fetch) {
     const active = new Set();
     const user = (req, res) => { if (!req.user?.directories) { res.sendStatus(401); return null; } return req.user.directories; };
-    router.get('/status', (req, res) => { const directories = user(req, res); if (directories) res.json({ available: true, configured: !!secrets.readSecret(directories, SECRET_KEY), version: 1 }); });
+    router.get('/status', (req, res) => { const directories = user(req, res); if (directories) res.json({ available: true, configured: !!secrets.readSecret(directories, SECRET_KEY), version: 2 }); });
     router.post('/secret', (req, res) => {
         const directories = user(req, res); if (!directories) return;
         const value = req.body?.value;
@@ -69,4 +70,5 @@ export function registerBridge(router, secrets, fetcher = fetch) {
 export async function init(router) {
     const secrets = await import(pathToFileURL(path.resolve(process.cwd(), 'src/endpoints/secrets.js')).href);
     registerBridge(router, secrets);
+    registerCharacterFolders(router, fileURLToPath(new URL('../', import.meta.url)));
 }

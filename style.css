@@ -1,4 +1,5 @@
 /* Scoped Visual Novel+ presentation. */
+.vn-content-notice { position: absolute; top: 80px; left: 5%; right: 5%; padding: 10px 14px; background: var(--vn-panel); border: 1px solid var(--vn-border); color: var(--vn-ui-color); font-size: 13px; z-index: 8; }
 .vnplus-ui .vn-thought { font-style: italic; }
 .vn-layout-picker, .vn-environment-picker { color: inherit; font: 12px/1.35 var(--mainFontFamily,system-ui); background: var(--vn-panel); border: 1px solid var(--vn-border); border-radius: 7px; padding: 7px 9px; cursor: pointer; max-width: 100%; }
 .vn-environment-picker { max-width: min(230px,32vw); }

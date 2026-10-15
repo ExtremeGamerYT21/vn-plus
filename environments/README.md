@@ -26,4 +26,24 @@ Asset names in POV commands remain relative to the selected environment: `#BACKG
 
 Character registry overrides, dialogue font choice and dialogue texture choice are saved separately for each environment. Per-character file properties, breathing centers, blink alternatives, themes and sounds live beside that setting's artwork. Global playback/audio/layout preferences continue to apply across environments.
 
+## Automatic character folders
+
+With **Characters → Create folders for unknown speakers** enabled (the default), opening a finalized VN scene creates a starter folder for every spoken/thought speaker that does not match an existing character, alias, configured identity or player name. Narration and standalone `#ENTER` commands do not trigger creation. The server also checks folders and property aliases that have not been inventoried yet.
+
+For `New Person: "Hello."`, the result is:
+
+```text
+environments/<selected-environment>/characters/new_person/
+  properties.json
+  sprites/
+```
+
+The generated JSON contains `displayName`, an empty `aliases` array, `defaultExpression: "default"`, matching random `color` and `textColor`, an empty `voiceId`, and the default breathing center. Its color is saved once and reused on later visits/restarts. Empty `voiceId` keeps the new character mute; the missing-art silhouette appears until you add artwork. Edit the properties to choose a different color or voice.
+
+The creator adds the properties to `assets.local.json` automatically, preserving other local entries and leaving `assets.json` unchanged. New character directories are ignored by Git, including inside the built-in environments; already tracked files retain their existing tracking. Existing properties and artwork are preserved byte-for-byte. Add `sprites/default.webp`, `happy.webp`, `happy_blink.webp`, etc. later; run `npm run inventory` and **Refresh assets** after adding artwork so optional blink variants are indexed. Maintainers intentionally publishing new character files must explicitly force-add them.
+
+This feature uses the bundled VN+ server bridge, independently of Fish and without an API key. Restart SillyTavern after installing/updating the bridge. Its global content-writing route is available to authenticated administrator accounts. If the bridge is unavailable or creation fails, VN playback remains readable and displays a notice. Folder names are normalized; Windows device names such as `CON` receive a `character_` prefix.
+
+Mystery labels containing only punctuation, such as `???`, receive a deterministic `unknown_<hash>` folder ID. Different labels stay separate, and their original display names remain in the properties.
+
 The renderer still reads scenes and inline HTML from the selected chat's POV section. `scenes/` and `artifacts/` are authoring storage, not automatic script execution or an alternative conversation history.

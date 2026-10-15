@@ -144,7 +144,7 @@ export class VNController {
         if (!this.settings.enabled) { this.close(); return; }
         if (key === 'musicMuted') return;
         if (key === 'layout' || key === 'breathingCenter') { this.applyLayout(); return; }
-        if (['characters', 'showPlayerBust', 'playerName', 'playerAliases', 'displayMode'].includes(key)) { this.sceneRevision = null; if (!this.root.hidden) void this.open(this.selected); }
+        if (['characters', 'showPlayerBust', 'playerName', 'playerAliases', 'displayMode', 'autoCreateCharacters'].includes(key)) { this.sceneRevision = null; if (!this.root.hidden) void this.open(this.selected); }
         else if (!this.root.hidden && this.playback) this.present(this.playback.restore());
     }
     async refreshAssets() {
@@ -197,6 +197,7 @@ export class VNController {
         const status = panel.querySelector('[data-character-status]'); if (status) status.textContent = `Editing ${this.environment.name}.`;
     }
     invalidate() {
+        this.root.querySelector('.vn-content-notice').hidden = true;
         this.generation++; clearTimeout(this.autoTimer); this.speech.stop(); this.dialogue.cancel(); this.stage.clear(); this.effects.clear(); this.html.close(); this.audio.close();
         this.root.querySelector('.vn-panel').hidden = true; this.root.querySelector('.vn-reply').hidden = true;
         this.transcriptArtifact = false;
@@ -229,6 +230,23 @@ export class VNController {
         const names = parsed.tokens.filter(token => token.character || token.name === 'ENTER').map(token => token.character || token.args);
         await this.registry.prepare(names);
         if (generation !== this.generation || this.busy || this.root.hidden) return;
+        const registry = this.registry, environment = this.environment;
+        const unknown = [...new Set(parsed.tokens.filter(token => token.type === 'dialogue').map(token => token.character))].filter(name => !registry.knows(name));
+        if (this.settings.autoCreateCharacters && this.host.scaffoldCharacters && unknown.length) {
+            try {
+                const result = await this.host.scaffoldCharacters({ environment: environment.path ? environment.id : null, names: unknown });
+                if (generation !== this.generation || registry !== this.registry || this.busy || this.root.hidden) return;
+                for (const entry of result.characters) {
+                    registry.acceptCharacter(entry);
+                    environment.inventory.characters ??= Object.create(null); environment.inventory.characters[entry.id] ??= { expressions: [] };
+                }
+                const count = result.characters.filter(entry => entry.created).length;
+                this.characterFolderStatus(count ? `Created ${count} character folder(s) in ${environment.name}. Add artwork to their sprites folders; voiceId is blank (mute).` : 'Existing character folders and colors preserved.');
+            } catch (error) {
+                if (generation !== this.generation || registry !== this.registry || this.busy || this.root.hidden) return;
+                this.characterFolderStatus(error.message, true); this.log(error.message);
+            }
+        }
         const timeline = compileTimeline(parsed.tokens, this.registry, this.settings), sourceKey = sceneKey(context, message), key = `${this.environment.id}:${sourceKey}`;
         try { this.speech.prepare(this.speechSceneId(message), timeline, this.registry); } catch (error) { this.speech.clearScene(); this.speech.notify(error.message); }
         if (!this.seen.has(key)) { if (this.seen.size >= 32) this.seen.delete(this.seen.keys().next().value); this.seen.set(key, new Set()); }
@@ -237,6 +255,10 @@ export class VNController {
         if (!timeline.views.length) { this.wait('No completed dialogue, narration, or artifact is available in this POV.'); return; }
         const resume = this.environmentResume; this.environmentResume = null;
         this.present(resume?.key === sourceKey ? this.playback.resume(resume.position) : this.playback.forward());
+    }
+    characterFolderStatus(message, error = false) {
+        const status = this.settingsPanel?.querySelector('[data-character-folders-status]'); if (status) status.textContent = message;
+        const notice = this.root.querySelector('.vn-content-notice'); notice.textContent = message; notice.hidden = !error;
     }
     present(result) {
         if (!result || !result.beat || this.root.hidden || this.busy) return;

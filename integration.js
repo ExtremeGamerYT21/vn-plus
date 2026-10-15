@@ -1,11 +1,19 @@
 /** Adapter checked against installed SillyTavern 1.19.0 source. */
-export function createHost(getContext) {
+export function createHost(getContext, { localContent = true } = {}) {
     return {
         context: getContext,
         request(url, options = {}) {
-            if (!/^\/api\/plugins\/vn-plus-tts\/(status|secret|synthesize)$/.test(url)) throw new Error('Invalid VN+ speech route.');
+            if (!/^\/api\/plugins\/vn-plus-tts\/(status|secret|synthesize|characters)$/.test(url)) throw new Error('Invalid VN+ server route.');
             return fetch(url, { ...options, headers: { ...(getContext().getRequestHeaders?.() || { 'Content-Type': 'application/json' }), ...options.headers } });
         },
+        ...(localContent ? { async scaffoldCharacters(input) {
+            const response = await this.request('/api/plugins/vn-plus-tts/characters', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal: AbortSignal.timeout(15000) });
+            if (!response.ok) {
+                let detail; try { detail = await response.json(); } catch { /* older or missing bridge */ }
+                throw new Error(detail?.error || 'Automatic character folders need the updated VN+ server bridge. Restart SillyTavern after updating VN+.');
+            }
+            return response.json();
+        } } : {}),
         subscribe(name, callback) {
             const context = getContext(), event = (context.eventTypes || context.event_types)?.[name];
             if (!event || !context.eventSource) return () => {};

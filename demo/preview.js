@@ -20,5 +20,5 @@ document.querySelector('#send_but').addEventListener('click', () => { document.q
 const catalog = new AssetResolver(new URL('../', import.meta.url));
 const [published, local] = await Promise.all([catalog.json('assets.json'), catalog.json('assets.local.json')]);
 const inventory = mergeContentInventories(published || {}, local || {}); catalog.dispose();
-const controller = new VNController(createHost(() => context), new URL('../', import.meta.url), inventory);
+const controller = new VNController(createHost(() => context, { localContent: false }), new URL('../', import.meta.url), inventory);
 await controller.open(0);

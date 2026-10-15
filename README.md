@@ -1,4 +1,4 @@
-# Visual Novel+ 2.4.1
+# Visual Novel+ 2.5.0
 
 A procedural visual novel presentation layer for SillyTavern. It reads **only** the player perspective after an exact `/////` line in the selected assistant message. Canonical narration, conversation storage, generation, and outgoing context remain under SillyTavern and your separate POV workflow.
 
@@ -17,6 +17,8 @@ Version 2.3.1 adds GitHub installation and updates. Personal content uses an opt
 Version 2.4 adds silhouette busts for missing art, SillyTavern theme inheritance with optional VN color overrides, text shaking limited to configurable intense emotion tags, internal thoughts, and optional Fish Audio voices from character properties. Plain prose works as narration without a `NARRATION` marker. Parenthesized dialogue displays as internal thoughts and stays silent.
 
 ## Install
+
+Version 2.5 automatically creates folders for previously unknown POV speakers inside the selected environment. Each gets an empty `sprites/`, a `properties.json`, a saved random `textColor`/accent, and a blank `voiceId` (mute). Existing names, aliases, configured characters and the player are reused; the narrator is excluded. The local catalog is updated automatically, and existing properties/artwork are never overwritten by the folder creator. Control this under **Characters → Create folders for unknown speakers**. This uses the bundled server bridge without needing a Fish key; restart SillyTavern once after updating to load the new server code. Global folder creation requires an administrator account. See [character folder setup](environments/README.md).
 
 1. Open **Extensions → Install extension** in SillyTavern and enter:
 

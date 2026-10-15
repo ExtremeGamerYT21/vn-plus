@@ -1,5 +1,6 @@
 node_modules/
 assets.local.json
+.vn-plus-catalog-*.tmp
 .env
 .env.*
 *.log
@@ -12,3 +13,4 @@ Thumbs.db
 !/environments/coffin-of-andy-and-leyley/
 !/environments/harry-potter/
 !/environments/re-zero/
+/environments/*/characters/*/

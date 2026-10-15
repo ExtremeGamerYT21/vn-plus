@@ -26,7 +26,7 @@ const emit = (name, ...args) => { for (const callback of [...(listeners.get(name
 document.querySelector('#send_but').addEventListener('click', () => { sends++; document.querySelector('#send_textarea').value = ''; });
 function mountChat() { document.querySelector('#chat').innerHTML = context.chat.map((message, index) => `<div class="mes" mesid="${index}"><div class="mes_block"><div class="mes_buttons"></div></div></div>`).join(''); }
 mountChat();
-let controller = new VNController(createHost(() => context), new URL('../', import.meta.url), inventory);
+let controller = new VNController(createHost(() => context, { localContent: false }), new URL('../', import.meta.url), inventory);
 class FakeAudio { constructor() { this.volume = 1; this.paused = true; } async play() { this.paused = false; } pause() { this.paused = true; } removeAttribute() {} load() {} }
 controller.audio.audioFactory = () => new FakeAudio();
 let failures = 0, passes = 0;
@@ -202,7 +202,7 @@ await check('chat switches clear stage, background, audio and reveal', async () 
 });
 await check('refresh reconstruction, DOM remount, reinitialization and disable', async () => {
     context.chat = [{ mes: initial, swipe_id: 0 }]; mountChat();
-    controller.dispose(); controller = new VNController(createHost(() => context), new URL('../', import.meta.url), inventory); controller.audio.audioFactory = () => new FakeAudio();
+    controller.dispose(); controller = new VNController(createHost(() => context, { localContent: false }), new URL('../', import.meta.url), inventory); controller.audio.audioFactory = () => new FakeAudio();
     await controller.open(0); await pause(100); equal(controller.root.querySelectorAll('.vn-character').length, 4);
     equal(document.querySelectorAll('#vnplus-overlay').length, 1); equal(document.querySelectorAll('#vnplus-settings').length, 1);
     mountChat(); await pause(150); equal(document.querySelectorAll('.vn-message-tools').length, 1); assert([...listeners.values()].every(set => set.size === 1));
@@ -252,6 +252,52 @@ await check('textbox image-only option keeps artwork and removes every panel dec
         Object.assign(controller.settings, previous); controller.settingsChanged('characters');
         const toggle = controller.settingsPanel.querySelector('[data-setting="dialogueBoxImageOnly"]'); if (toggle) toggle.checked = previous.dialogueBoxImageOnly;
     }
+});
+await check('unknown speakers acquire property colors before rendering and known names never scaffold again', async () => {
+    const previous = { characters: controller.settings.characters, automatic: controller.settings.autoCreateCharacters };
+    const environment = controller.environment; let requests = 0;
+    controller.settings.autoCreateCharacters = true;
+    controller.settings.characters = { known_test: { displayName: 'Known Test', aliases: ['Known'], textColor: '#112233' } };
+    controller.host.scaffoldCharacters = async input => {
+        requests++; equal(input.environment, environment.id); equal(input.names, ['Mara Test', 'Resident Test', '???']);
+        return { characters: [
+            { name: 'Mara Test', id: 'mara_test', created: true, properties: { displayName: 'Mara Test', textColor: '#edb582', color: '#edb582', voiceId: '' } },
+            { name: 'Resident Test', id: 'existing_test', created: false, properties: { displayName: 'Existing Test', aliases: ['Resident Test'], textColor: '#90d6a7' } },
+            { name: '???', id: 'mystery_test', created: true, properties: { displayName: '???', textColor: '#c6d97d', voiceId: '' } },
+        ] };
+    };
+    try {
+        context.chat[0].mes = 'SECRET\n/////\n#ENTER Enter Only\n#ENTER Narrator\nMara Test: "First line."\nKnown: "Known alias."\nResident Test: "Found on disk."\n???: "A mystery."\nNarrator: "No body."';
+        await controller.open(0); await pause(50); equal(requests, 1);
+        equal(controller.root.querySelector('.vn-dialogue').style.getPropertyValue('--vn-text-color'), '#edb582');
+        assert(controller.registry.knows('Mara Test')); equal(controller.registry.identify('Resident Test'), 'existing_test');
+        assert(controller.settingsPanel.querySelector('[data-character-folders-status]').textContent.includes('Created 2')); equal(controller.registry.identify('???'), 'mystery_test');
+        equal(controller.speech.prepared.segments.length, 0); assert(controller.root.querySelector('.vn-content-notice').hidden);
+        await controller.open(0); equal(requests, 1);
+        context.chat[0].mes += '\nAnother moment passes.'; await controller.open(0); equal(requests, 1);
+        controller.settings.autoCreateCharacters = false; context.chat[0].mes = 'SECRET\n/////\nNo Scaffold: "Leave me alone."'; await controller.open(0); equal(requests, 1);
+    } finally {
+        delete controller.host.scaffoldCharacters; delete environment.inventory.characters.mara_test; delete environment.inventory.characters.existing_test; delete environment.inventory.characters.mystery_test;
+        controller.settings.characters = previous.characters; controller.settings.autoCreateCharacters = previous.automatic;
+    }
+});
+await check('folder bridge failures stay readable and stale responses cannot enter another environment', async () => {
+    const initialEnvironment = controller.environment.id, automatic = controller.settings.autoCreateCharacters;
+    controller.settings.autoCreateCharacters = true;
+    try {
+        controller.host.scaffoldCharacters = async () => { throw new Error('Restart SillyTavern to load the folder bridge.'); };
+        context.chat[0].mes = 'SECRET\n/////\nNew Failure Test: "Still readable."'; await controller.open(0);
+        assert(controller.root.querySelector('.vn-text').textContent.includes('Still readable.'));
+        assert(!controller.root.querySelector('.vn-content-notice').hidden); assert(controller.root.querySelector('.vn-content-notice').textContent.includes('Restart'));
+        let resolve; controller.host.scaffoldCharacters = () => new Promise(done => resolve = done);
+        context.chat[0].mes = 'SECRET\n/////\nLate Character Test: "Old world."'; const pending = controller.open(0);
+        await eventually(() => !!resolve);
+        context.chat[0].mes = 'SECRET\n/////\nNARRATION\nA different world.';
+        await controller.selectEnvironment(initialEnvironment === 'harry-potter' ? 're-zero' : 'harry-potter');
+        resolve({ characters: [{ id: 'late_character_test', properties: { displayName: 'Late Character Test', textColor: '#abcdef' }, created: true }] });
+        await pending; assert(!controller.registry.properties.has('late_character_test')); assert(!controller.root.querySelector('[data-character="late_character_test"]'));
+        assert(controller.root.querySelector('.vn-content-notice').hidden);
+    } finally { delete controller.host.scaffoldCharacters; controller.settings.autoCreateCharacters = automatic; await controller.selectEnvironment(initialEnvironment); }
 });
 await check('obsolete async background and sprite requests cannot overwrite new scene', async () => {
     const originalBackground = controller.resolver.background, originalSprite = controller.resolver.sprite;

@@ -1,5 +1,5 @@
 {
-  "status": "27 passed · 0 failed",
+  "status": "29 passed · 0 failed",
   "tests": [
     "PASS · POV privacy and four characters from one scenario",
     "PASS · backward restores background, expression and audio state",
@@ -19,6 +19,8 @@
     "PASS · missing assets, property styling and reduced motion remain readable",
     "PASS · narrator labels stay readable without a bust or reserved stage slot",
     "PASS · textbox image-only option keeps artwork and removes every panel decoration",
+    "PASS · unknown speakers acquire property colors before rendering and known names never scaffold again",
+    "PASS · folder bridge failures stay readable and stale responses cannot enter another environment",
     "PASS · obsolete async background and sprite requests cannot overwrite new scene",
     "PASS · breathing, expression interpolation and blink images clean up on reduced motion",
     "PASS · GPU mesh has no triangle seams, preserves alpha/orientation, and releases resources",

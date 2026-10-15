@@ -19,6 +19,7 @@ export const DEFAULT_SETTINGS = {
     tts: SPEECH_DEFAULTS,
     letterSpacing: 0, musicVolume: .5, musicMuted: false, ambientVolume: .4, sfxVolume: .8, crossfadeDuration: 800,
     interactiveArtifacts: false, characterSounds: true, missingAsset: 'placeholder', debug: false, characters: {},
+    autoCreateCharacters: true,
     environment: DEFAULT_ENVIRONMENT, environmentProfiles: {},
 };
 
@@ -87,6 +88,12 @@ export function createSettings(settings, callbacks) {
             const hint = document.createElement('p'); hint.className = 'vn-hint'; hint.textContent = 'Textbox image only uses your character or global texture without a fill, frame, accent, shadow or blur. With no texture configured, the normal box remains. A character can override this with "boxImageOnly":true or false.'; details.append(hint);
         }
         if (group === 'Characters') {
+            const row = document.createElement('label'); row.className = 'vn-setting';
+            const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = settings.autoCreateCharacters; checkbox.dataset.setting = 'autoCreateCharacters';
+            checkbox.addEventListener('change', () => { settings.autoCreateCharacters = checkbox.checked; callbacks.change('autoCreateCharacters'); });
+            row.append(document.createTextNode('Create folders for unknown speakers'), checkbox); details.append(row);
+            const folderStatus = document.createElement('p'); folderStatus.className = 'vn-hint'; folderStatus.dataset.characterFoldersStatus = ''; folderStatus.role = 'status';
+            folderStatus.textContent = 'New speakers get sprites/, properties.json and a saved random text color in this environment. Uses the VN+ server bridge; no Fish key is needed.'; details.append(folderStatus);
             const help = document.createElement('p'); help.className = 'vn-hint'; help.textContent = 'Registry overrides: JSON keyed by folder ID. Supports identity/expression aliases, colors, fonts, textures, scale/offsets, sounds, breathing and blink. Fish voice: "voiceId":"your-fish-voice-id". Omit voiceId to keep a character mute. Breathing center: "breathing":{"centerX":0.5,"centerY":0.62}. X runs left to right, Y top to bottom (0–1 over the full sprite image, including transparent padding). Missing blink artwork leaves eyes open.';
             const editor = document.createElement('textarea'); editor.rows = 8; editor.value = JSON.stringify(settings.characters, null, 2); editor.setAttribute('aria-label', 'Character registry JSON');
             const save = document.createElement('button'); save.textContent = 'Apply registry';

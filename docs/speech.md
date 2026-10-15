@@ -15,6 +15,8 @@ Replace the placeholder with a real Fish voice ID. A voice-page URL such as `htt
 
 The frontend uses a small bundled SillyTavern server plugin so API credentials remain in SillyTavern’s per-user secret store. It sends requests to Fish’s fixed HTTPS endpoint. No key is placed in VN settings, manifests, logs, voice prompts, downloaded audio or timing metadata.
 
+The same bridge also creates local starter folders for unknown speakers. That feature needs no Fish key; generated `voiceId` is blank until you assign one. Restart SillyTavern after updating to version 2.5 so its new character-folder endpoint is loaded.
+
 After installing VN+ as a global extension, run this command from the extension directory:
 
 ```text
