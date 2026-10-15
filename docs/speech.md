@@ -46,6 +46,10 @@ When Fish voices are enabled, automatic legacy character/emotion sounds are supp
 
 ## Timing review and playback
 
+**Reveal dialogue with voice timing**, under **Voice generation and playback**, is on by default. With automatic voice playback and the typewriter enabled, dialogue appears word by word at the generated transcription timestamps. The reveal follows the audio's current playback position, including retained opening silence, pauses and playback stalls. It uses existing generated clips and never starts synthesis when advancing.
+
+Missing or mismatched word timings use the ordinary typewriter; playback failure resumes it from the visible text. Clicking to finish text leaves the voice playing, and Auto waits for both. Reduced motion, a disabled typewriter, zero typewriter speed and backward navigation display the full line immediately. Stopping voice playback also finishes the text. The 2.6 update changes only frontend code, so an installation already running the 2.5.1 bridge needs a browser refresh, without another server restart.
+
 Audio bytes are collected in arrival order. Cumulative alignment snapshots replace earlier snapshots for the same chunk. Chunk offsets are added to timed words. Each chapter’s independent audio is decoded to mono 44.1 kHz PCM; scene WAV exports join the decoded samples, rather than concatenating independent MP3 files.
 
 Dialogue matching uses monotonic edit-distance alignment separately in each chapter, excluding emotion/speaker tags from matching. Automatic cuts require at least 95% text coverage, matched first/last tokens, an unambiguous alignment and valid times. Uncertain cuts show **Review required** and cannot be attached to a VN line, played as a line, or exported until reviewed. No proportional timing estimates are used.

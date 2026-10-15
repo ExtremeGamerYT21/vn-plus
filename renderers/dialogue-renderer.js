@@ -1,4 +1,5 @@
 import { EMOTION_FLAIR, shouldShakeText } from './emotion-flair.js';
+import { speechRevealCues } from '../core/speech-reveal.js';
 
 /** Small, safe emphasis renderer. Text is always inserted with text nodes. */
 export function appendEmphasis(container, text, letters = []) {
@@ -14,7 +15,7 @@ export function appendEmphasis(container, text, letters = []) {
 export class DialogueRenderer {
     constructor(root, resolver, settings) { this.root = root; this.resolver = resolver; this.settings = settings; this.generation = 0; this.timer = null; this.typing = false; this.letters = []; }
     cancel() { this.generation++; clearTimeout(this.timer); this.timer = null; this.typing = false; }
-    async render(token, props = {}, effect = 'normal', onDone = () => {}, instant = false) {
+    async render(token, props = {}, effect = 'normal', onDone = () => {}, instant = false, playback = null) {
         this.cancel(); const generation = this.generation;
         const box = this.root.querySelector('.vn-dialogue'), text = box.querySelector('.vn-text');
         const speaker = token.type === 'dialogue' ? (props.displayName || token.character) : 'Narration';
@@ -62,7 +63,27 @@ export class DialogueRenderer {
             const delay = this.settings.typewriterSpeed * (flair.speedMult || 1) * (Number(props.voiceSpeed) || 1) + (/[.!?…]/.test(letter.textContent) ? flair.dotPause || 70 : 0);
             this.timer = setTimeout(tick, delay);
         };
-        tick(); return flair;
+        const cues = this.settings.tts?.syncText !== false && token.type === 'dialogue' && !token.thought && playback
+            ? speechRevealCues(this.letters.map(letter => letter.textContent).join(''), playback.clip, playback.words) : null;
+        if (cues) {
+            let shown = 0;
+            const follow = () => {
+                if (generation !== this.generation || !this.typing) return;
+                if (playback.status === 'failed') { index = shown; tick(); return; }
+                if (['ended', 'cancelled'].includes(playback.status)) { this.complete(); return; }
+                if (playback.status === 'playing') {
+                    const time = playback.audio?.currentTime;
+                    let through = 0;
+                    if (Number.isFinite(time)) for (const cue of cues) { if (cue.at > time) break; through = cue.through; }
+                    for (let i = Math.min(shown, through); i < Math.max(shown, through); i++) this.letters[i].style.visibility = i < through ? '' : 'hidden';
+                    shown = through;
+                    if (shown >= this.letters.length) { this.complete(); return; }
+                }
+                this.timer = setTimeout(follow, 20);
+            };
+            follow();
+        } else tick();
+        return flair;
     }
     skip() { if (this.typing) { this.complete?.(); return true; } return false; }
 }

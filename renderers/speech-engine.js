@@ -138,19 +138,23 @@ export class SpeechEngine {
     }
     async play(id, processed = true) {
         this.stop(); const epoch = this.playEpoch; this.starting = true;
+        const found = this.clip(id), playback = { status: 'loading', audio: null, clip: found?.clip, words: found?.chapter.words || [] };
+        this.playback = playback;
         try {
             const samples = await this.clipSamples(id, processed); if (epoch !== this.playEpoch) return;
-            await this.beginAudio(samples);
-        } catch (error) { if (epoch === this.playEpoch) { this.stop(); this.notify(error.message); this.onEnded?.(); } }
+            await this.beginAudio(samples, playback);
+        } catch (error) { if (epoch === this.playEpoch) { this.stop('failed'); this.notify(error.message); this.onEnded?.(); } }
         finally { if (epoch === this.playEpoch) this.starting = false; }
     }
-    async beginAudio(samples) {
+    async beginAudio(samples, playback = null) {
         this.url = URL.createObjectURL(new Blob([wavBytes(samples)], { type: 'audio/wav' }));
         this.audio = this.audioFactory(); this.audio.src = this.url; this.audio.volume = Math.max(0, Math.min(1, this.settings.tts.volume));
         const audio = this.audio;
-        this.audio.onended = () => { if (this.audio !== audio) return; this.stop(); this.onEnded?.(); };
-        this.audio.onerror = () => { if (this.audio !== audio) return; this.stop(); this.notify('Voice playback failed.'); this.onEnded?.(); };
+        if (playback) playback.audio = audio;
+        this.audio.onended = () => { if (this.audio !== audio) return; this.stop('ended'); this.onEnded?.(); };
+        this.audio.onerror = () => { if (this.audio !== audio) return; this.stop('failed'); this.notify('Voice playback failed.'); this.onEnded?.(); };
         await this.audio.play();
+        if (playback && this.audio === audio) playback.status = 'playing';
     }
     async playChapter(index) {
         this.stop(); const chapter = this.job?.chapters[index]; if (!chapter) throw new Error('Chapter is unavailable.');
@@ -159,11 +163,14 @@ export class SpeechEngine {
         finally { if (epoch === this.playEpoch) this.starting = false; }
     }
     playBeat(beat) {
-        this.stop(); if (!this.settings.tts.enabled || !this.settings.tts.autoPlay) return;
-        const line = this.prepared?.segments.find(segment => segment.beat === beat); if (line && this.clip(line.id) && !this.clip(line.id).clip.review) void this.play(line.id);
+        if (this.settings.tts.enabled && this.settings.tts.autoPlay) {
+            const line = this.prepared?.segments.find(segment => segment.beat === beat);
+            if (line && this.clip(line.id) && !this.clip(line.id).clip.review) { void this.play(line.id); return this.playback; }
+        }
+        this.stop(); return null;
     }
     get speaking() { return !!this.starting || !!this.audio && !this.audio.paused; }
-    stop() { this.playEpoch++; this.starting = false; if (this.audio) { this.audio.onended = null; this.audio.onerror = null; } this.audio?.pause(); this.audio?.removeAttribute?.('src'); this.audio?.load?.(); this.audio = null; if (this.url) URL.revokeObjectURL(this.url); this.url = null; }
+    stop(reason = 'cancelled') { this.playEpoch++; this.starting = false; if (this.playback) this.playback.status = reason; this.playback = null; if (this.audio) { this.audio.onended = null; this.audio.onerror = null; } this.audio?.pause(); this.audio?.removeAttribute?.('src'); this.audio?.load?.(); this.audio = null; if (this.url) URL.revokeObjectURL(this.url); this.url = null; }
     cancel() { this.abort?.abort(); this.stop(); }
     clearScene() { this.cancel(); this.prepared = null; this.job = null; this.excluded.clear(); this.notify('Prepare the selected final dialogue to use its character voices.'); }
     async sourceSamples(processed = false) {

@@ -507,6 +507,58 @@ await check('Fish settings use property voices, protect credentials and connect 
         controller.settings.characterSounds = originalCharacterSounds; controller.audio.sfx = originalSFX;
     }
 });
+await check('dialogue follows the real voice clock through startup, pauses, skip and auto advance', async () => {
+    const previous = { tts: controller.settings.tts, characters: controller.settings.characters, writer: controller.settings.typewriterEffect, speed: controller.settings.typewriterSpeed,
+        reduced: controller.settings.reducedMotion, automatic: controller.settings.autoAdvance, delay: controller.settings.autoAdvanceDelay, samples: controller.speech.clipSamples, factory: controller.speech.audioFactory };
+    let release;
+    try {
+        Object.assign(controller.settings, { typewriterEffect: true, typewriterSpeed: 2, reducedMotion: false, autoAdvance: false });
+        controller.settings.tts = { ...previous.tts, enabled: true, autoPlay: true, syncText: true }; controller.settings.characters = { nina: { voiceId: 'clock-test-voice' } };
+        context.chat[0].mes = 'SECRET\n/////\nNina: "Hello, world!"\nNARRATION\nAfter speech.'; await controller.open(0); await controller.prepareSpeech();
+        const line = controller.speech.prepared.segments[0];
+        controller.speech.job = { plan: [{}], chapters: [{ duration: 2, clips: [{ id: line.id, first: 0, last: 1, start: 0, end: 2 }], words: [
+            { text: 'Hello', start: .3, end: .7 }, { text: 'world', start: 1.3, end: 1.7 },
+        ] }] };
+        controller.speech.clipSamples = () => new Promise(resolve => release = resolve);
+        controller.speech.audioFactory = () => ({ currentTime: 0, paused: true, async play() { this.paused = false; }, pause() { this.paused = true; }, removeAttribute() {}, load() {} });
+        const visible = () => controller.dialogue.letters.filter(letter => letter.style.visibility !== 'hidden').map(letter => letter.textContent).join('');
+        await controller.action('replay'); await pause(100); equal(visible(), ''); assert(controller.dialogue.typing);
+        release(new Float32Array(SAMPLE_RATE * 2)); await eventually(() => controller.speech.audio && !controller.speech.starting, 'Initial voice did not start');
+        const playback = controller.speech.playback, audio = controller.speech.audio; await pause(40); equal(visible(), '');
+        audio.currentTime = .31; await eventually(() => visible() === '"Hello, ', 'First word did not follow voice');
+        audio.paused = true; await pause(120); equal(visible(), '"Hello, ');
+        controller.settings.autoAdvance = true; controller.settings.autoAdvanceDelay = 80;
+        audio.paused = false; audio.currentTime = 1.31; await eventually(() => visible() === '"Hello, world!"\n', 'Final word did not follow voice');
+        await pause(120); equal(controller.playback.position, 0); assert(!controller.dialogue.typing);
+        audio.onended(); equal(playback.status, 'ended'); await eventually(() => controller.playback.position === 1, 'Auto advance did not follow voice completion');
+        controller.settings.autoAdvance = false; clearTimeout(controller.autoTimer);
+        controller.speech.clipSamples = async () => new Float32Array(SAMPLE_RATE * 2);
+        await controller.action('replay'); await eventually(() => controller.speech.audio && !controller.speech.starting, 'Replayed voice did not start');
+        const skippedAudio = controller.speech.audio; assert(controller.dialogue.skip()); equal(visible(), '"Hello, world!"\n'); assert(!skippedAudio.paused);
+        await controller.action('next'); assert(skippedAudio.paused); assert(controller.root.querySelector('.vn-text').textContent.includes('After speech.'));
+    } finally {
+        controller.speech.clearScene(); controller.dialogue.cancel(); clearTimeout(controller.autoTimer);
+        Object.assign(controller.settings, { tts: previous.tts, characters: previous.characters, typewriterEffect: previous.writer, typewriterSpeed: previous.speed, reducedMotion: previous.reduced, autoAdvance: previous.automatic, autoAdvanceDelay: previous.delay });
+        controller.speech.clipSamples = previous.samples; controller.speech.audioFactory = previous.factory;
+    }
+});
+await check('voice-timed text falls back on playback failure and respects reduced motion and opt-out', async () => {
+    const previous = { writer: controller.settings.typewriterEffect, speed: controller.settings.typewriterSpeed, reduced: controller.settings.reducedMotion, sync: controller.settings.tts.syncText };
+    const token = { type: 'dialogue', character: 'Nina', text: '"Hello."', emotion: 'default' };
+    const playback = () => ({ status: 'loading', audio: null, clip: { first: 0, last: 0, start: 0, end: 1 }, words: [{ text: 'Hello', start: .2, end: .6 }] });
+    const visible = () => controller.dialogue.letters.filter(letter => letter.style.visibility !== 'hidden').map(letter => letter.textContent).join('');
+    try {
+        Object.assign(controller.settings, { typewriterEffect: true, typewriterSpeed: 2, reducedMotion: false }); controller.settings.tts.syncText = true;
+        const failed = playback(); await controller.dialogue.render(token, {}, 'normal', () => {}, false, failed); equal(visible(), '');
+        failed.status = 'failed'; await eventually(() => visible() === token.text && !controller.dialogue.typing);
+        await controller.dialogue.render(token, {}, 'normal', () => {}, false, { ...playback(), words: [] }); assert(visible().length > 0);
+        controller.settings.reducedMotion = true; await controller.dialogue.render(token, {}, 'normal', () => {}, false, playback()); equal(visible(), token.text); assert(!controller.dialogue.typing);
+        controller.settings.reducedMotion = false; controller.settings.tts.syncText = false;
+        await controller.dialogue.render(token, {}, 'normal', () => {}, false, playback()); assert(visible().length > 0);
+    } finally {
+        controller.dialogue.cancel(); Object.assign(controller.settings, { typewriterEffect: previous.writer, typewriterSpeed: previous.speed, reducedMotion: previous.reduced }); controller.settings.tts.syncText = previous.sync;
+    }
+});
 await check('voice preparation discovers unindexed player aliases, canonical voices and edited IDs without generating audio', async () => {
     const previous = { characters: controller.settings.characters, automatic: controller.settings.autoCreateCharacters, discover: controller.registry.discover };
     let voice = 'discovered-jason-voice', discoveries = 0;

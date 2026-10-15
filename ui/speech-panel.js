@@ -18,6 +18,7 @@ export class SpeechPanel {
         this.fields = new Map();
         for (const definition of [
             ['enabled', 'Enable Fish Audio voices', 'checkbox'], ['autoPlay', 'Play prepared clips during VN dialogue', 'checkbox'],
+            ['syncText', 'Reveal dialogue with voice timing', 'checkbox'],
             ['model', 'Fish model', [{ value: 's2.1-pro-free', label: 'S2.1 Pro Free' }, { value: 's2.1-pro', label: 'S2.1 Pro (paid)' }]],
             ['splitChapters', 'Split into short chapters', 'checkbox'], ['chapterSize', 'Spoken segments per chapter', 'number', 1, 200],
             ['temperature', 'Temperature', 'number', 0, 1], ['topP', 'Top P', 'number', 0, 1], ['speed', 'Voice speed', 'number', .5, 2],

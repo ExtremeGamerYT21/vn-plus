@@ -1,8 +1,10 @@
-# Visual Novel+ 2.5.1
+# Visual Novel+ 2.6.0
 
 A procedural visual novel presentation layer for SillyTavern. It reads **only** the player perspective after an exact `/////` line in the selected assistant message. Canonical narration, conversation storage, generation, and outgoing context remain under SillyTavern and your separate POV workflow.
 
 The renderer is rebuilt in plain JavaScript modules. All 590 supplied assets and the existing character properties are preserved. The extension contains the current implementation, its tests, preview and development tools; unused editing variants and old source/style copies have been removed.
+
+Version 2.6 reveals spoken dialogue word by word using the generated voice's transcription timestamps and actual audio playback position. Enable or disable **Reveal dialogue with voice timing** under **Fish Audio voices → Voice generation and playback** (on by default). Speech pauses and playback stalls keep the text aligned; Auto waits for both text and voice. Lines without usable timings use the ordinary typewriter. Updating from 2.5.1 requires a browser refresh; this release does not change the server bridge.
 
 Version 2.1 adds music mute, breathing, expression crossfades and optional blink sprites. Version 2.1.1 offers **Left and right groups** or **Four separate busts**, selectable from the VN toolbar or **General → Bust layout** in extension settings. Switching rearranges existing busts without restarting the scene, typewriter, music or animations. The choice is saved; old spread/compact preferences migrate to Four separate busts.
 

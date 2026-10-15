@@ -1,6 +1,6 @@
 export const SAMPLE_RATE = 44100;
 export const SPEECH_DEFAULTS = {
-    enabled: false, autoPlay: true, model: 's2.1-pro-free', splitChapters: true, chapterSize: 6,
+    enabled: false, autoPlay: true, syncText: true, model: 's2.1-pro-free', splitChapters: true, chapterSize: 6,
     temperature: .7, topP: .7, speed: 1, chunkLength: 300, latency: 'normal', normalize: true,
     conditionPrevious: true, bitrate: 128, timeout: 180, volume: 1, lead: .2, tail: .2,
     processing: true, matchVolume: true, targetRms: -20, denoise: 4, soften: 0, ceiling: -1.5, edgeFade: 5,

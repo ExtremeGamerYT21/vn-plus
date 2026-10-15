@@ -270,7 +270,7 @@ export class VNController {
         clearTimeout(this.autoTimer); this.html.close(); this.dialogue.cancel(); this.effects.clear(); this.audio.cancelOneShots();
         this.root.querySelector('.vn-status').hidden = true; this.root.querySelector('.vn-reply').hidden = true;
         const { state, token } = result.beat;
-        this.speech.playBeat(result.done || token.type !== 'dialogue' || token.thought ? -1 : result.beat.index);
+        const playback = this.speech.playBeat(result.done || token.type !== 'dialogue' || token.thought ? -1 : result.beat.index);
         void this.stage.render(state, this.playback.timeline.maxSlots).catch(error => this.log(error.message)); void this.audio.sync(state);
         for (const effect of result.effects) { if (effect.type === 'sfx') void this.audio.sfx(effect.name); else this.effects.trigger(effect); }
         this.root.querySelector('[data-action="back"]').disabled = this.playback.position <= 0;
@@ -282,7 +282,7 @@ export class VNController {
         if (token.type === 'artifact') { dialogue.hidden = true; this.html.open(token); return; }
         dialogue.hidden = false;
         const props = state.speaker ? this.registry.get(state.speaker) : {};
-        void this.dialogue.render(token, props, state.textEffect, () => this.scheduleAuto(), !result.forward);
+        void this.dialogue.render(token, props, state.textEffect, () => this.scheduleAuto(), !result.forward, playback);
         if (result.forward && (!result.previouslySeen || result.replaying) && token.type === 'dialogue') {
             const flair = this.settings.textEffects ? EMOTION_FLAIR[token.emotion] || {} : {};
             if (flair.screenFlash) this.effects.trigger({ type: 'flash', value: flair.screenFlash });
@@ -292,7 +292,7 @@ export class VNController {
     }
     scheduleAuto() {
         clearTimeout(this.autoTimer);
-        if (this.settings.autoAdvance && !this.speech.speaking && !this.busy && !this.root.hidden && !this.html.active && this.root.querySelector('.vn-panel').hidden && this.root.querySelector('.vn-reply').hidden) this.autoTimer = setTimeout(() => void this.action('next'), this.settings.autoAdvanceDelay);
+        if (this.settings.autoAdvance && !this.dialogue.typing && !this.speech.speaking && !this.busy && !this.root.hidden && !this.html.active && this.root.querySelector('.vn-panel').hidden && this.root.querySelector('.vn-reply').hidden) this.autoTimer = setTimeout(() => void this.action('next'), this.settings.autoAdvanceDelay);
     }
     showReply() {
         clearTimeout(this.autoTimer); this.root.querySelector('.vn-reply').hidden = false;

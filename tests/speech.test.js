@@ -13,6 +13,7 @@ import { joinPCM, wavBytes } from '../core/speech-pcm.js';
 import { finishClip, noiseProfile } from '../core/speech-processing.js';
 import { SpeechEngine } from '../renderers/speech-engine.js';
 import { shouldShakeText } from '../renderers/emotion-flair.js';
+import { speechRevealCues } from '../core/speech-reveal.js';
 import { validateRequest, registerBridge, SECRET_KEY } from '../server/index.mjs';
 
 const settings = () => structuredClone(DEFAULT_SETTINGS);
@@ -37,6 +38,48 @@ test('Fish voice IDs accept official voice URLs and reject arbitrary destination
     assert.equal(fishVoiceId('https://fish.audio/pt/m/4744963f03b24efeb8e29b86aca419a0/'), '4744963f03b24efeb8e29b86aca419a0');
     assert.equal(fishVoiceId('voice_A-1'), 'voice_A-1'); assert.equal(fishVoiceId(''), null); assert.equal(fishVoiceId(undefined), null);
     for (const value of ['https://evil.test/m/id', 'http://fish.audio/m/id', '../secret', 'id with spaces', 'https://fish.audio/m/id/more']) assert.throws(() => fishVoiceId(value));
+});
+test('text reveal uses real chapter word times relative to retained clip silence', () => {
+    const cues = speechRevealCues('"Hello, world!"', { first: 1, last: 2, start: 1, end: 2.4 }, [
+        { text: 'Previous', start: 0, end: .5 }, { text: 'Hello', start: 1.2, end: 1.5 }, { text: 'world', start: 1.8, end: 2.2 },
+    ]);
+    assert.deepEqual(cues.map(cue => cue.through), [8, 15]);
+    assert.ok(Math.abs(cues[0].at - .2) < .00001); assert.ok(Math.abs(cues[1].at - .8) < .00001);
+});
+test('text reveal preserves Unicode punctuation, contractions and non-spoken inline directions', () => {
+    const text = '“Don’t 👋 go, [whispering] friend!”';
+    const cues = speechRevealCues(text, { first: 0, last: 2, start: 0, end: 2 }, [
+        { text: "don't", start: .1, end: .3 }, { text: 'go', start: .6, end: .8 }, { text: 'friend', start: 1.4, end: 1.8 },
+    ]);
+    const visible = count => Array.from(text).slice(0, count).join('');
+    assert.equal(visible(cues[0].through), '“Don’t 👋 '); assert.equal(visible(cues[1].through), '“Don’t 👋 go, ');
+    assert.equal(visible(cues[2].through), text); assert.deepEqual(cues.map(cue => cue.at), [.1, .6, 1.4]);
+});
+test('unsafe or missing word times fall back instead of estimating text timing from clip duration', () => {
+    const clip = { first: 0, last: 0, start: 0, end: 1 }, good = [{ text: 'Hello', start: .2, end: .6 }];
+    assert.equal(speechRevealCues('Hello', { ...clip, review: true }, good), null);
+    assert.equal(speechRevealCues('Hello', clip, []), null);
+    assert.equal(speechRevealCues('Different words', clip, good), null);
+    assert.equal(speechRevealCues('Hello', clip, [{ text: 'Hello', start: NaN, end: .6 }]), null);
+    assert.equal(speechRevealCues('Hello', { ...clip, start: .3 }, good), null);
+    assert.equal(speechRevealCues('Hello', { ...clip, end: .5 }, good), null);
+});
+test('voice playback exposes its actual clip clock and finishes obsolete sessions independently', async () => {
+    const input = fixture('Nina: "Hello."'); input.config.tts.enabled = true;
+    const engine = engineFor(input, async () => { throw new Error('No synthesis expected'); }, {
+        audioFactory: () => ({ currentTime: 0, paused: true, async play() { this.paused = false; }, pause() { this.paused = true; }, removeAttribute() {}, load() {} }),
+    });
+    const line = engine.prepared.segments[0];
+    engine.job = { chapters: [{ clips: [{ id: line.id, first: 0, last: 0, start: 0, end: 1 }], words: [{ text: 'Hello', start: .2, end: .6 }] }] };
+    let ready; engine.clipSamples = () => new Promise(resolve => ready = resolve);
+    const playback = engine.playBeat(line.beat); assert.equal(playback.status, 'loading'); assert.equal(playback.audio, null);
+    ready(new Float32Array(SAMPLE_RATE)); await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(playback.status, 'playing'); assert.equal(playback.audio, engine.audio); engine.audio.currentTime = .4;
+    assert.equal(playback.audio.currentTime, .4); const previousEnd = engine.audio.onended;
+    engine.stop(); assert.equal(playback.status, 'cancelled');
+    engine.clipSamples = async () => new Float32Array(SAMPLE_RATE); const next = engine.playBeat(line.beat);
+    await new Promise(resolve => setTimeout(resolve, 0)); previousEnd(); assert.equal(next.status, 'playing');
+    engine.audio.onended(); assert.equal(next.status, 'ended'); assert.equal(engine.audio, null); engine.dispose();
 });
 test('only voiced spoken POV dialogue reaches Fish, preserving emotion directions', () => {
     const input = fixture(splitMessage('PRIVATE CANONICAL\n/////\nYou hear footsteps.\nNina: "Hello." [curious]\nNina: "(Keep quiet.)" [nervous]\nUnknown: "Mute."\nAshley: "Hi." [laughing]').pov,

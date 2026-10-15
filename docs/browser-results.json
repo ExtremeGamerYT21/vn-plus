@@ -1,5 +1,5 @@
 {
-  "status": "30 passed · 0 failed",
+  "status": "32 passed · 0 failed",
   "tests": [
     "PASS · POV privacy and four characters from one scenario",
     "PASS · backward restores background, expression and audio state",
@@ -29,6 +29,8 @@
     "PASS · reply, retry, exit and resume delegate to normal host controls",
     "PASS · missing artwork uses a bust silhouette, ST theme overrides apply, and only intense tags shake",
     "PASS · Fish settings use property voices, protect credentials and connect cached clips to final dialogue",
+    "PASS · dialogue follows the real voice clock through startup, pauses, skip and auto advance",
+    "PASS · voice-timed text falls back on playback failure and respects reduced motion and opt-out",
     "PASS · voice preparation discovers unindexed player aliases, canonical voices and edited IDs without generating audio",
     "PASS · MP3 export is real decodable audio and finishing keeps original sample timing"
   ]
