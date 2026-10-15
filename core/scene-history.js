@@ -1,6 +1,21 @@
 import { readMessage } from './message-reader.js';
 import { parsePOV } from './vn-parser.js';
 import { trackSpec } from './scene-timeline.js';
+import { lastSceneHeader } from './scene-context.js';
+
+export function inheritedScene(context, index) {
+    const result = inheritedPresentation(context, index);
+    result.scene = null;
+    if (!Number.isInteger(index) || index < 0 || index >= (context.chat?.length || 0)) return result;
+    for (let i = index; i >= 0 && !result.scene; i--) {
+        const message = readMessage(context, i);
+        if (!message) continue;
+        // The current POV's headers run in timeline order; never look ahead to its end.
+        if (i < index && message.status === 'ready') result.scene = parsePOV(message.pov).tokens.filter(token => token.type === 'header').at(-1)?.value || null;
+        result.scene ||= lastSceneHeader(message.canonical);
+    }
+    return result;
+}
 
 /** Reconstruct only persistent background/music commands from earlier selected POV swipes. */
 export function inheritedPresentation(context, index) {

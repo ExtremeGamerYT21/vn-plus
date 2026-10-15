@@ -22,7 +22,7 @@ Useful behavior retained by the new implementation: expression assets, speaker d
 
 ## New boundaries
 
-`message-reader` is the only raw-message boundary. It splits on an exact five-slash line without trimming either section. Only its POV output enters the parser. The parser emits semantic tokens; the timeline compiler produces deterministic snapshots; the playback controller applies snapshots and fires one-shot effects only on first forward traversal (or explicit replay). Each selected response starts from an empty baseline, so scripts should specify their scene setup.
+`message-reader` is the raw-message boundary. It splits on an exact five-slash line without trimming either section. Only its POV output enters the VN parser. A separate strict scene-header extractor may read the five requested metadata fields from canonical text. The parser emits semantic tokens; the timeline compiler produces deterministic snapshots; the playback controller applies snapshots and fires one-shot effects only on first forward traversal (or explicit replay). Background, music and scene headers inherit earlier selected-message values; other presentation state starts fresh.
 
 SillyTavern remains the conversation authority. Settings are saved through its extensionSettings interface. Seen-beat sets are bounded, in-memory only; there is no transcript persistence, prompt hook, rewriting request, or second history. Chat-display/context separation remains the user's RegEx workflow.
 

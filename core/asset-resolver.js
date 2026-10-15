@@ -1,4 +1,5 @@
 import { rankAssetNames } from './asset-matching.js';
+import { backgroundEntry } from './scene-context.js';
 
 const IMAGE_EXTS = ['webp', 'png', 'jpg', 'jpeg', 'gif', 'avif'];
 const AUDIO_EXTS = ['ogg', 'mp3', 'wav', 'm4a', 'opus'];
@@ -82,6 +83,15 @@ export class AssetResolver {
     background(name) {
         if (!safeAssetPath(name)) return Promise.resolve(null);
         return this.remember(`background:${name}`, async () => await this.resolve(this.variants(`backgrounds/${name}`, IMAGE_EXTS)) || this.semanticImage(name, ['backgrounds']));
+    }
+    async backgroundProperties(url) {
+        if (!url || !url.startsWith(this.base.href)) return { inside: false };
+        let path;
+        try { path = decodeURIComponent(new URL(url).pathname.slice(this.base.pathname.length)); } catch { return { inside: false }; }
+        if (!safeAssetPath(path) || !path.startsWith('backgrounds/')) return { inside: false };
+        const [defaults, local] = await Promise.all([this.json('backgrounds/properties.default.json'), this.json('backgrounds/properties.json')]);
+        const catalog = local && typeof local === 'object' && !Array.isArray(local) ? local : defaults;
+        return { inside: backgroundEntry(catalog, path)?.inside === true };
     }
     blinkSprite(id, emotions, props = {}) {
         const folder = safeAssetPath(props.assetFolder || id), config = props.blink;

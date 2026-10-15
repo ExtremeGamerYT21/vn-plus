@@ -14,3 +14,5 @@ Thumbs.db
 !/environments/harry-potter/
 !/environments/re-zero/
 /environments/*/characters/*/
+/environments/*/backgrounds/properties.json
+/backgrounds/properties.json

@@ -1,9 +1,18 @@
 import { stagePosition } from '../core/stage-layout.js';
 import { SpriteAnimator } from './sprite-animator.js';
 import { createSilhouette } from './silhouette.js';
+import { sceneLighting } from '../core/scene-context.js';
 
 export class StageRenderer {
     constructor(root, resolver, registry, settings) { this.root = root; this.resolver = resolver; this.registry = registry; this.settings = settings; this.generation = 0; this.nodes = new Map(); this.sprites = new SpriteAnimator(root, resolver, settings); }
+    publishContext(state, inside) {
+        const lighting = sceneLighting(state.scene, inside);
+        this.root.style.setProperty('--vn-scene-brightness', lighting.brightness);
+        const variables = { ...structuredClone(state.scene || {}), background: state.background || null, lighting };
+        if (JSON.stringify(variables) === JSON.stringify(this.variables)) return;
+        this.variables = variables;
+        this.root.dispatchEvent(new CustomEvent('vnplus:scene-context', { bubbles: true, detail: structuredClone(variables) }));
+    }
     async render(state, maxSlots) {
         const generation = ++this.generation, current = () => generation === this.generation;
         const background = this.root.querySelector('.vn-background'), stage = this.root.querySelector('.vn-stage');
@@ -17,10 +26,11 @@ export class StageRenderer {
         this.root.querySelector('.vn-tint').style.background = CSS.supports('color', state.tint) ? state.tint : 'transparent';
         if (background.dataset.asset !== (state.background || '')) background.style.backgroundImage = '';
         background.dataset.asset = state.background || '';
-        const backgroundRequest = state.background ? this.resolver.background(state.background).then(url => {
-            if (current()) background.style.backgroundImage = url ? `url("${url}")` : '';
+        const backgroundRequest = state.background ? this.resolver.background(state.background).then(async url => {
+            const properties = url ? await this.resolver.backgroundProperties(url) : { inside: false };
+            if (current()) { background.style.backgroundImage = url ? `url("${url}")` : ''; this.publishContext(state, properties.inside); }
         }) : Promise.resolve();
-        if (!state.background) background.style.backgroundImage = '';
+        if (!state.background) { background.style.backgroundImage = ''; this.publishContext(state, false); }
         const characters = Object.values(state.characters).filter(character => !this.registry.isNarrator(character.id) && !this.registry.isNarrator(character.name));
         const visibleIds = new Set(characters.map(character => character.id));
         for (const [id, node] of this.nodes) if (!visibleIds.has(id)) { this.sprites.remove(node); node.remove(); this.nodes.delete(id); }
@@ -56,6 +66,7 @@ export class StageRenderer {
         this.sprites.clear();
         this.nodes.forEach(node => node.remove()); this.nodes.clear();
         const background = this.root.querySelector('.vn-background'); background.style.backgroundImage = ''; background.dataset.asset = '';
+        this.publishContext({}, false);
         this.root.querySelector('.vn-tint').style.background = ''; this.root.classList.remove('vn-black');
     }
     dispose() { this.clear(); this.sprites.dispose(); }

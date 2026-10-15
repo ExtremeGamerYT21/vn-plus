@@ -636,6 +636,45 @@ await check('a fresh controller restores media from history and explicit clears 
     await eventually(() => controller.parsed && controller.root.querySelector('.vn-text').textContent.includes('A different chat.'));
     equal(controller.root.querySelector('.vn-background').style.backgroundImage, ''); assert(!controller.audio.channels.music.audio);
 });
+await check('scene headers become variables and outdoor lighting changes with time while indoor art stays unchanged', async () => {
+    const header = time => `[3 August 1991 | Before First Year | ${time} | Summer | Madam Malkin's Robes for All Occasions, Diagon Alley]`;
+    context.chat = [
+        { mes: `${header('12:26 p.m.')}\nCANONICAL_HEADER_SECRET\n/////\n#BACKGROUND street\nEarlier.` },
+        { mes: `SECRET\n/////\n#BACKGROUND street image\nFirst.\n${header('9:00 p.m.')}\nSecond.\n#BACKGROUND kitchen image\nNARRATION\nThird.` },
+    ];
+    mountChat(); await controller.open(1);
+    await eventually(() => controller.sceneVariables.time === '12:26');
+    equal(controller.sceneVariables.date, '1991-08-03'); equal(controller.sceneVariables.phase, 'Before First Year'); equal(controller.sceneVariables.season, 'Summer');
+    equal(controller.sceneVariables.lighting.inside, false); equal(controller.sceneVariables.lighting.brightness, 1);
+    assert(!controller.root.textContent.includes('CANONICAL_HEADER_SECRET')); equal(controller.playback.timeline.views.length, 3);
+    await controller.action('next'); await eventually(() => controller.sceneVariables.time === '21:00');
+    equal(controller.sceneVariables.lighting.brightness, .45); equal(controller.root.style.getPropertyValue('--vn-scene-brightness'), '0.45');
+    equal(getComputedStyle(controller.root.querySelector('.vn-stage')).filter, 'brightness(0.45)');
+    await controller.action('back'); await eventually(() => controller.sceneVariables.time === '12:26'); equal(controller.sceneVariables.lighting.brightness, 1);
+    await controller.action('next'); await controller.action('next'); await eventually(() => controller.sceneVariables.lighting.inside);
+    equal(controller.sceneVariables.time, '21:00'); equal(controller.sceneVariables.lighting.brightness, 1);
+    const copy = controller.sceneVariables; copy.location = 'mutated'; assert(controller.sceneVariables.location !== 'mutated');
+});
+await check('obsolete background properties cannot apply outdoor lighting over a newer indoor scene', async () => {
+    const original = controller.resolver.backgroundProperties, state = controller.playback.restore().beat.state; let release;
+    controller.resolver.backgroundProperties = url => url.endsWith('/street.png') ? new Promise(resolve => release = resolve) : original.call(controller.resolver, url);
+    try {
+        const old = controller.stage.render({ ...state, background: 'street' }, 1); await eventually(() => release);
+        await controller.stage.render({ ...state, background: 'kitchen' }, 1); equal(controller.sceneVariables.lighting.inside, true);
+        release({ inside: false }); await old; equal(controller.sceneVariables.lighting.inside, true); equal(controller.sceneVariables.lighting.brightness, 1);
+    } finally { controller.resolver.backgroundProperties = original; }
+});
+await check('header edits and fresh controllers restore story time and a new chat clears variables', async () => {
+    await controller.open(1); await controller.action('replay');
+    context.chat[0].mes = '[3 August 1991 | Before First Year | 11:00 p.m. | Summer | Diagon Alley]\nPRIVATE\n/////\n#BACKGROUND street\nEarlier.';
+    emit('MESSAGE_UPDATED', 0); await eventually(() => controller.sceneVariables.time === '23:00'); equal(controller.playback.position, 0);
+    controller.dispose(); controller = new VNController(createHost(() => context, { localContent: false }), new URL('../', import.meta.url), inventory);
+    controller.audio.audioFactory = () => new FakeAudio(); await controller.open(1);
+    await eventually(() => controller.sceneVariables.time === '23:00'); equal(controller.sceneVariables.lighting.brightness, .45);
+    context.chatId = 'no-header-chat'; context.chat = [{ mes: 'SECRET\n/////\n#BACKGROUND street\nNo header.' }]; mountChat(); emit('CHAT_CHANGED');
+    await eventually(() => controller.parsed && controller.root.querySelector('.vn-text').textContent.includes('No header.'));
+    await eventually(() => controller.sceneVariables.background === 'street'); equal(controller.sceneVariables.time, undefined); equal(controller.sceneVariables.lighting.brightness, 1);
+});
 controller.dispose();
 document.querySelector('#test-status').textContent = `${passes} passed · ${failures} failed`;
 document.body.dataset.testStatus = failures ? 'failed' : 'passed';

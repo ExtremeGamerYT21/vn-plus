@@ -2,7 +2,7 @@ export const SPEEDS = { normal: 1, slowed: .75, slow: .75, half: .5, sped: 1.4, 
 const clone = value => structuredClone(value);
 
 export function emptyState(mode = 'vn') {
-    return { background: null, music: null, ambient: null, characters: Object.create(null), speaker: null, textEffect: 'normal', mode, black: false, camera: { zoom: 1, x: 0, y: 0 }, tint: 'transparent' };
+    return { background: null, music: null, ambient: null, scene: null, characters: Object.create(null), speaker: null, textEffect: 'normal', mode, black: false, camera: { zoom: 1, x: 0, y: 0 }, tint: 'transparent' };
 }
 
 export function trackSpec(args) {
@@ -14,6 +14,7 @@ export function trackSpec(args) {
 export function compileTimeline(tokens, registry, settings, inherited = {}) {
     let state = emptyState(settings.displayMode);
     state.background = inherited.background ?? null; state.music = clone(inherited.music ?? null);
+    state.scene = clone(inherited.scene ?? null);
     const beats = [], errors = [], views = [];
     const names = tokens.filter(token => token.type === 'dialogue' || (token.type === 'command' && token.name === 'ENTER')).map(token => token.character || token.args);
     const cast = [...new Set(names.filter(name => !registry.isNarrator(name)).map(name => registry.identify(name)))];
@@ -36,7 +37,8 @@ export function compileTimeline(tokens, registry, settings, inherited = {}) {
     };
     for (const token of tokens) {
         const oneShots = [];
-        if (token.type === 'dialogue') state.speaker = enter(token.character, token.emotion);
+        if (token.type === 'header') state.scene = clone(token.value);
+        else if (token.type === 'dialogue') state.speaker = enter(token.character, token.emotion);
         else if (token.type === 'narration' || token.type === 'artifact') state.speaker = null;
         else if (token.type === 'command') {
             const arg = token.args, upper = arg.toUpperCase();
@@ -52,7 +54,7 @@ export function compileTimeline(tokens, registry, settings, inherited = {}) {
                 case 'SHAKE': oneShots.push({ type: 'shake', value: arg || 'LIGHT' }); break;
                 case 'TEXT': state.textEffect = arg.toLowerCase() || 'normal'; break;
                 case 'MODE': if (['vn', 'prose', 'cinematic', 'black'].includes(arg.toLowerCase())) state.mode = arg.toLowerCase(); else errors.push({ line: token.line, message: 'Unknown display mode.' }); break;
-                case 'SCENE': state.characters = Object.create(null); state.speaker = null; if (upper === 'RESET') state = emptyState(settings.displayMode); break;
+                case 'SCENE': state.characters = Object.create(null); state.speaker = null; if (upper === 'RESET') state = { ...emptyState(settings.displayMode), scene: state.scene }; break;
                 case 'TINT': state.tint = arg || 'transparent'; break;
                 case 'CAMERA': {
                     const [action, first, second] = arg.split(/\s+/);
@@ -65,7 +67,7 @@ export function compileTimeline(tokens, registry, settings, inherited = {}) {
         }
         const index = beats.length;
         beats.push({ index, token, state: clone(state), oneShots });
-        if (token.type !== 'command') views.push(index);
+        if (token.type !== 'command' && token.type !== 'header') views.push(index);
     }
     return { beats, views, maxSlots, errors };
 }

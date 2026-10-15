@@ -24,6 +24,8 @@ Each `NARRATION` marker starts a narration block. Plain prose is also accepted i
 
 Commands occupy their own line. Command names are case-insensitive. Unknown commands are ignored and reported, never displayed. Commands are applied in sequence up to the next visible narration/dialogue/artifact beat. Commands after the last visible beat are applied before the reply panel.
 
+Standalone five-field scene headers supply date, phase, time, season and location without adding a visible beat. The latest valid header is inherited from earlier assistant messages; headers in this POV update when reached. A structured header can also precede `/////`, where only its metadata is extracted. See [scene variables and lighting](scene-context.md). Background and music also inherit their latest earlier POV commands, respecting clears/stops/scene resets.
+
 `Narrator:` and `Narration:` are reserved narration labels, with quoted or plain text. They never create a body, consume a stage slot or enter the Fish speaker prompt. `#ENTER Narrator` and `#ENTER Narration` are ignored; existing characters stay onstage during narration.
 
 | Command | Meaning |

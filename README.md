@@ -1,8 +1,10 @@
-# Visual Novel+ 2.8.0
+# Visual Novel+ 2.9.0
 
 A procedural visual novel presentation layer for SillyTavern. It reads **only** the player perspective after an exact `/////` line in the selected assistant message. Canonical narration, conversation storage, generation, and outgoing context remain under SillyTavern and your separate POV workflow.
 
 The renderer is rebuilt in plain JavaScript modules. All 590 supplied assets and the existing character properties are preserved. The extension contains the current implementation, its tests, preview and development tools; unused editing variants and old source/style copies have been removed.
+
+Version 2.9 extracts structured scene headers and applies story-time lighting to outdoor backgrounds and busts. See [scene variables and background lighting](docs/scene-context.md) for the header format, variables, local properties and the lighting schedule. The latest header carries across responses and refreshes. Indoor backgrounds keep full brightness; unlisted backgrounds are outdoors. Refresh SillyTavern after updating; no server restart is needed.
 
 Version 2.8 reconstructs **background and music from earlier chat responses**. Before playing a response, VN+ searches earlier assistant POV sections backward for the latest background and music commands independently, including the music speed. This works after refresh without a cached scene. Current-response commands override inherited media when reached, so a later background/music change does not appear ahead of its paragraph. The recovered names use the normal exact-first asset matching in the selected environment.
 
@@ -79,7 +81,7 @@ NINA: "Who is it?" [excited]
 #SFX door
 ```
 
-See [the complete command grammar](docs/grammar.md), including cinematic/prose/black modes and automatic HTML artifacts. Each selected response initializes from an empty baseline; specify its scene setup explicitly.
+See [the complete command grammar](docs/grammar.md), including cinematic/prose/black modes and automatic HTML artifacts. Background, music and scene headers are reconstructed from earlier selected messages; current commands override them in sequence. Other presentation state starts fresh for each response.
 
 ## Content environments
 

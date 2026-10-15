@@ -1,4 +1,5 @@
 import { isNarratorName } from './character-registry.js';
+import { parseSceneHeader } from './scene-context.js';
 const COMMANDS = new Set(['BACKGROUND', 'MUSIC', 'AMBIENT', 'SFX', 'FADE', 'FLASH', 'SHAKE', 'TEXT', 'ENTER', 'EXIT', 'MODE', 'CAMERA', 'TINT', 'SCENE']);
 const LEGACY = { SOUNDFX: 'SFX' };
 const ROOT_HTML = /^\s*(?:<!doctype\s+html\b|<(?:html|article|section|div|main|svg|table|canvas|figure|pre|p|style|h[1-6]|details)\b)/i;
@@ -83,6 +84,8 @@ export function parsePOV(pov) {
             if (html.depth <= 0 && !/<!doctype/i.test(clean)) { tokens.push({ type: 'artifact', html: html.text, line: html.line }); html = null; }
             continue;
         }
+        const header = parseSceneHeader(clean);
+        if (header && !(current?.type === 'dialogue' && !completedDialogue(current.text))) { flush(); tokens.push({ type: 'header', value: header, line: i + 1 }); continue; }
         const command = /^\s*([#@])([A-Z][\w]*)\b(?:[ \t]+(.*))?$/i.exec(clean);
         if (command) {
             flush();

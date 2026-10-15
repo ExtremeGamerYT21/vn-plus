@@ -11,7 +11,8 @@
 .vnplus-ui button:focus-visible, .vnplus-ui [tabindex]:focus-visible { outline: 2px solid var(--vn-ui-accent); outline-offset: 3px; }
 #vnplus-overlay { position: fixed; inset: 0; z-index: 9000; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; background: var(--vn-panel); isolation: isolate; }
 .vn-world { position: absolute; inset: 0; overflow: hidden; z-index: -1; background: var(--vn-world-color); }
-.vn-background { position: absolute; inset: -2%; background-size: cover; background-position: center; transition: transform 1.4s ease; }
+.vn-background { position: absolute; inset: -2%; background-size: cover; background-position: center; transition: transform 1.4s ease, filter .6s ease; }
+.vn-background, .vn-stage { filter: brightness(var(--vn-scene-brightness,1)); }
 .vn-world::after { content: ''; position: absolute; inset: 0; background: transparent; pointer-events: none; }
 .vn-stage { position: absolute; inset: 8vh 0 min(28vh,230px); display: flex; align-items: var(--vn-align, flex-end); }
 .vn-character { position: absolute; bottom: 0; transform: translateX(-50%) translate(var(--vn-offset-x,0px),var(--vn-offset-y,0px)) scale(var(--vn-scale,1)); transform-origin: bottom center; height: var(--vn-height,78vh); max-width: 45vw; transition: left .35s ease, filter .35s ease; display: flex; align-items: flex-end; justify-content: center; }

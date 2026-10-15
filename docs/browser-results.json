@@ -1,5 +1,5 @@
 {
-  "status": "36 passed · 0 failed",
+  "status": "39 passed · 0 failed",
   "tests": [
     "PASS · POV privacy and four characters from one scenario",
     "PASS · backward restores background, expression and audio state",
@@ -36,6 +36,9 @@
     "PASS · descriptive background and emotion keywords render existing art without changing chat text",
     "PASS · music ambience and SFX keyword requests attach the resolved files to playback",
     "PASS · background and music inherit earlier POV commands and history edits preserve the current paragraph",
-    "PASS · a fresh controller restores media from history and explicit clears and chat switches stop inheritance"
+    "PASS · a fresh controller restores media from history and explicit clears and chat switches stop inheritance",
+    "PASS · scene headers become variables and outdoor lighting changes with time while indoor art stays unchanged",
+    "PASS · obsolete background properties cannot apply outdoor lighting over a newer indoor scene",
+    "PASS · header edits and fresh controllers restore story time and a new chat clears variables"
   ]
 }

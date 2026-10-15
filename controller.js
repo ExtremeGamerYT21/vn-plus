@@ -1,7 +1,7 @@
 import { chatIdentity, latestAssistant, readMessage, sceneKey } from './core/message-reader.js';
 import { parsePOV } from './core/vn-parser.js';
 import { compileTimeline } from './core/scene-timeline.js';
-import { inheritedPresentation } from './core/scene-history.js';
+import { inheritedScene } from './core/scene-history.js';
 import { Playback } from './core/playback.js';
 import { normalizeStageLayout } from './core/stage-layout.js';
 import { contentEnvironments, activateContentProfile, saveContentProfile, CONTENT_PROFILE_KEYS } from './core/content-environments.js';
@@ -44,6 +44,7 @@ export class VNController {
         this.bindHost(); this.mount(); this.updateMusicButton(); this.updateLayoutControls(); this.updateEnvironmentControls();
     }
     log(message) { this.messages.push(message); if (this.messages.length > 50) this.messages.shift(); if (this.settings.debug) console.debug('[VN+]', message); }
+    get sceneVariables() { return structuredClone(this.stage.variables || {}); }
     mount() {
         const target = document.querySelector('#extensions_settings');
         if (target && !target.querySelector('#vnplus-settings')) {
@@ -226,7 +227,7 @@ export class VNController {
         const message = readMessage(context, this.selected);
         if (!message || message.status !== 'ready') { this.speech.clearScene(); this.invalidate(); this.sceneRevision = null; this.playback = null; this.parsed = null; this.parserErrors = []; this.wait('Player perspective is unavailable. A completed POV section after ///// is required.'); return; }
         if (this.speech.prepared && this.speech.prepared.sourceId !== this.speechSceneId(message)) this.speech.clearScene();
-        const inherited = inheritedPresentation(context, message.index);
+        const inherited = inheritedScene(context, message.index);
         const sourceRevision = `${this.environment.id}:${identity}:${message.index}:${message.swipe}:${message.pov}`;
         const revision = JSON.stringify([sourceRevision, inherited]);
         if (this.sceneRevision === revision && this.playback) {
@@ -315,16 +316,16 @@ export class VNController {
         if (registry.discoveryError) { this.characterFolderStatus(registry.discoveryError); this.log(registry.discoveryError); }
         const current = readMessage(this.host.context(), this.selected);
         if (this.busy || registry !== this.registry || !current || current.pov !== message.pov || current.swipe !== message.swipe || current.index !== message.index) throw new Error('The selected scene changed. Prepare its dialogue again.');
-        return this.speech.prepare(this.speechSceneId(message), compileTimeline(parsed.tokens, registry, this.settings, inheritedPresentation(this.host.context(), message.index)), registry);
+        return this.speech.prepare(this.speechSceneId(message), compileTimeline(parsed.tokens, registry, this.settings, inheritedScene(this.host.context(), message.index)), registry);
     }
     panel(kind) {
         clearTimeout(this.autoTimer); this.dialogue.skip(); clearTimeout(this.autoTimer);
         const panel = this.root.querySelector('.vn-panel'), content = panel.querySelector('.vn-panel-content'); content.replaceChildren();
         panel.querySelector('.vn-panel-title').textContent = kind === 'debug' ? 'Scene inspector · POV only' : 'Player perspective transcript';
         if (kind === 'debug') {
-            const pre = document.createElement('pre'); pre.textContent = JSON.stringify({ message: this.selected, swipe: readMessage(this.host.context(), this.selected)?.swipe, cursor: this.playback?.cursor, errors: this.parserErrors, tokens: this.parsed?.tokens, state: this.playback?.restore().beat?.state, assets: Object.fromEntries(this.resolver.diagnostics), audio: this.messages }, null, 2); content.append(pre);
+            const pre = document.createElement('pre'); pre.textContent = JSON.stringify({ message: this.selected, swipe: readMessage(this.host.context(), this.selected)?.swipe, cursor: this.playback?.cursor, errors: this.parserErrors, tokens: this.parsed?.tokens, state: this.playback?.restore().beat?.state, variables: this.sceneVariables, assets: Object.fromEntries(this.resolver.diagnostics), audio: this.messages }, null, 2); content.append(pre);
         } else for (const token of this.parsed?.tokens || []) {
-            if (token.type === 'command') continue;
+            if (token.type === 'command' || token.type === 'header') continue;
             const paragraph = document.createElement('p');
             if (token.type === 'artifact') { const button = document.createElement('button'); button.textContent = 'View scene artifact'; button.addEventListener('click', () => { panel.hidden = true; this.html.open(token); this.transcriptArtifact = true; }); paragraph.append(button); }
             else {

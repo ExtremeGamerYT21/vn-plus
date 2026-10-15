@@ -14,7 +14,7 @@ async function scan(base, relative = '') {
         const name = relative ? `${relative}/${entry.name}` : entry.name;
         if (entry.isSymbolicLink()) continue;
         if (entry.isDirectory()) files.push(...await scan(base, name));
-        else if (!entry.name.startsWith('.') && /\.(webp|png|jpe?g|gif|avif|ogg|mp3|wav|m4a|opus|woff2?|ttf|otf|json|html|txt)$/i.test(entry.name)) files.push(name);
+        else if (!entry.name.startsWith('.') && !/^backgrounds\/properties\.json$/i.test(name) && /\.(webp|png|jpe?g|gif|avif|ogg|mp3|wav|m4a|opus|woff2?|ttf|otf|json|html|txt)$/i.test(entry.name)) files.push(name);
     }
     return files;
 }
