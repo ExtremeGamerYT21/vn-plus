@@ -584,6 +584,14 @@ await check('MP3 export is real decodable audio and finishing keeps original sam
     assert(decoded.length >= SAMPLE_RATE * .95 && decoded.length < SAMPLE_RATE * 1.2);
     assert(decoded.some(sample => Math.abs(sample) > .02)); equal([...original], [...before]);
 });
+await check('descriptive background and emotion keywords render existing art without changing chat text', async () => {
+    const message = 'SECRET\n/////\n#BACKGROUND kitchen image\nNina: "Found it." [joyful]';
+    context.chat[0].mes = message; await controller.open(0);
+    await eventually(() => controller.root.querySelector('.vn-background').style.backgroundImage.includes('kitchen.png'), 'Keyword background did not render');
+    await eventually(() => [...controller.root.querySelectorAll('[data-character="nina"] img')].some(image => image.src.endsWith('/happy.webp') || image.src.endsWith('/smile.webp')), 'Keyword expression did not render');
+    equal(context.chat[0].mes, message);
+    assert([...controller.resolver.diagnostics.values()].some(result => result.method === 'keywords' && result.requested === 'kitchen image'));
+});
 controller.dispose();
 document.querySelector('#test-status').textContent = `${passes} passed · ${failures} failed`;
 document.body.dataset.testStatus = failures ? 'failed' : 'passed';

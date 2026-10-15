@@ -1,3 +1,5 @@
+import { rankAssetNames } from './asset-matching.js';
+
 const IMAGE_EXTS = ['webp', 'png', 'jpg', 'jpeg', 'gif', 'avif'];
 const AUDIO_EXTS = ['ogg', 'mp3', 'wav', 'm4a', 'opus'];
 
@@ -41,20 +43,41 @@ export class AssetResolver {
         });
     }
     variants(path, extensions) { return /\.[a-z\d]{2,5}$/i.test(path) ? [path] : extensions.map(ext => `${path}.${ext}`); }
+    semanticImage(name, folders, excludeBlink = false) {
+        if (!safeAssetPath(name)) return null;
+        const files = [...this.files].filter(file => safeAssetPath(file) && folders.some(folder => file.startsWith(`${folder}/`))
+            && IMAGE_EXTS.includes(file.split('.').pop().toLowerCase()) && (!excludeBlink || !/blink/i.test(file.slice(file.lastIndexOf('/') + 1))));
+        // Keep descriptive subfolders, but remove category/character names from ranking.
+        const names = files.map(file => { const folder = folders.find(folder => file.startsWith(`${folder}/`)); return { file, name: file.slice(folder.length + 1).replace(/^sprites\//, '') }; });
+        const ranked = rankAssetNames(name, names.map(entry => entry.name));
+        if (!ranked.length) return null;
+        const best = ranked[0], path = names.find(entry => entry.name === best.path).file, url = this.url(path);
+        this.report(`match:${folders.join('|')}:${name}`, { url, method: 'keywords', requested: name, matched: path, score: best.score, keywords: best.matched });
+        return url;
+    }
     sprite(id, emotions, props = {}) {
         const folder = safeAssetPath(props.assetFolder || id);
         if (!folder) return Promise.resolve(null);
         return this.remember(`sprite:${folder}:${emotions.join('|')}`, async () => {
             // Probe the exact expression before considering aliases/defaults, including
             // sprites added since the inventory was generated.
-            for (const emotion of emotions) {
+            const requested = emotions.filter(emotion => emotion !== 'default');
+            for (const emotion of requested) {
                 const url = await this.resolve([`characters/${folder}/sprites/${emotion}`, `characters/${folder}/${emotion}`].flatMap(path => this.variants(path, IMAGE_EXTS)));
                 if (url) return url;
             }
+            for (const emotion of requested) {
+                const url = this.semanticImage(emotion, [`characters/${folder}`], true);
+                if (url) return url;
+            }
+            if (emotions.includes('default')) return this.resolve([`characters/${folder}/sprites/default`, `characters/${folder}/default`].flatMap(path => this.variants(path, IMAGE_EXTS)));
             return null;
         });
     }
-    background(name) { return this.resolve(this.variants(`backgrounds/${name}`, IMAGE_EXTS)); }
+    background(name) {
+        if (!safeAssetPath(name)) return Promise.resolve(null);
+        return this.remember(`background:${name}`, async () => await this.resolve(this.variants(`backgrounds/${name}`, IMAGE_EXTS)) || this.semanticImage(name, ['backgrounds']));
+    }
     blinkSprite(id, emotions, props = {}) {
         const folder = safeAssetPath(props.assetFolder || id), config = props.blink;
         if (!folder || config === false || config?.enabled === false) return Promise.resolve(null);

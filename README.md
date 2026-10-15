@@ -1,8 +1,12 @@
-# Visual Novel+ 2.6.0
+# Visual Novel+ 2.7.0
 
 A procedural visual novel presentation layer for SillyTavern. It reads **only** the player perspective after an exact `/////` line in the selected assistant message. Canonical narration, conversation storage, generation, and outgoing context remain under SillyTavern and your separate POV workflow.
 
 The renderer is rebuilt in plain JavaScript modules. All 590 supplied assets and the existing character properties are preserved. The extension contains the current implementation, its tests, preview and development tools; unused editing variants and old source/style copies have been removed.
+
+Version 2.7 adds local descriptive matching for backgrounds and character expressions. Exact filenames (including case-insensitive matches and newly added exact files) take priority. If those fail, VN+ breaks the request and inventoried filenames into keywords, normalizes separators/camel case/accents, and uses a small synonym dictionary plus ranked keyword coverage. For example, `#BACKGROUND Hogwarts hallway at night` can find `Hogwarts - Corridor - Night.png`; a `joyful` expression can use a `cheerful_smile` sprite. Conflicting explicit day/night, inside/outside or weather details are rejected, and unrelated matches remain missing instead of choosing arbitrary artwork.
+
+Background matching stays inside the selected environment's backgrounds; expression matching stays inside the character's folder and excludes blink images. Exact expression aliases are checked before descriptive matches, then the normal default sprite is used. Blink paths, fonts, audio and explicit textbox textures retain their existing exact lookup rules. Matching reads filenames, not image contents, and uses no AI service, embeddings or network API. Additions need an up-to-date inventory (`npm run inventory`, then **Refresh assets**). Keyword decisions are included in resolver diagnostics. Refresh SillyTavern after updating; no server restart is needed for this release.
 
 Version 2.6 reveals spoken dialogue word by word using the generated voice's transcription timestamps and actual audio playback position. Enable or disable **Reveal dialogue with voice timing** under **Fish Audio voices → Voice generation and playback** (on by default). Speech pauses and playback stalls keep the text aligned; Auto waits for both text and voice. Lines without usable timings use the ordinary typewriter. Updating from 2.5.1 requires a browser refresh; this release does not change the server bridge.
 
