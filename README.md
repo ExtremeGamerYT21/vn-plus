@@ -1,4 +1,6 @@
-# Visual Novel+ 2.17.0
+# Visual Novel+ 2.18.0
+
+Version 2.18 adds a master emotion routing table with **388 recognized labels/adjectives** and ranked fallbacks over SillyTavern's full **28 base emotions**. Identical artwork wins first, then character `expressionAliases`, then the closest available ranked expression in that character's environment. Sparse sprite sets, legacy names, neutral/default art and newly added closer canonical sprites are supported. Inspect reports the route and rank; blinking follows the selected image. See [emotion routing and examples](docs/emotion-routing.md). Refresh SillyTavern after updating; no server restart is needed.
 
 Version 2.17 continuously checks the current response while VN is open, recovering when a POV transformer silently adds or replaces the `/////` section. Historical playback keeps its selection. Fish settings add optional **automatic voice generation** with a next-line readiness symbol and **narrator voicing** from the environment's `characters/narrator/properties.json`. Narrator name, text color and font apply even while muted. **General → Hide player bust (first-person view)** keeps the player invisible while preserving dialogue, voice and emotion. Automatic generation is opt-in and reuses prepared audio; failed requests require manual retry. See [voice settings and narrator setup](docs/speech.md). Refresh SillyTavern after updating; no server restart is needed.
 

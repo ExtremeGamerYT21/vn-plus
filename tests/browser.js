@@ -4,6 +4,7 @@ import { runArtifactChecks } from './browser-artifacts.js';
 import { runTimingChecks } from './browser-timing.js';
 import { runJournalChecks } from './browser-journal.js';
 import { runLiveVoiceChecks } from './browser-live-voices.js';
+import { runEmotionChecks } from './browser-emotions.js';
 import { createHost } from '../integration.js';
 import { DEFAULT_SETTINGS } from '../ui/settings.js';
 import { isolatedDocument } from '../renderers/html-renderer.js';
@@ -197,7 +198,7 @@ await check('interactive HTML runs in an opaque origin without app or storage ac
     try {
         controller.html.open({ interactive: true, html: `<script>let denied=0;try{parent.document.body.dataset.compromised='yes'}catch{denied++}try{localStorage.setItem('test','x')}catch{denied++}parent.postMessage({vnSandboxTest:true,denied},'*')</script><p>Isolated script</p>` });
         const frame = controller.root.querySelector('.vn-artifact iframe');
-        await pause(200); assert(received); assert(received.source === frame.contentWindow); equal(received.origin, 'null'); equal(received.data.denied, 2); assert(!document.body.dataset.compromised);
+        await eventually(() => received, 'Isolated frame did not report its sandbox checks'); assert(received.source === frame.contentWindow); equal(received.origin, 'null'); equal(received.data.denied, 2); assert(!document.body.dataset.compromised);
     } finally { window.removeEventListener('message', listener); controller.html.close(); }
 });
 await check('reveal is deliberate, non-mutating, and closes on generation', async () => {
@@ -837,6 +838,10 @@ await runArtifactChecks({ check, assert, equal, eventually, context, mountChat, 
 } });
 document.querySelector('#test-status').textContent = `${passes} passed · ${failures} failed`;
 await runLiveVoiceChecks({ check, assert, equal, eventually, context, mountChat, makeController() {
+    const next = new VNController(createHost(() => context, { localContent: false }), new URL('../', import.meta.url), inventory);
+    next.audio.audioFactory = () => new FakeAudio(); return next;
+} });
+await runEmotionChecks({ check, assert, equal, eventually, context, mountChat, makeController() {
     const next = new VNController(createHost(() => context, { localContent: false }), new URL('../', import.meta.url), inventory);
     next.audio.audioFactory = () => new FakeAudio(); return next;
 } });

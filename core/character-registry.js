@@ -5,7 +5,6 @@ export const characterNameKey = value => {
 };
 export const isNarratorName = value => ['narrator', 'narration'].includes(slug(value));
 const aliases = value => Array.isArray(value) ? value.filter(item => typeof item === 'string') : typeof value === 'string' ? [value] : [];
-export const EMOTION_ALIASES = { neutral: 'default', normal: 'default', mad: 'angry', furious: 'rage', annoyed: 'angry', joy: 'happy', excited: 'happy', cheerful: 'happy', depressed: 'sad', upset: 'sad', shocked: 'surprised', startled: 'surprised', shy: 'embarrassed', flustered: 'embarrassed', anxious: 'nervous', worried: 'nervous', terrified: 'scared', afraid: 'scared', loving: 'love', weeping: 'crying', amused: 'laughing', sleepy: 'tired' };
 
 export class CharacterRegistry {
     constructor(resolver, settings, discover = null) { this.resolver = resolver; this.settings = settings; this.discover = discover; this.properties = new Map(); this.knownProperties = new Set(); this.discoveredIds = new Set(); this.discoveryError = ''; }
@@ -63,6 +62,7 @@ export class CharacterRegistry {
     expressionCandidates(id, emotion) {
         const props = this.get(id), exact = slug(emotion) || 'default';
         const local = Object.entries(props.expressionAliases || {}).find(([key]) => slug(key) === exact)?.[1];
-        return [...new Set([exact, ...aliases(local), EMOTION_ALIASES[exact], props.defaultExpression, 'default'].filter(Boolean).map(slug))];
+        // Global adjective rankings are resolved against actual sprites by AssetResolver.
+        return [...new Set([exact, ...aliases(local), props.defaultExpression, 'default'].filter(Boolean).map(slug))];
     }
 }

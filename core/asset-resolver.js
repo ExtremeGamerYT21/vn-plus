@@ -1,5 +1,6 @@
 import { rankAssetNames } from './asset-matching.js';
 import { backgroundEntry } from './scene-context.js';
+import { emotionKey, emotionRanking, rankEmotions } from './emotion-routing.js';
 
 const IMAGE_EXTS = ['webp', 'png', 'jpg', 'jpeg', 'gif', 'avif'];
 const AUDIO_EXTS = ['ogg', 'mp3', 'wav', 'm4a', 'opus'];
@@ -64,20 +65,47 @@ export class AssetResolver {
     sprite(id, emotions, props = {}) {
         const folder = safeAssetPath(props.assetFolder || id);
         if (!folder) return Promise.resolve(null);
-        return this.remember(`sprite:${folder}:${emotions.join('|')}`, async () => {
-            // Probe the exact expression before considering aliases/defaults, including
-            // sprites added since the inventory was generated.
-            const requested = emotions.filter(emotion => emotion !== 'default');
-            for (const emotion of requested) {
-                const url = await this.resolve([`characters/${folder}/sprites/${emotion}`, `characters/${folder}/${emotion}`].flatMap(path => this.variants(path, IMAGE_EXTS)));
-                if (url) return url;
+        return this.remember(`sprite:${folder}:${JSON.stringify([emotions, props.defaultExpression || '', props.expressionAliases || null])}`, async () => {
+            const requested = emotions[0] || 'default', route = emotionRanking(requested);
+            const paths = emotion => [`characters/${folder}/sprites/${emotion}`, `characters/${folder}/${emotion}`].flatMap(path => this.variants(path, IMAGE_EXTS));
+            const open = name => !/blink/i.test(name);
+            const available = [...this.files].flatMap(file => {
+                const prefix = `characters/${folder}/`; if (!file.toLowerCase().startsWith(prefix.toLowerCase()) || !safeAssetPath(file)) return [];
+                const relative = file.slice(prefix.length).replace(/^sprites\//i, ''), match = /^([^/]+)\.([a-z\d]+)$/i.exec(relative);
+                return match && IMAGE_EXTS.includes(match[2].toLowerCase()) && open(match[1]) ? [match[1]] : [];
+            });
+            const finish = (url, method, rank = null, canonical = null) => {
+                this.report(`emotion:${folder}:${requested}`, { requested, matched: url ? decodeURIComponent(new URL(url).pathname.split('/').at(-1)) : null,
+                    url, method, rank, canonical, ranking: [...route], available: [...new Set(available)].sort() });
+                return url;
+            };
+            // A literal always wins, including newly added files absent from the catalog.
+            if (open(requested)) { const url = await this.resolve(paths(requested)); if (url) return finish(url, 'exact', 0); }
+            const local = Object.entries(props.expressionAliases || {}).find(([key]) => emotionKey(key) === emotionKey(requested))?.[1];
+            const configured = (Array.isArray(local) ? local : typeof local === 'string' ? [local] : []).filter(name => typeof name === 'string');
+            const aliases = [...new Set([...configured, ...emotions.slice(1).filter(name => name !== 'default' && name !== props.defaultExpression)])].filter(open);
+            for (const alias of aliases) { const url = await this.resolve(paths(alias)); if (url) return finish(url, 'character-alias'); }
+            const ranked = rankEmotions(requested, available.filter(name => emotionKey(name) !== 'default' || emotions.includes('default') || props.defaultExpression === 'default'));
+            const best = ranked[0], through = best ? route.indexOf(best.profile) : Math.min(0, route.length - 1);
+            // Try absent canonical labels above the indexed winner as well: a freshly
+            // added closer ST emotion can supersede a cached inventory fallback.
+            for (let index = 0; index <= through; index++) {
+                const canonical = route[index];
+                if (canonical !== requested) { const url = await this.resolve(paths(canonical)); if (url) return finish(url, 'emotion-ranking', index + 1, canonical); }
+                if (best?.profile === canonical) {
+                    const url = await this.resolve(paths(best.name)); if (url) return finish(url, 'emotion-ranking', index + 1, canonical);
+                }
             }
-            for (const emotion of requested) {
+            // Preserve descriptive/custom artwork when no named emotion is available.
+            for (const emotion of [requested, ...aliases]) {
                 const url = this.semanticImage(emotion, [`characters/${folder}`], true);
-                if (url) return url;
+                if (url) return finish(url, 'keywords');
             }
-            if (emotions.includes('default')) return this.resolve([`characters/${folder}/sprites/default`, `characters/${folder}/default`].flatMap(path => this.variants(path, IMAGE_EXTS)));
-            return null;
+            for (const fallback of [...new Set([props.defaultExpression, ...(emotions.includes('default') ? ['default'] : [])].filter(Boolean))]) {
+                if (!open(fallback)) continue;
+                const url = await this.resolve(paths(fallback)); if (url) return finish(url, 'fallback');
+            }
+            return finish(null, 'missing');
         });
     }
     background(name) {
@@ -100,7 +128,7 @@ export class AssetResolver {
         const files = emotions.map(emotion => Object.entries(config?.images || {}).find(([key]) => key.toLowerCase() === emotion.toLowerCase())?.[1]).filter(value => typeof value === 'string');
         if (typeof config?.image === 'string') files.push(config.image);
         const explicit = files.flatMap(file => (file.includes('/') ? [`${base}/${file}`] : [`${base}/sprites/${file}`, `${base}/${file}`]).flatMap(path => this.variants(path, IMAGE_EXTS)));
-        const automatic = [...new Set([...emotions, 'default'])].flatMap(emotion => [`${emotion}_blink`, `${emotion}.blink`].flatMap(name => [`${base}/sprites/${name}`, `${base}/${name}`].flatMap(path => this.variants(path, ['webp', 'png']))));
+        const automatic = [...new Set(emotions)].flatMap(emotion => [`${emotion}_blink`, `${emotion}.blink`].flatMap(name => [`${base}/sprites/${name}`, `${base}/${name}`].flatMap(path => this.variants(path, ['webp', 'png']))));
         return this.remember(`blink:${folder}:${JSON.stringify([emotions, config || null])}`, async () => {
             if (explicit.length) { const url = await this.resolve(explicit); if (url) return url; }
             const known = automatic.filter(path => [...this.files].some(file => file.toLowerCase() === path.toLowerCase()));

@@ -86,7 +86,7 @@ export class SpriteAnimator {
         const record = this.records.get(node) || this.createRecord(node);
         record.id = id; record.props = props;
         this.configureBreathing(record);
-        const key = JSON.stringify([expression, emotions, props.assetFolder || id, props.blink || null, this.settings.spriteBlinking, this.reduced]);
+        const key = JSON.stringify([expression, emotions, props.assetFolder || id, props.expressionAliases || null, props.defaultExpression || null, props.blink || null, this.settings.spriteBlinking, this.reduced]);
         if (key === record.key) { if (this.reduced) { this.settle(record); this.stopBlink(record); } else this.scheduleBlink(node, record); return record.pending; }
         record.key = key; const revision = ++record.revision;
         record.loading = true;
@@ -113,17 +113,17 @@ export class SpriteAnimator {
             }
             node.classList.remove('vn-no-sprite'); node.dataset.sprite = url; node.dataset.expression = expression;
             this.configureBreathing(record);
-            void this.prepareBlink(node, record, revision, url, emotions);
+            void this.prepareBlink(node, record, revision, url);
         })().finally(() => { if (record.revision === revision) record.loading = false; });
         return record.pending;
     }
-    async prepareBlink(node, record, revision, openURL, emotions) {
+    async prepareBlink(node, record, revision, openURL) {
         record.blinkLoading = true;
         try {
             const old = record.frame?.querySelector('.vn-sprite-blink'); old?.remove();
             if (this.reduced || !this.settings.spriteBlinking || record.props.blink === false || record.props.blink?.enabled === false) return;
             const resolved = decodeURIComponent(new URL(openURL).pathname.split('/').at(-1)).replace(/\.[^.]+$/, '');
-            const url = await this.resolver.blinkSprite(record.id, [emotions[0], resolved], record.props);
+            const url = await this.resolver.blinkSprite(record.id, [resolved], record.props);
             if (!url || !this.valid(node, record, revision)) return;
             const image = await this.load(url, record);
             if (!image || !this.valid(node, record, revision)) return;

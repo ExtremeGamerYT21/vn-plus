@@ -46,7 +46,9 @@ test('sprites match descriptive emotions before default but never another charac
     const resolver = new AssetResolver(new URL('http://localhost/vn/'), { files: ['characters/nina/default.png', 'characters/nina/sprites/cheerful_smile.png', 'characters/nina/sprites/sad_blink.png', 'characters/nina/sprites/sadBlink.png', 'characters/ashley/sad.png'] });
     assert.match(await resolver.sprite('nina', ['joyful', 'default']), /cheerful_smile.png$/);
     assert.match(await resolver.sprite('nina', ['sad', 'default']), /nina\/default.png$/);
-    assert.equal(await resolver.sprite('nina', ['sad']), null);
+    // With no neutral/default permitted, the only open expression is the last-ranked choice.
+    assert.match(await resolver.sprite('nina', ['sad']), /cheerful_smile.png$/);
+    assert.equal(await resolver.sprite('missing', ['sad']), null);
     assert.equal(await resolver.blinkSprite('nina', ['joyful']), null);
 }));
 test('exact expression aliases still beat a semantic sprite and fallback is environment-local', async () => withMissingFetch(async () => {

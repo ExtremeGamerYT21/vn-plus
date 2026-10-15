@@ -98,7 +98,7 @@ test('four NPCs remain staged, player takes left priority without speaker reshuf
 test('properties aliases and exact expressions are non-destructive', () => {
     const s = settings(); s.characters.draco = { displayName: 'Draco Malfoy', aliases: ['Malfoy'], defaultExpression: 'neutral', expressionAliases: { EXCITED: 'smile' }, color: '#abc' };
     const reg = registry(s); assert.equal(reg.identify('MALFOY'), 'draco');
-    assert.deepEqual(reg.expressionCandidates('draco', 'EXCITED'), ['excited', 'smile', 'happy', 'neutral', 'default']);
+    assert.deepEqual(reg.expressionCandidates('draco', 'EXCITED'), ['excited', 'smile', 'neutral', 'default']);
     assert.equal(reg.get('draco').color, '#abc');
 });
 test('special object keys and malformed aliases cannot corrupt staging', () => {

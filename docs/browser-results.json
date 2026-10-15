@@ -1,5 +1,5 @@
 {
-  "status": "89 passed · 0 failed",
+  "status": "93 passed · 0 failed",
   "tests": [
     "PASS · POV privacy and four characters from one scenario",
     "PASS · backward restores background, expression and audio state",
@@ -77,6 +77,10 @@
     "PASS · the first-person checkbox hides aliased player bodies while retaining dialogue and voice assignment",
     "PASS · automatic voices prepare ahead and the next-line symbol changes to ready without manual generation",
     "PASS · text waits for a late automatic clip and follows its actual word clock",
+    "PASS · ranked ST emotion tags render existing legacy bust art while retaining the story emotion",
+    "PASS · ranked fallbacks update and restore expressions without replacing the character body",
+    "PASS · blink lookup follows the selected fallback image rather than the original story tag",
+    "PASS · a character override can supersede the master ranking while prose stays unchanged",
     "PASS · visual overlays preserve the same sandbox and interaction state across dialogue beats",
     "PASS · an open visual reads and writes message extra at the current paragraph rather than its opening paragraph",
     "PASS · Auto progresses to reply with an interactive visual still open and never starts a Fish request",
