@@ -1,5 +1,5 @@
 {
-  "status": "46 passed · 0 failed",
+  "status": "52 passed · 0 failed",
   "tests": [
     "PASS · POV privacy and four characters from one scenario",
     "PASS · backward restores background, expression and audio state",
@@ -46,6 +46,12 @@
     "PASS · the settings CSS toggle and Refresh assets reload styling without advancing the scene",
     "PASS · repeated response commands reuse music ambience background and character frames through generation",
     "PASS · cast and ambience carry between responses and rebuild after refresh while exits and resets are respected",
-    "PASS · new generation cancels obsolete world loads while retaining the current music and sprite"
+    "PASS · new generation cancels obsolete world loads while retaining the current music and sprite",
+    "PASS · shared chat variables expose resolved media, hidden player emotion, time and actual tint without private dialogue",
+    "PASS · shared cast and emotions follow backward navigation and explicit exits",
+    "PASS · shared snapshots publish mute, audio start, generation and closing while retaining the cached scene",
+    "PASS · shared scene publication rejects obsolete async resolutions across chat switches",
+    "PASS · shared publication rebinds when SillyTavern reloads metadata for the same chat",
+    "PASS · shared cache survives reinitialization but environment switching clears the previous environment"
   ]
 }

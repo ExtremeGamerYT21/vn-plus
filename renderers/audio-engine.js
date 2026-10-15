@@ -12,12 +12,14 @@ export class AudioEngine {
     async play(audio) {
         if (!this.unlocked) return;
         try { await audio.play(); } catch (error) { this.report(`Audio waiting for browser permission: ${error.message}`); }
+        this.onChange?.();
     }
     stop(audio) { if (!audio) return; clearInterval(this.timers.get(audio)); this.timers.delete(audio); audio.pause(); audio.removeAttribute?.('src'); audio.load?.(); this.sources.delete(audio); this.musicSources.delete(audio); }
     setMusicMuted(muted) {
         this.settings.musicMuted = !!muted;
         // Also silence fading tracks; volume ramps continue normally underneath.
         for (const audio of this.musicSources) audio.muted = !!muted;
+        this.onChange?.();
     }
     fade(audio, target, duration, remove = false) {
         clearInterval(this.timers.get(audio)); this.timers.delete(audio);
@@ -60,6 +62,7 @@ export class AudioEngine {
         audio.muted = kind === 'music' && !!this.settings.musicMuted;
         if (kind === 'music') this.musicSources.add(audio);
         audio.preservesPitch = false; channel.audio = audio; channel.loadedName = track.name; channel.url = url; this.sources.add(audio);
+        for (const event of ['playing', 'pause', 'ended', 'error']) audio.addEventListener?.(event, () => this.onChange?.());
         // Keep at most current + fading source per channel during rapid navigation.
         if (channel.fading && channel.fading !== previous) this.stop(channel.fading);
         channel.fading = previous;

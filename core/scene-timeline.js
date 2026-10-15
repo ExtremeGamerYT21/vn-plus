@@ -2,7 +2,7 @@ export const SPEEDS = { normal: 1, slowed: .75, slow: .75, half: .5, sped: 1.4, 
 const clone = value => structuredClone(value);
 
 export function emptyState(mode = 'vn') {
-    return { background: null, music: null, ambient: null, scene: null, characters: Object.create(null), speaker: null, textEffect: 'normal', mode, black: false, camera: { zoom: 1, x: 0, y: 0 }, tint: 'transparent' };
+    return { background: null, music: null, ambient: null, scene: null, characters: Object.create(null), playerEmotion: null, speaker: null, textEffect: 'normal', mode, black: false, camera: { zoom: 1, x: 0, y: 0 }, tint: 'transparent' };
 }
 
 export function trackSpec(args) {
@@ -13,7 +13,7 @@ export function trackSpec(args) {
 
 export function compileTimeline(tokens, registry, settings, inherited = {}, recordBeats = true) {
     let state = emptyState(settings.displayMode);
-    for (const key of ['background', 'music', 'ambient', 'scene', 'textEffect', 'mode', 'black', 'camera', 'tint']) if (Object.hasOwn(inherited, key)) state[key] = clone(inherited[key]);
+    for (const key of ['background', 'music', 'ambient', 'scene', 'textEffect', 'mode', 'black', 'camera', 'tint', 'playerEmotion']) if (Object.hasOwn(inherited, key)) state[key] = clone(inherited[key]);
     state.characters = Object.assign(Object.create(null), clone(inherited.characters || {}));
     const beats = [], errors = [], views = [];
     const names = tokens.filter(token => token.type === 'dialogue' || (token.type === 'command' && token.name === 'ENTER')).map(token => token.character || token.args);
@@ -22,6 +22,7 @@ export function compileTimeline(tokens, registry, settings, inherited = {}, reco
     const enter = (name, emotion) => {
         const id = registry.identify(name);
         if (registry.isNarrator(name)) return null;
+        if (registry.isPlayer(id)) state.playerEmotion = emotion || state.playerEmotion || registry.get(id).defaultExpression || 'default';
         if (!settings.showPlayerBust && registry.isPlayer(id)) return id;
         const present = state.characters[id];
         if (present) { if (emotion) present.expression = emotion; return id; }

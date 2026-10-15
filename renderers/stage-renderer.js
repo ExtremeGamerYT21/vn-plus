@@ -6,6 +6,10 @@ import { sceneLighting } from '../core/scene-context.js';
 export class StageRenderer {
     constructor(root, resolver, registry, settings) { this.root = root; this.resolver = resolver; this.registry = registry; this.settings = settings; this.generation = 0; this.nodes = new Map(); this.sprites = new SpriteAnimator(root, resolver, settings); }
     publishContext(state, inside) {
+        const tint = this.root.querySelector('.vn-tint');
+        this.appliedTint = tint.style.background || 'transparent';
+        const color = getComputedStyle(tint).backgroundColor;
+        this.ambientColor = this.appliedTint === 'transparent' || color === 'rgba(0, 0, 0, 0)' ? '#ffffff' : color;
         const lighting = sceneLighting(state.scene, inside);
         this.root.style.setProperty('--vn-scene-brightness', lighting.brightness);
         const variables = { ...structuredClone(state.scene || {}), background: state.background || null, lighting };
@@ -69,8 +73,8 @@ export class StageRenderer {
         this.sprites.clear();
         this.nodes.forEach(node => node.remove()); this.nodes.clear();
         const background = this.root.querySelector('.vn-background'); background.style.backgroundImage = ''; background.dataset.asset = ''; this.backgroundUrl = null;
-        this.publishContext({}, false);
         this.root.querySelector('.vn-tint').style.background = ''; this.root.classList.remove('vn-black');
+        this.publishContext({}, false);
     }
     dispose() { this.clear(); this.sprites.dispose(); }
 }

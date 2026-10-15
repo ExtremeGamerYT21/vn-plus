@@ -1,4 +1,6 @@
-# Visual Novel+ 2.11.0
+# Visual Novel+ 2.12.0
+
+Version 2.12 publishes the cached VN scene through SillyTavern's **chat-local shared variables**. Other extensions can read `vn_plus` as JSON, subscribe to `vnplus:state-changed`, or use scalar macros such as `{{getvar::vn_plus_time}}` and `{{getvar::vn_plus_player_emotion}}`. Cast/emotions, header metadata, backgrounds, indoor/outdoor lighting, ambient tint, music/ambience and playback status follow the presented paragraph and remain cached when VN closes. See [the shared state API](docs/shared-state.md) for all fields and integration examples. Refresh SillyTavern after updating; no server restart is needed.
 
 A procedural visual novel presentation layer for SillyTavern. It reads **only** the player perspective after an exact `/////` line in the selected assistant message. Canonical narration, conversation storage, generation, and outgoing context remain under SillyTavern and your separate POV workflow.
 

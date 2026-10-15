@@ -1,4 +1,5 @@
 import { VNController } from '../controller.js';
+import { runSharedChecks } from './browser-shared.js';
 import { createHost } from '../integration.js';
 import { DEFAULT_SETTINGS } from '../ui/settings.js';
 import { isolatedDocument } from '../renderers/html-renderer.js';
@@ -15,9 +16,13 @@ const eventually = async (predicate, message = 'State did not become ready') => 
 const inventory = await fetch('../assets.json').then(response => response.json());
 const listeners = new Map(), events = ['GENERATION_STARTED','GENERATION_ENDED','GENERATION_STOPPED','MESSAGE_RECEIVED','MESSAGE_SWIPED','MESSAGE_UPDATED','MESSAGE_EDITED','MESSAGE_SWIPE_DELETED','CHARACTER_MESSAGE_RENDERED','MESSAGE_DELETED','CHAT_CHANGED','CHAT_LOADED','MORE_MESSAGES_LOADED','APP_READY'];
 let sends = 0, retries = 0;
+const chatMetadata = new Map();
 const initial = `SECRET_CANONICAL_DO_NOT_RENDER\n#BACKGROUND secret\n/////\n#BACKGROUND kitchen\n#MUSIC buzz\n#AMBIENT outside_noise\n#ENTER Jason\n#ENTER Ashley\n#ENTER Nina\n#ENTER Leyley\nASHLEY: "Hello." [smug]\n#BACKGROUND street\n#SFX door\nNINA: "Ready?" [excited]\n\`\`\`html\n<div><h1>Letter</h1><script>parent.document.body.dataset.compromised='yes'</script></div>\n\`\`\`\nNARRATION\nAfter artifact`;
 const context = {
     characterId: 0, chatId: 'A', chat: [{ mes: initial, swipe_id: 0 }, { mes: 'User', is_user: true }],
+    get chatMetadata() { if (!chatMetadata.has(this.chatId)) chatMetadata.set(this.chatId, { variables: { unrelated: 'keep' } }); return chatMetadata.get(this.chatId); },
+    saveMetadataDebounced() {},
+    variables: { local: { get(name) { return context.chatMetadata.variables[name] || ''; }, set(name, value) { context.chatMetadata.variables[name] = value; context.saveMetadataDebounced(); } } },
     extensionSettings: { visual_novel_plus: { ...structuredClone(DEFAULT_SETTINGS), typewriterEffect: false, characterSounds: false, reducedMotion: true, dialogueFont: 'faustina', characters: { jason: { assetFolder: 'andrew', color: '#78c976' } } } },
     eventTypes: Object.fromEntries(events.map(name => [name, name])), saveSettingsDebounced() {},
     eventSource: { on(name, callback) { const set = listeners.get(name) || new Set(); set.add(callback); listeners.set(name, set); }, removeListener(name, callback) { listeners.get(name)?.delete(callback); } },
@@ -805,5 +810,10 @@ await check('new generation cancels obsolete world loads while retaining the cur
     } finally { controller.resolver.background = background; controller.resolver.audio = audio; controller.resolver.sprite = sprite; }
 });
 controller.dispose();
+document.querySelector('#test-status').textContent = `${passes} passed · ${failures} failed`;
+await runSharedChecks({ check, assert, equal, eventually, context, mountChat, emit, makeController() {
+    const next = new VNController(createHost(() => context, { localContent: false }), new URL('../', import.meta.url), inventory);
+    next.audio.audioFactory = () => new FakeAudio(); return next;
+} });
 document.querySelector('#test-status').textContent = `${passes} passed · ${failures} failed`;
 document.body.dataset.testStatus = failures ? 'failed' : 'passed';

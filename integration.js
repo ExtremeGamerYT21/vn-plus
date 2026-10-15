@@ -1,7 +1,30 @@
+import { chatIdentity } from './core/message-reader.js';
+
 /** Adapter checked against installed SillyTavern 1.19.0 source. */
 export function createHost(getContext, { localContent = true } = {}) {
     return {
         context: getContext,
+        captureChatVariables() {
+            const context = getContext(), identity = chatIdentity(context), metadata = context.chatMetadata;
+            const current = () => {
+                const next = getContext();
+                const chatId = next.getCurrentChatId?.() ?? next.chatId;
+                return !!metadata && next.chatMetadata === metadata && chatIdentity(next) === identity && chatId != null && chatId !== '';
+            };
+            return {
+                current,
+                read: name => current() ? metadata.variables?.[name] : undefined,
+                write(values) {
+                    if (!current()) return false;
+                    for (const [name, value] of Object.entries(values)) {
+                        if (metadata.variables?.[name] === value) continue;
+                        if (context.variables?.local?.set) context.variables.local.set(name, value);
+                        else { metadata.variables ??= {}; metadata.variables[name] = value; context.saveMetadataDebounced?.(); }
+                    }
+                    return true;
+                },
+            };
+        },
         request(url, options = {}) {
             if (!/^\/api\/plugins\/vn-plus-tts\/(status|secret|synthesize|characters(?:\/resolve)?)$/.test(url)) throw new Error('Invalid VN+ server route.');
             return fetch(url, { ...options, headers: { ...(getContext().getRequestHeaders?.() || { 'Content-Type': 'application/json' }), ...options.headers } });
