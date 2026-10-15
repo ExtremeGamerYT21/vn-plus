@@ -1,5 +1,5 @@
 {
-  "status": "33 passed · 0 failed",
+  "status": "34 passed · 0 failed",
   "tests": [
     "PASS · POV privacy and four characters from one scenario",
     "PASS · backward restores background, expression and audio state",
@@ -33,6 +33,7 @@
     "PASS · voice-timed text falls back on playback failure and respects reduced motion and opt-out",
     "PASS · voice preparation discovers unindexed player aliases, canonical voices and edited IDs without generating audio",
     "PASS · MP3 export is real decodable audio and finishing keeps original sample timing",
-    "PASS · descriptive background and emotion keywords render existing art without changing chat text"
+    "PASS · descriptive background and emotion keywords render existing art without changing chat text",
+    "PASS · music ambience and SFX keyword requests attach the resolved files to playback"
   ]
 }

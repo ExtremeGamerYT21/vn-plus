@@ -43,17 +43,22 @@ export class AssetResolver {
         });
     }
     variants(path, extensions) { return /\.[a-z\d]{2,5}$/i.test(path) ? [path] : extensions.map(ext => `${path}.${ext}`); }
-    semanticImage(name, folders, excludeBlink = false) {
+    semanticAsset(name, folders, extensions, accepts = () => true) {
         if (!safeAssetPath(name)) return null;
         const files = [...this.files].filter(file => safeAssetPath(file) && folders.some(folder => file.startsWith(`${folder}/`))
-            && IMAGE_EXTS.includes(file.split('.').pop().toLowerCase()) && (!excludeBlink || !/blink/i.test(file.slice(file.lastIndexOf('/') + 1))));
+            && extensions.includes(file.split('.').pop().toLowerCase()) && accepts(file));
+        const folderIndex = file => folders.findIndex(folder => file.startsWith(`${folder}/`));
+        files.sort((a, b) => folderIndex(a) - folderIndex(b) || (a < b ? -1 : a > b ? 1 : 0));
         // Keep descriptive subfolders, but remove category/character names from ranking.
         const names = files.map(file => { const folder = folders.find(folder => file.startsWith(`${folder}/`)); return { file, name: file.slice(folder.length + 1).replace(/^sprites\//, '') }; });
-        const ranked = rankAssetNames(name, names.map(entry => entry.name));
+        const ranked = rankAssetNames(name, names.map(entry => entry.name), extensions === AUDIO_EXTS);
         if (!ranked.length) return null;
         const best = ranked[0], path = names.find(entry => entry.name === best.path).file, url = this.url(path);
         this.report(`match:${folders.join('|')}:${name}`, { url, method: 'keywords', requested: name, matched: path, score: best.score, keywords: best.matched });
         return url;
+    }
+    semanticImage(name, folders, excludeBlink = false) {
+        return this.semanticAsset(name, folders, IMAGE_EXTS, file => !excludeBlink || !/blink/i.test(file.slice(file.lastIndexOf('/') + 1)));
     }
     sprite(id, emotions, props = {}) {
         const folder = safeAssetPath(props.assetFolder || id);
@@ -94,10 +99,18 @@ export class AssetResolver {
         });
     }
     audio(kind, name) {
+        if (!safeAssetPath(name)) return Promise.resolve(null);
         const folders = kind === 'music' ? ['sfx/music', 'music', 'sfx'] : kind === 'ambient' ? ['ambient', 'sfx/ambient', 'sfx/music', 'sfx'] : ['sfx'];
-        return this.resolve(folders.flatMap(folder => this.variants(`${folder}/${name}`, AUDIO_EXTS)));
+        return this.remember(`audio:${kind}:${name}`, async () => await this.resolve(folders.flatMap(folder => this.variants(`${folder}/${name}`, AUDIO_EXTS)))
+            || this.semanticAsset(name, folders, AUDIO_EXTS, file => !(kind === 'sfx' && /^sfx\/(?:music|ambient)\//i.test(file)) && !(kind === 'music' && /^sfx\/ambient\//i.test(file))));
     }
-    voice(id, name) { return this.resolve([`characters/${id}/${name}`, `characters/shared/${name}`, `sfx/${name}`].flatMap(path => this.variants(path, AUDIO_EXTS))); }
+    voice(id, name) {
+        const character = safeAssetPath(id);
+        if (!character || !safeAssetPath(name)) return Promise.resolve(null);
+        const folders = [`characters/${character}`, 'characters/shared', 'sfx'];
+        return this.remember(`voice:${character}:${name}`, async () => await this.resolve(folders.flatMap(folder => this.variants(`${folder}/${name}`, AUDIO_EXTS)))
+            || this.semanticAsset(name, folders, AUDIO_EXTS, file => !/^sfx\/(?:music|ambient)\//i.test(file)));
+    }
     fontId(name) {
         let hash = 0; for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
         return `vn-${this.namespace}-${hash.toString(16)}`;

@@ -1,6 +1,6 @@
 {
   "display_name": "Visual Novel+",
-  "version": "2.7.0",
+  "version": "2.7.1",
   "loading_order": 50,
   "requires": [],
   "optional": ["regex"],

@@ -592,6 +592,15 @@ await check('descriptive background and emotion keywords render existing art wit
     equal(context.chat[0].mes, message);
     assert([...controller.resolver.diagnostics.values()].some(result => result.method === 'keywords' && result.requested === 'kitchen image'));
 });
+await check('music ambience and SFX keyword requests attach the resolved files to playback', async () => {
+    await controller.audio.unlock();
+    const message = 'SECRET\n/////\n#MUSIC woods music\n#AMBIENT roadway sounds\n#SFX glass smashing\nNARRATION\nListen.';
+    context.chat[0].mes = message; await controller.open(0);
+    await eventually(() => controller.audio.channels.music.audio?.src.endsWith('/forest.mp3'), 'Keyword music did not load');
+    await eventually(() => controller.audio.channels.ambient.audio?.src.endsWith('/traffic_noise.mp3'), 'Keyword ambience did not load');
+    await eventually(() => [...controller.audio.sources].some(source => /glass_shatter\.(?:ogg|mp3)$/.test(source.src)), 'Keyword SFX did not play');
+    equal(context.chat[0].mes, message);
+});
 controller.dispose();
 document.querySelector('#test-status').textContent = `${passes} passed · ${failures} failed`;
 document.body.dataset.testStatus = failures ? 'failed' : 'passed';

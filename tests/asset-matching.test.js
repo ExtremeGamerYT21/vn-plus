@@ -56,3 +56,55 @@ test('exact expression aliases still beat a semantic sprite and fallback is envi
     assert.match(await one.background('woods path'), /one\/backgrounds\/forest_trail.png$/);
     assert.equal(await two.background('woods path'), null);
 }));
+
+test('sound keywords normalize action, mood and intensity without changing image semantics', () => {
+    assert.deepEqual(assetKeywords('soft glass smashing sound effect', true), ['quiet', 'glass', 'shatter']);
+    assert.deepEqual(assetKeywords('peaceful music', true), ['calm']);
+    assert.deepEqual(assetKeywords('opening music'), ['opening', 'music']);
+    for (const [query, file] of [['door opening', 'door_closing.ogg'], ['quiet footsteps', 'loud_footsteps.wav'], ['tense music', 'calm_theme.mp3']]) assert.equal(rankAssetNames(query, [file], true).length, 0);
+});
+test('literal sounds win over keywords across every existing fallback folder', async () => {
+    const resolver = new AssetResolver(new URL('http://localhost/vn/'), { files: ['sfx/quiet_knock.ogg', 'sfx/music/knock.ogg', 'sfx/knock.wav'] });
+    assert.match(await resolver.audio('sfx', 'KNOCK'), /sfx\/knock.wav$/);
+    assert.match(await resolver.audio('music', 'knock'), /sfx\/music\/knock.ogg$/);
+    assert.match(await resolver.audio('ambient', 'knock'), /sfx\/music\/knock.ogg$/);
+});
+test('new exact sounds absent from the catalog still beat semantic matches', async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = async url => ({ ok: String(url).endsWith('/sfx/knocking.ogg'), headers: { get: () => 'audio/ogg' } });
+    try {
+        const resolver = new AssetResolver(new URL('http://localhost/vn/'), { files: ['sfx/knock.wav'] });
+        assert.match(await resolver.audio('sfx', 'knocking'), /knocking.ogg$/);
+    } finally { globalThis.fetch = original; }
+});
+test('music ambience and SFX find descriptive sounds in current and legacy folders', async () => withMissingFetch(async () => {
+    const resolver = new AssetResolver(new URL('http://localhost/vn/'), { files: ['music/Peaceful_Piano.mp3', 'ambient/Windy_Woodland.ogg', 'sfx/glass_shatter.wav', 'sfx/music/traffic_noise.ogg'] });
+    assert.match(await resolver.audio('music', 'calm piano music'), /Peaceful_Piano.mp3$/);
+    assert.match(await resolver.audio('ambient', 'wind in the woods sounds'), /Windy_Woodland.ogg$/);
+    assert.match(await resolver.audio('sfx', 'glass smashing effect'), /glass_shatter.wav$/);
+    assert.match(await resolver.audio('ambient', 'roadway sound'), /traffic_noise.ogg$/);
+    assert.equal([...resolver.diagnostics.values()].at(-1).method, 'keywords');
+}));
+test('semantic sound matching rejects other categories unsafe paths unsupported types and weak matches', async () => withMissingFetch(async () => {
+    const resolver = new AssetResolver(new URL('http://localhost/vn/'), { files: ['sfx/music/glass_shatter.mp3', 'sfx/ambient/door_slam.wav', 'ambient/knock.ogg', 'sfx/door_slam.png', 'sfx/../../escape/knock.ogg'] });
+    for (const name of ['glass smashing', 'door slamming', 'knocking', 'spaceship laser', '../knock', 'https://evil/knock']) assert.equal(await resolver.audio('sfx', name), null);
+    assert.equal(await resolver.audio('music', 'door slamming'), null);
+    assert.equal(await resolver.audio('ambient', 'image scene sound effect'), null);
+}));
+test('legacy character sounds use their own folder shared sounds and SFX without borrowing other characters', async () => withMissingFetch(async () => {
+    const resolver = new AssetResolver(new URL('http://localhost/vn/'), { files: ['characters/nina/happy_laugh.ogg', 'characters/ashley/scream.ogg', 'characters/shared/quiet_sigh.wav', 'sfx/knock.ogg', 'sfx/music/roar.mp3'] });
+    assert.match(await resolver.voice('nina', 'joyful laugh'), /nina\/happy_laugh.ogg$/);
+    assert.match(await resolver.voice('nina', 'soft sigh'), /shared\/quiet_sigh.wav$/);
+    assert.match(await resolver.voice('nina', 'knocking'), /sfx\/knock.ogg$/);
+    assert.equal(await resolver.voice('nina', 'screaming'), null);
+    assert.equal(await resolver.voice('nina', 'growling'), null);
+    assert.equal(await resolver.voice('../ashley', 'screaming'), null);
+}));
+test('sound fallback caches decisions while isolating categories and environments', async () => withMissingFetch(async () => {
+    const one = new AssetResolver(new URL('http://localhost/one/'), { files: ['sfx/knock.ogg', 'music/forest.mp3'] });
+    const two = new AssetResolver(new URL('http://localhost/two/'), { files: [] });
+    assert.equal(one.audio('sfx', 'knocking'), one.audio('sfx', 'knocking'));
+    assert.match(await one.audio('sfx', 'knocking'), /one\/sfx\/knock.ogg$/);
+    assert.equal(await one.audio('sfx', 'woods music'), null);
+    assert.equal(await two.audio('sfx', 'knocking'), null);
+}));
