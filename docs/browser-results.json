@@ -1,5 +1,5 @@
 {
-  "status": "34 passed · 0 failed",
+  "status": "36 passed · 0 failed",
   "tests": [
     "PASS · POV privacy and four characters from one scenario",
     "PASS · backward restores background, expression and audio state",
@@ -34,6 +34,8 @@
     "PASS · voice preparation discovers unindexed player aliases, canonical voices and edited IDs without generating audio",
     "PASS · MP3 export is real decodable audio and finishing keeps original sample timing",
     "PASS · descriptive background and emotion keywords render existing art without changing chat text",
-    "PASS · music ambience and SFX keyword requests attach the resolved files to playback"
+    "PASS · music ambience and SFX keyword requests attach the resolved files to playback",
+    "PASS · background and music inherit earlier POV commands and history edits preserve the current paragraph",
+    "PASS · a fresh controller restores media from history and explicit clears and chat switches stop inheritance"
   ]
 }

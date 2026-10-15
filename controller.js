@@ -1,6 +1,7 @@
 import { chatIdentity, latestAssistant, readMessage, sceneKey } from './core/message-reader.js';
 import { parsePOV } from './core/vn-parser.js';
 import { compileTimeline } from './core/scene-timeline.js';
+import { inheritedPresentation } from './core/scene-history.js';
 import { Playback } from './core/playback.js';
 import { normalizeStageLayout } from './core/stage-layout.js';
 import { contentEnvironments, activateContentProfile, saveContentProfile, CONTENT_PROFILE_KEYS } from './core/content-environments.js';
@@ -106,6 +107,7 @@ export class VNController {
             const message = readMessage(this.host.context(), Number(index));
             if (Number(index) === this.selected && this.speech.prepared && (!message || this.speech.prepared.sourceId !== this.speechSceneId(message))) this.speech.clearScene();
             if (Number(index) === this.selected) { this.sceneRevision = null; if (!this.root.hidden && !this.busy) void this.open(this.selected); }
+            else if (Number(index) < this.selected && !this.root.hidden && !this.busy) void this.open(this.selected);
         });
         subscribe('MESSAGE_DELETED', () => {
             this.speech.clearScene();
@@ -114,13 +116,13 @@ export class VNController {
         });
         for (const event of ['CHAT_CHANGED', 'CHAT_LOADED']) subscribe(event, () => {
             const identity = chatIdentity(this.host.context());
-            if (identity === this.chatId && event === 'CHAT_LOADED') { this.mount(); return; }
+            if (identity === this.chatId && event === 'CHAT_LOADED') { this.mount(); if (!this.root.hidden && !this.busy) void this.open(this.selected); return; }
             this.chatId = identity; this.selected = latestAssistant(this.host.context()); this.busy = false; this.pendingIndex = null;
             this.speech.clearScene();
             this.reveal.close(); this.invalidate(); this.playback = null; this.parsed = null; this.sceneRevision = null; this.seen.clear(); this.mount();
             if (!this.root.hidden) void this.open(this.selected);
         });
-        subscribe('MORE_MESSAGES_LOADED', () => this.mount()); subscribe('APP_READY', () => this.mount());
+        subscribe('MORE_MESSAGES_LOADED', () => { this.mount(); if (!this.root.hidden && !this.busy) void this.open(this.selected); }); subscribe('APP_READY', () => this.mount());
         this.observer = new MutationObserver(records => {
             if (records.some(record => {
                 if (record.target.closest?.('.vnplus-ui')) return false;
@@ -224,11 +226,14 @@ export class VNController {
         const message = readMessage(context, this.selected);
         if (!message || message.status !== 'ready') { this.speech.clearScene(); this.invalidate(); this.sceneRevision = null; this.playback = null; this.parsed = null; this.parserErrors = []; this.wait('Player perspective is unavailable. A completed POV section after ///// is required.'); return; }
         if (this.speech.prepared && this.speech.prepared.sourceId !== this.speechSceneId(message)) this.speech.clearScene();
-        const revision = `${this.environment.id}:${identity}:${message.index}:${message.swipe}:${message.pov}`;
+        const inherited = inheritedPresentation(context, message.index);
+        const sourceRevision = `${this.environment.id}:${identity}:${message.index}:${message.swipe}:${message.pov}`;
+        const revision = JSON.stringify([sourceRevision, inherited]);
         if (this.sceneRevision === revision && this.playback) {
             try { this.speech.prepare(this.speechSceneId(message), this.playback.timeline, this.registry); } catch (error) { this.speech.clearScene(); this.speech.notify(error.message); }
             this.present(this.playback.restore()); return;
         }
+        const historyPosition = this.sceneRevision && this.sceneSourceRevision === sourceRevision && this.playback ? this.playback.position : null;
         this.invalidate(); this.parsed = null; this.parserErrors = []; const generation = this.generation; this.wait('Preparing scene…');
         const parsed = parsePOV(message.pov);
         const names = parsed.tokens.filter(token => token.character || token.name === 'ENTER').map(token => token.character || token.args);
@@ -252,14 +257,14 @@ export class VNController {
                 this.characterFolderStatus(error.message, true); this.log(error.message);
             }
         }
-        const timeline = compileTimeline(parsed.tokens, this.registry, this.settings), sourceKey = sceneKey(context, message), key = `${this.environment.id}:${sourceKey}`;
+        const timeline = compileTimeline(parsed.tokens, this.registry, this.settings, inherited), sourceKey = sceneKey(context, message), key = `${this.environment.id}:${sourceKey}`;
         try { this.speech.prepare(this.speechSceneId(message), timeline, this.registry); } catch (error) { this.speech.clearScene(); this.speech.notify(error.message); }
         if (!this.seen.has(key)) { if (this.seen.size >= 32) this.seen.delete(this.seen.keys().next().value); this.seen.set(key, new Set()); }
-        this.playback = new Playback(timeline, this.seen.get(key)); this.sceneRevision = revision; this.parsed = parsed; this.parserErrors = [...parsed.errors, ...timeline.errors];
+        this.playback = new Playback(timeline, this.seen.get(key)); this.sceneRevision = revision; this.sceneSourceRevision = sourceRevision; this.parsed = parsed; this.parserErrors = [...parsed.errors, ...timeline.errors];
         this.root.querySelector('.vn-scene-label').textContent = `PLAYER PERSPECTIVE · RESPONSE ${message.index + 1} · SWIPE ${message.swipe + 1}`;
         if (!timeline.views.length) { this.wait('No completed dialogue, narration, or artifact is available in this POV.'); return; }
         const resume = this.environmentResume; this.environmentResume = null;
-        this.present(resume?.key === sourceKey ? this.playback.resume(resume.position) : this.playback.forward());
+        this.present(resume?.key === sourceKey ? this.playback.resume(resume.position) : historyPosition !== null ? this.playback.resume(historyPosition) : this.playback.forward());
     }
     characterFolderStatus(message, error = false) {
         const status = this.settingsPanel?.querySelector('[data-character-folders-status]'); if (status) status.textContent = message;
@@ -310,7 +315,7 @@ export class VNController {
         if (registry.discoveryError) { this.characterFolderStatus(registry.discoveryError); this.log(registry.discoveryError); }
         const current = readMessage(this.host.context(), this.selected);
         if (this.busy || registry !== this.registry || !current || current.pov !== message.pov || current.swipe !== message.swipe || current.index !== message.index) throw new Error('The selected scene changed. Prepare its dialogue again.');
-        return this.speech.prepare(this.speechSceneId(message), compileTimeline(parsed.tokens, registry, this.settings), registry);
+        return this.speech.prepare(this.speechSceneId(message), compileTimeline(parsed.tokens, registry, this.settings, inheritedPresentation(this.host.context(), message.index)), registry);
     }
     panel(kind) {
         clearTimeout(this.autoTimer); this.dialogue.skip(); clearTimeout(this.autoTimer);

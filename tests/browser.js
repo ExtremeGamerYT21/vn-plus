@@ -601,6 +601,41 @@ await check('music ambience and SFX keyword requests attach the resolved files t
     await eventually(() => [...controller.audio.sources].some(source => /glass_shatter\.(?:ogg|mp3)$/.test(source.src)), 'Keyword SFX did not play');
     equal(context.chat[0].mes, message);
 });
+await check('background and music inherit earlier POV commands and history edits preserve the current paragraph', async () => {
+    context.chat = [
+        { mes: 'CANONICAL_SECRET\n/////\n#BACKGROUND kitchen\n#MUSIC buzz slowed\n#SFX door\n#ENTER Ashley' },
+        { mes: '/////\n#BACKGROUND user\n#MUSIC user', is_user: true },
+        { mes: '#BACKGROUND canonical_secret\n#MUSIC canonical_secret\n/////\n#BACKGROUND street\nEarlier.' },
+        { mes: 'SECRET\n/////\nFirst.\nNARRATION\nSecond.' },
+    ];
+    mountChat();
+    const original = JSON.stringify(context.chat), sfx = controller.audio.sfx; let oldEffects = 0;
+    controller.audio.sfx = async () => oldEffects++;
+    try {
+        await controller.open(3);
+        await eventually(() => controller.root.querySelector('.vn-background').style.backgroundImage.includes('street'));
+        await eventually(() => controller.audio.channels.music.audio?.src.endsWith('/buzz.mp3'));
+        equal(controller.audio.channels.music.audio.playbackRate, .75); equal(controller.root.querySelectorAll('.vn-character').length, 0);
+        equal(oldEffects, 0); equal(JSON.stringify(context.chat), original);
+        await controller.action('next'); equal(controller.playback.position, 1);
+        context.chat[2].mes = 'SECRET\n/////\n#BACKGROUND kitchen\n#MUSIC club\nEdited history.';
+        emit('MESSAGE_UPDATED', 2);
+        await eventually(() => controller.root.querySelector('.vn-background').style.backgroundImage.includes('kitchen') && controller.audio.channels.music.audio?.src.endsWith('/club.mp3'));
+        equal(controller.playback.position, 1); assert(controller.root.querySelector('.vn-text').textContent.includes('Second.')); equal(oldEffects, 0);
+    } finally { controller.audio.sfx = sfx; }
+});
+await check('a fresh controller restores media from history and explicit clears and chat switches stop inheritance', async () => {
+    controller.dispose(); controller = new VNController(createHost(() => context, { localContent: false }), new URL('../', import.meta.url), inventory);
+    controller.audio.audioFactory = () => new FakeAudio(); await controller.open(3);
+    await eventually(() => controller.root.querySelector('.vn-background').style.backgroundImage.includes('kitchen') && controller.audio.channels.music.audio?.src.endsWith('/club.mp3'));
+    context.chat[2].mes = 'SECRET\n/////\n#BACKGROUND CLEAR\n#MUSIC STOP\nStopped.';
+    emit('MESSAGE_SWIPED', 2);
+    await eventually(() => controller.playback.restore().beat.state.background === null && controller.playback.restore().beat.state.music === null);
+    equal(controller.root.querySelector('.vn-background').style.backgroundImage, ''); assert(!controller.audio.channels.music.audio);
+    context.chatId = 'history-isolated'; context.chat = [{ mes: 'SECRET\n/////\nA different chat.' }]; mountChat(); emit('CHAT_CHANGED');
+    await eventually(() => controller.parsed && controller.root.querySelector('.vn-text').textContent.includes('A different chat.'));
+    equal(controller.root.querySelector('.vn-background').style.backgroundImage, ''); assert(!controller.audio.channels.music.audio);
+});
 controller.dispose();
 document.querySelector('#test-status').textContent = `${passes} passed · ${failures} failed`;
 document.body.dataset.testStatus = failures ? 'failed' : 'passed';

@@ -11,8 +11,9 @@ export function trackSpec(args) {
     return args ? { name: match ? args.slice(0, match.index) : args, rate: SPEEDS[match?.[1]?.toLowerCase()] || 1 } : null;
 }
 
-export function compileTimeline(tokens, registry, settings) {
+export function compileTimeline(tokens, registry, settings, inherited = {}) {
     let state = emptyState(settings.displayMode);
+    state.background = inherited.background ?? null; state.music = clone(inherited.music ?? null);
     const beats = [], errors = [], views = [];
     const names = tokens.filter(token => token.type === 'dialogue' || (token.type === 'command' && token.name === 'ENTER')).map(token => token.character || token.args);
     const cast = [...new Set(names.filter(name => !registry.isNarrator(name)).map(name => registry.identify(name)))];

@@ -1,6 +1,6 @@
 {
   "name": "visual-novel-plus",
-  "version": "2.7.1",
+  "version": "2.8.0",
   "private": true,
   "type": "module",
   "repository": { "type": "git", "url": "https://github.com/ExtremeGamerYT21/vn-plus.git" },
