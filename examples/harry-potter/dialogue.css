@@ -113,7 +113,7 @@ select option { background: #1b3025; color: #f0e4c9; }
     align-items: stretch;
     flex-shrink: 0;
     isolation: isolate;
-    width: min(900px, calc(100vw - 72px));
+    width: var(--vn-dialogue-auto-width, min(900px, calc(100vw - 72px)));
     max-height: var(--vn-dialogue-shell-max-height, calc(100dvh - 160px));
     margin: 0 0 max(20px, env(safe-area-inset-bottom));
     color: var(--hp-ink);
@@ -155,6 +155,7 @@ select option { background: #1b3025; color: #f0e4c9; }
     width: 100%;
     min-width: 0;
     min-height: min(158px, var(--vn-dialogue-max-height, 158px));
+    height: min(var(--vn-dialogue-min-height, 180px), var(--vn-dialogue-max-height, 40vh));
     max-height: var(--vn-dialogue-max-height, none);
     margin: 0;
     padding: 27px 37px 16px;
@@ -321,7 +322,7 @@ select option { background: #1b3025; color: #f0e4c9; }
     .vn-controls button { padding: 8px 10px; font-size: 12px; }
     .vn-controls [data-action="next"] { min-width: 105px; }
     .vn-dialogue-shell:has(.vn-dialogue:not([hidden])):not(:has(.vn-image-only)) {
-        width: calc(100vw - 20px);
+        width: var(--vn-dialogue-auto-width, calc(100vw - 20px));
         max-height: var(--vn-dialogue-shell-max-height, calc(100dvh - 185px));
         margin-bottom: max(12px, env(safe-area-inset-bottom));
     }

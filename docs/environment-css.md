@@ -52,7 +52,6 @@ See [the complete sample](../examples/dialogue.css) or open the local preview at
 | `.vn-framing-picker`, `[data-framing-picker]` | Bust / full-body artwork selector |
 | `[data-action="back"]` | Back |
 | `[data-action="next"]` | Continue |
-| `[data-action="replay"]`, `[data-action="skip"]` | Replay / Skip viewed |
 | `[data-action="auto"]`, `[data-action="reply"]` | Auto / Reply |
 | `[data-action="speech"]`, `[data-action="transcript"]`, `[data-action="debug"]` | Voices / Transcript / Inspect |
 | `[data-action="mute-music"]`, `[data-action="exit"]` | Mute music / Exit VN |
@@ -73,8 +72,8 @@ summary { color: #254c39; font-family: Georgia, serif; }
 
 Local `url(...)` paths are relative to the environment folder, for example `url("ui/paper.png")` or `url("characters/shared/box_texture.png")`. Embedded data images work too. URLs cannot leave the environment, use remote hosts or include query strings. For `image-set`, use explicit `url(...)` entries. Referenced files are fetched directly; they do not need an inventory entry.
 
-The dialogue width/minimum-height settings now supply default CSS variables, so ordinary `width` and `min-height` declarations can override them. Character properties and some renderer choices still use inline styles—for example an authored texture, text font/size or box color. Use `!important` when deliberately overriding those, such as `.vn-dialogue { background-image: none !important; }`. An image-only textbox also strips frame decorations with `!important`; disable that option or explicitly override the relevant decoration properties when designing a framed theme.
+The dialogue width/height settings supply default CSS variables, so ordinary `width` and `height` declarations can override them. Character properties and some renderer choices still use inline styles—for example an authored texture, text font/size or box color. Use `!important` when deliberately overriding those, such as `.vn-dialogue { background-image: none !important; }`. An image-only textbox also strips frame decorations with `!important`; disable that option or explicitly override the relevant decoration properties when designing a framed theme.
 
-Dialogue grows upward to fit its full paragraph, including text not yet revealed by the typewriter. VN+ measures the actual toolbar and playback controls when their sizes change. `--vn-dialogue-max-height` gives the remaining text-box space, and `--vn-dialogue-shell-max-height` gives the space for a shared text/button frame. Themes can use those variables instead of fixed `vh` caps. Very large passages retain scrolling when they exceed the screen; dialogue scrollbars stay hidden, and each new paragraph starts at the top. Transcript/settings/artifact scrolling is unchanged.
+Dialogue keeps the configured box height and expands horizontally when text needs more room, up to 94% of the viewport. Short text restores the normal configured/theme width. The full paragraph is measured before typewriter or voice reveal, so the box stays steady during playback. Themes can use `width: var(--vn-dialogue-auto-width, YOUR-NORMAL-WIDTH)` on the box or shared shell. `--vn-dialogue-max-height` and `--vn-dialogue-shell-max-height` limit height safely below the toolbar when the viewport is short. Text that cannot fit at maximum width retains hidden-bar scrolling; each new paragraph starts at the top. The playback row contains Back, Continue, Auto and Reply.
 
 Custom CSS affects presentation only. It does not execute JavaScript, edit messages, change voice assignments or move controls between documents.

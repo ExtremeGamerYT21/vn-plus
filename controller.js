@@ -159,7 +159,7 @@ export class VNController {
         const target = document.querySelector('#extensions_settings');
         if (target && !target.querySelector('#vnplus-settings')) {
             this.settingsPanel = createSettings(this.settings, {
-                open: () => void this.open(), replay: () => void this.action('replay'), debug: () => void this.action('debug'),
+                open: () => void this.open(), debug: () => void this.action('debug'),
                 change: key => this.settingsChanged(key), refresh: () => void this.refreshAssets(),
                 environments: this.environments.map(entry => ({ value: entry.id, label: entry.name })),
                 speechPanel: this.speechSettingsPanel.node,
@@ -368,7 +368,7 @@ export class VNController {
     wait(message) {
         this.root.querySelector('.vn-status').textContent = message; this.root.querySelector('.vn-status').hidden = false;
         this.root.querySelector('.vn-dialogue').hidden = true; this.root.querySelector('.vn-position').textContent = '';
-        for (const action of ['next', 'back', 'skip']) this.root.querySelector(`[data-action="${action}"]`).disabled = true;
+        for (const action of ['next', 'back']) this.root.querySelector(`[data-action="${action}"]`).disabled = true;
     }
     async open(index) {
         if (!this.settings.enabled) return;
@@ -450,7 +450,7 @@ export class VNController {
         this.renderState(state, source);
         for (const effect of result.effects) { if (effect.type === 'sfx') void this.audio.sfx(effect.name); else this.effects.trigger(effect); }
         this.root.querySelector('[data-action="back"]').disabled = this.playback.position <= 0;
-        this.root.querySelector('[data-action="next"]').disabled = false; this.root.querySelector('[data-action="skip"]').disabled = false;
+        this.root.querySelector('[data-action="next"]').disabled = false;
         this.root.querySelector('[data-action="auto"]').setAttribute('aria-pressed', String(this.settings.autoAdvance));
         this.root.querySelector('.vn-position').textContent = `${Math.min(this.playback.position + 1, this.playback.timeline.views.length)} / ${this.playback.timeline.views.length}`;
         const dialogue = this.root.querySelector('.vn-dialogue');
