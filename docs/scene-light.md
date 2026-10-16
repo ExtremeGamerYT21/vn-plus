@@ -1,6 +1,8 @@
-# Optional 3D scene light
+# Optional cached 2D scene light
 
-Enable **Extensions → Visual Novel+ → Scene lighting → Enable 3D scene light**. It starts off for existing and new installations. **Use sprite normal and material maps**, **Light HUD and buttons**, **Light intensity** and **Ambient fill** can be adjusted independently. A page refresh installs this frontend feature; no new server bridge is required.
+Enable **Extensions → Visual Novel+ → Scene lighting → Enable 2D scene lighting**. It starts off for existing and new installations; previously enabled scene lighting stays enabled. **Use sprite normal and material maps**, **Light HUD and buttons**, **Light intensity** and **Ambient fill** can be adjusted independently. A page refresh installs this frontend feature; no new server bridge is required.
+
+Sprites use one screen-space X/Y light direction per image. The direction is lifted with a fixed front-facing fill for tangent-space normals, rather than calculating a 3D point light for every pixel. Normal/material shading runs on WebGL once when the sprite, maps, direction, material settings, intensity, color or display resolution changes. Each expression keeps at most its open-eye and blink lighting textures, sized to the displayed artwork (capped at 2048px). Breathing reuses those textures; it only deforms the mesh. Identical static redraws are skipped entirely, and typewriter spans do not trigger HUD relighting. GPU rendering does not require a continuously running lighting clock. Cache resources are released with the expression or when lighting is disabled.
 
 The light follows fictional header time, including inherited headers, historical playback and backward navigation. It does not use the computer clock or animate time by itself. Outside, its position and color interpolate through:
 
@@ -23,7 +25,7 @@ Add a `light` object to an entry in the environment's existing `backgrounds/prop
   "Hogwarts - Great Hall - Candlelit Tables.png": {
     "inside": true,
     "light": {
-      "position": { "x": 0.35, "y": 0.05, "z": 0.9 },
+      "position": { "x": 0.35, "y": 0.05 },
       "color": "#ffd39a",
       "intensity": 0.9,
       "ambient": 0.35
@@ -32,7 +34,7 @@ Add a `light` object to an entry in the environment's existing `backgrounds/prop
 }
 ```
 
-X/Y are fractions of the entire VN viewport: X=0 is left, X=1 is right; Y=0 is top, Y=1 is bottom. Z is distance toward the viewer in viewport-height units. X/Y may be -2 to 3 for offscreen sources, Z .05–4, intensity 0–3, ambient 0–1. Colors use `#rrggbb`. Invalid values fall back to automatic values, and numeric outliers are clamped. Global intensity multiplies the source intensity. An authored override is static, including outdoors, until a different background/entry is selected. Use **Refresh assets** after editing properties.
+X/Y are fractions of the entire VN viewport: X=0 is left, X=1 is right; Y=0 is top, Y=1 is bottom. X/Y may be -2 to 3 for offscreen sources, intensity 0–3, ambient 0–1. Legacy Z values are retained in artifact data for compatibility but have no effect on VN lighting. Colors use `#rrggbb`. Invalid values fall back to automatic values, and numeric outliers are clamped. Global intensity multiplies the source intensity. An authored override is static, including outdoors, until a different background/entry is selected. Use **Refresh assets** after editing properties.
 
 ## Sprite normal and material maps
 
@@ -73,9 +75,11 @@ Static artifacts without a bridge receive basic host-side color/brightness shadi
 ```js
 await VNPlus.ready;
 function lightObject(light) {
-    // enabled, position{x,y,z}, color, intensity, ambient, level, inside,
+    // enabled, renderer:'2d', position{x,y,z}, direction{x,y}, color, intensity, ambient, level, inside,
     // viewport{width,height}, artifact{x,y,width,height}
     // position is in VN viewport fractions; artifact bounds use the same units.
+    // direction is the 2D vector from this artifact's center toward the source,
+    // aspect-corrected in viewport-height units; X points right and Y down.
     const localX = (light.position.x - light.artifact.x) / light.artifact.width;
     // Update this artifact's CSS, canvas or WebGL renderer here.
 }

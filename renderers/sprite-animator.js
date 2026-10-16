@@ -82,6 +82,12 @@ export class SpriteAnimator {
         for (const frame of record.visual.querySelectorAll('.vn-sprite-frame')) this.mesh.draw(frame, record.breath || { ...breathingConfig(record.props, this.settings), amount: 0 }, record.inhale || 0, this.lighting, record.props?.lighting);
     }
     setLighting(light) {
+        const key = JSON.stringify(light);
+        if (key === this.lightKey) {
+            for (const record of this.records.values()) if (!record.breath) this.drawBreathing(record);
+            return;
+        }
+        this.lightKey = key;
         this.lighting = light;
         for (const [node, record] of this.records) {
             this.configureBreathing(record);

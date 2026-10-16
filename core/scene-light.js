@@ -27,17 +27,23 @@ export function sceneLight(scene, inside = false, settings = {}, properties = {}
     position = { x: number(source?.x, position.x, -2, 3), y: number(source?.y, position.y, -2, 3), z: number(source?.z, position.z, .05, 4) };
     const intensity = number(authored.intensity, strength, 0, 3) * number(settings.sceneLightIntensity, 1, 0, 2);
     const ambient = number(authored.ambient, number(settings.sceneLightAmbient, .35, 0, 1) * (inside ? 1 : .55 + .45 * daylight.level), 0, 1);
-    return { enabled: settings.sceneLightEnabled === true, normalMaps: settings.sceneLightNormalMaps !== false, hud: settings.sceneLightHud !== false,
+    return { enabled: settings.sceneLightEnabled === true, renderer: '2d', normalMaps: settings.sceneLightNormalMaps !== false, hud: settings.sceneLightHud !== false,
         kind, position, color: color(authored.color, tint), intensity, ambient, level: daylight.level, inside: !!inside,
-        coordinates: 'viewport fractions; x right, y down, z toward viewer', normalConvention: 'OpenGL +Y', materialChannels: 'R: occlusion, G: roughness, B: metallic' };
+        coordinates: 'viewport fractions; x right, y down; z retained for older artifacts only', normalConvention: 'OpenGL +Y', materialChannels: 'R: occlusion, G: roughness, B: metallic' };
 }
 
-/** Small CPU equivalent used for DOM surfaces and deterministic renderer checks. */
-export function surfaceLight(light, position = { x: .5, y: .5 }, aspect = 1, normal = [0, 0, 1]) {
-    if (!light?.enabled) return { brightness: 1, color: '#ffffff', direction: { x: 0, y: -1 }, diffuse: 0 };
-    const vector = [(light.position.x - position.x) * aspect, position.y - light.position.y, light.position.z];
-    const length = Math.hypot(...vector) || 1;
-    const diffuse = Math.max(0, vector.reduce((sum, value, index) => sum + value / length * normal[index], 0));
-    return { brightness: Math.max(.4, Math.min(1.3, light.ambient + light.intensity * diffuse)), color: light.color,
-        direction: { x: vector[0] / length, y: -vector[1] / length }, diffuse };
+/** A 2D screen vector with fixed front fill for tangent-space normal maps. No point-light depth. */
+export function lightDirection(light, position = { x: .5, y: .5 }, aspect = 1) {
+    const x = (light.position.x - position.x) * aspect, y = position.y - light.position.y;
+    const length = Math.hypot(x, y, 1);
+    return [x / length, y / length, 1 / length];
+}
+
+/** Flat tint/brightness sampled once per surface, with gentle distance falloff in 2D. */
+export function surfaceLight(light, position = { x: .5, y: .5 }, aspect = 1) {
+    if (!light?.enabled) return { brightness: 1, color: '#ffffff', direction: { x: 0, y: -1 }, falloff: 0 };
+    const x = (light.position.x - position.x) * aspect, y = light.position.y - position.y;
+    const distance = Math.hypot(x, y), falloff = lightDirection(light, position, aspect)[2];
+    return { brightness: Math.max(.4, Math.min(1.3, light.ambient + light.intensity * falloff)), color: light.color,
+        direction: { x: x / (distance || 1), y: y / (distance || 1) }, falloff };
 }

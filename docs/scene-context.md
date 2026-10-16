@@ -56,7 +56,7 @@ Run `npm run backgrounds` from the extension folder to create this file for ever
 
 ## Lighting
 
-For optional directional sprite/HUD lighting, normal/material maps, background overrides and the artifact lighting API, see [3D scene light](scene-light.md). The original behavior below remains the default until enabled.
+For optional cached 2D sprite/HUD lighting, normal/material maps, background overrides and the artifact lighting API, see [2D scene light](scene-light.md). The original behavior below remains the default until enabled.
 
 Outdoor brightness follows a fixed story-time schedule with interpolated dawn/dusk:
 

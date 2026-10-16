@@ -51,7 +51,8 @@ export class HTMLRenderer {
     constructor(root, settings, createSession = null, readLocal = null, options = {}) { this.root = root; this.settings = settings; this.createSession = createSession; this.readLocal = readLocal; this.options = options; this.generation = 0; }
     lightSnapshot(frame) {
         const root = this.root.closest('#vnplus-overlay') || this.root, bounds = root.getBoundingClientRect(), rect = frame.getBoundingClientRect();
-        return { ...currentSceneLight(root), viewport: { width: bounds.width, height: bounds.height },
+        const light = currentSceneLight(root);
+        return { ...light, direction: { x: (light.position.x - (rect.left + rect.width / 2 - bounds.left) / (bounds.width || 1)) * bounds.width / (bounds.height || 1), y: light.position.y - (rect.top + rect.height / 2 - bounds.top) / (bounds.height || 1) }, viewport: { width: bounds.width, height: bounds.height },
             artifact: { x: (rect.left - bounds.left) / (bounds.width || 1), y: (rect.top - bounds.top) / (bounds.height || 1), width: rect.width / (bounds.width || 1), height: rect.height / (bounds.height || 1) } };
     }
     open(token, html = token.html) {

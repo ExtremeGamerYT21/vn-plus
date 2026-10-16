@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sceneLight, surfaceLight, LIGHT_DEFAULTS } from '../core/scene-light.js';
+import { sceneLight, surfaceLight, lightDirection, LIGHT_DEFAULTS } from '../core/scene-light.js';
 import { AssetResolver } from '../core/asset-resolver.js';
 import { inventoryCharacters } from '../core/content-inventory.js';
 import { DEFAULT_SETTINGS, loadSettings } from '../ui/settings.js';
@@ -45,9 +45,16 @@ test('light and map options migrate safely off and remain independent of animati
     const settings = loadSettings({ extensionSettings: {} }); assert.equal(settings.sceneLightEnabled, false); assert.equal(settings.sceneLightNormalMaps, true);
     assert.equal(at(12, false, { ...options, reducedMotion: true, spriteBreathing: false }).enabled, true);
     assert.equal(at(12, false, { ...options, sceneLightNormalMaps: false }).normalMaps, false);
-    assert.deepEqual(surfaceLight({ enabled: false }), { brightness: 1, color: '#ffffff', direction: { x: 0, y: -1 }, diffuse: 0 });
+    assert.deepEqual(surfaceLight({ enabled: false }), { brightness: 1, color: '#ffffff', direction: { x: 0, y: -1 }, falloff: 0 });
     const left = { ...at(12), position: { x: -.5, y: .5, z: .5 } };
-    assert.ok(surfaceLight(left).direction.x < 0); assert.ok(surfaceLight(left, { x: .5, y: .5 }, 1, [-1, 0, 0]).diffuse > surfaceLight(left, { x: .5, y: .5 }, 1, [1, 0, 0]).diffuse);
+    assert.ok(surfaceLight(left).direction.x < 0); assert.ok(lightDirection(left)[0] < 0);
+});
+test('normal-map light direction uses screen X/Y and ignores legacy depth', () => {
+    const light = at(12); assert.equal(light.renderer, '2d');
+    const direction = lightDirection(light);
+    assert.ok(direction[1] > 0); assert.ok(Math.abs(Math.hypot(...direction) - 1) < 1e-10);
+    const otherDepth = { ...light, position: { ...light.position, z: 400 } };
+    assert.deepEqual(lightDirection(otherDepth), direction); assert.deepEqual(surfaceLight(otherDepth), surfaceLight(light));
 });
 test('normal and material images never enter emotion lists or replace missing artwork', async t => {
     const files = ['characters/nina/sprites/joy_normal.png', 'characters/nina/sprites/joy_material.png'];

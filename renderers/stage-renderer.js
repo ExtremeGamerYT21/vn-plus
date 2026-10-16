@@ -83,6 +83,7 @@ export class StageRenderer {
             // Image availability can change during loading. Shadows keep the bust baseline.
             if (current()) this.place(node, position);
         })]);
+        if (current()) this.lightRenderer.refresh();
     }
     cancelPending() { this.generation++; this.sprites.cancelPending(); }
     clear() {
