@@ -1,5 +1,6 @@
 import { sceneLighting } from './scene-context.js';
 import { sceneLight } from './scene-light.js';
+import { characterPresent, characterSilence } from './character-presence.js';
 
 export const SHARED_STATE_KEY = 'vn_plus';
 
@@ -13,11 +14,11 @@ export function audioState(track, channel = {}, muted = false, volume = 0) {
 export function sceneSnapshot({ state, registry, settings, environment, stage, audio, source, active = true, generating = false }) {
     const characters = Object.values(state.characters).filter(character => !registry.isNarrator(character.id))
         .sort((a, b) => a.slot - b.slot).map(character => ({ id: character.id, name: character.name, emotion: character.expression,
-            slot: character.slot, player: registry.isPlayer(character.id), speaking: character.id === state.speaker }));
+            slot: character.slot, player: registry.isPlayer(character.id), speaking: character.id === state.speaker, present: characterPresent(character), silentBeats: characterSilence(character) }));
     const playerId = registry.identify(settings.playerName), player = characters.find(character => character.id === playerId);
     return { schemaVersion: 1, available: true, active, generating, environment: { id: environment.id, name: environment.name }, source,
         scene: structuredClone(state.scene), timeOfDay: sceneLighting(state.scene, false).period, characters, speaker: state.speaker,
-        player: { id: playerId, name: registry.get(playerId).displayName || settings.playerName, emotion: state.playerEmotion || player?.emotion || null, present: !!player },
+        player: { id: playerId, name: registry.get(playerId).displayName || settings.playerName, emotion: state.playerEmotion || player?.emotion || null, present: !!player?.present },
         background: { name: state.background, asset: stage.backgroundUrl || null, inside: !!stage.variables?.lighting.inside, outside: !stage.variables?.lighting.inside },
         lighting: { ...sceneLighting(state.scene, !!stage.variables?.lighting.inside), ...(settings.sceneLightEnabled ? { light: sceneLight(state.scene, !!stage.variables?.lighting.inside, settings, stage.backgroundProperties) } : {}), ambientColor: stage.ambientColor || '#ffffff', tint: stage.appliedTint || 'transparent', tintOpacity: .28 },
         music: audioState(state.music, audio.channels.music, settings.musicMuted, settings.musicVolume),

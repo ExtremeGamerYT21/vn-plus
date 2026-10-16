@@ -67,6 +67,7 @@ export class SpriteAnimator {
         });
     }
     configureBreathing(record) {
+        if (record.suspended) { record.breath = null; return; }
         const config = breathingConfig(record.props, this.settings);
         let hash = 0; for (const char of record.id || '') hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
         record.breath = !this.reduced && config.enabled && config.amount > 0 ? { ...config, phase: hash % config.duration } : null;
@@ -112,7 +113,7 @@ export class SpriteAnimator {
     removeFrame(frame) { if (frame) { this.mesh.remove(frame); frame.remove(); } }
     async render(node, id, expression, emotions, props) {
         const record = this.records.get(node) || this.createRecord(node);
-        record.id = id; record.props = props;
+        record.id = id; record.props = props; record.suspended = false;
         this.configureBreathing(record);
         const key = JSON.stringify([expression, emotions, props.assetFolder || id, props.expressionAliases || null, props.defaultExpression || null, props.blink || null, this.settings.spriteBlinking, this.reduced]);
         if (key === record.key) { if (this.reduced) { this.settle(record); this.stopBlink(record); } else this.scheduleBlink(node, record); return record.pending; }
@@ -161,7 +162,7 @@ export class SpriteAnimator {
         } finally { if (record.revision === revision) record.blinkLoading = false; }
     }
     scheduleBlink(node, record) {
-        if (this.reduced || document.hidden || !this.settings.spriteBlinking || !record.frame?.querySelector('.vn-sprite-blink') || record.blinkTimer || record.openTimer) return;
+        if (record.suspended || this.reduced || document.hidden || !this.settings.spriteBlinking || !record.frame?.querySelector('.vn-sprite-blink') || record.blinkTimer || record.openTimer) return;
         const config = record.props.blink || {};
         const min = clamp(config.intervalMin ?? this.settings.blinkIntervalMin, 500, 30000, 2800);
         const max = clamp(config.intervalMax ?? this.settings.blinkIntervalMax, min, 60000, Math.max(min, 6500));
@@ -179,6 +180,13 @@ export class SpriteAnimator {
             if (this.records.get(node) !== record || record.frame !== frame) return;
             this.stopBlink(record); this.scheduleBlink(node, record);
         }, duration);
+    }
+    suspend(node) {
+        const record = this.records.get(node); if (!record) return;
+        record.revision++; record.key = ''; record.suspended = true; record.loading = record.blinkLoading = false;
+        for (const cancel of [...record.loads]) cancel();
+        this.stopBlink(record); this.settle(record); record.breath = null;
+        if (![...this.records.values()].some(value => value.breath)) this.stopBreathingClock();
     }
     remove(node) {
         const record = this.records.get(node); if (!record) return;

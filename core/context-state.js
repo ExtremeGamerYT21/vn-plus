@@ -12,7 +12,7 @@ export function contextEntries(context, end = latestAssistant(context)) {
         if (!message) continue;
         const header = lastSceneHeader(message.canonical);
         const tokens = message.status === 'ready' ? parsePOV(message.pov).tokens.flatMap(token => {
-            if (token.type === 'dialogue') return [{ type: 'dialogue', character: token.character, emotion: token.emotion }];
+            if (token.type === 'dialogue') return [{ type: 'dialogue', character: token.character, emotion: token.emotion, ...(token.direction && token.emotion === 'default' ? { explicitEmotion: true } : {}) }];
             if (token.type === 'command') return ['SFX', 'FLASH', 'SHAKE'].includes(token.name) ? [] : [token];
             if (token.type === 'header') return [token];
             return [{ type: 'narration' }]; // Clear speaker without retaining text/HTML.
@@ -30,7 +30,7 @@ export function applyContextHeader(state, header) {
     return state;
 }
 
-/** Last N completed POV responses infer silent cast presence; explicit exits/resets always win. */
+/** Last N completed POV responses cache cast identities/emotions; each message controls visible presence. */
 export function reduceContext(entries, registry, settings, { beforeLast = false } = {}) {
     let state = emptyState(settings.displayMode), turn = -1;
     const seen = new Map(), limit = Math.max(0, Math.min(50, Math.floor(Number(settings.castMemoryTurns) || 0)));
@@ -43,7 +43,7 @@ export function reduceContext(entries, registry, settings, { beforeLast = false 
         }
         applyContextHeader(state, entry.header);
         if (beforeLast && index === entries.length - 1) break;
-        state = compileTimeline(entry.tokens, registry, settings, state, false).finalState;
+        if (entry.ready) state = compileTimeline(entry.tokens, registry, settings, state, false).finalState;
         for (const name of names(entry)) if (!registry.isNarrator(name)) seen.set(registry.identify(name), turn);
     }
     if (state.background && state.music) return state;

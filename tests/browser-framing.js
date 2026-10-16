@@ -2,6 +2,7 @@ import { runSceneLightChecks } from './browser-scene-light.js';
 import { runMediaHistoryChecks } from './browser-media-history.js';
 import { runDialogueAttributionChecks } from './browser-dialogue-attribution.js';
 import { runDialogueSizeChecks } from './browser-dialogue-size.js';
+import { runCastRetreatChecks } from './browser-cast-retreat.js';
 
 export async function runFramingChecks(options) {
     const { check, assert, equal, eventually, context, mountChat, makeController } = options;
@@ -59,15 +60,15 @@ export async function runFramingChecks(options) {
         await check('narration gently dims every character and shadow independently of the narrator voice toggle', async () => {
             assert(!controller.root.classList.contains('vn-narrating')); await controller.action('next');
             assert(controller.root.classList.contains('vn-narrating'));
-            for (const node of controller.stage.nodes.values()) equal(getComputedStyle(node).filter, 'brightness(0.85)');
+            for (const node of controller.stage.nodes.values()) assert(parseFloat(getComputedStyle(node).filter.match(/brightness\(([^)]+)/)[1]) < .85);
             toggle('bust'); toggle('full-body'); assert(controller.root.classList.contains('vn-narrating'));
             controller.settings.tts.narratorEnabled = true; controller.present(controller.playback.restore());
-            for (const node of controller.stage.nodes.values()) equal(getComputedStyle(node).filter, 'brightness(0.85)');
+            for (const node of controller.stage.nodes.values()) assert(parseFloat(getComputedStyle(node).filter.match(/brightness\(([^)]+)/)[1]) < .85);
             controller.settings.tts.narratorEnabled = false;
         });
         await check('thoughts and spoken dialogue restore normal character lighting after narration', async () => {
             await controller.action('next'); assert(!controller.root.classList.contains('vn-narrating'));
-            assert(getComputedStyle(shadow).filter.includes(`brightness(${controller.settings.inactiveBrightness})`));
+            assert(parseFloat(getComputedStyle(shadow).filter.match(/brightness\(([^)]+)/)[1]) < 1);
             assert(getComputedStyle(shadow).filter.includes('saturate(0.55)'));
             assert(getComputedStyle(nina).filter !== 'brightness(0.85)');
             await controller.action('next'); assert(!controller.root.classList.contains('vn-narrating'));
@@ -86,4 +87,5 @@ export async function runFramingChecks(options) {
     await runMediaHistoryChecks(options);
     await runDialogueAttributionChecks(options);
     await runDialogueSizeChecks(options);
+    await runCastRetreatChecks(options);
 }

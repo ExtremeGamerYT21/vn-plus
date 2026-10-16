@@ -16,7 +16,7 @@
 .vn-background, .vn-stage { filter: brightness(var(--vn-scene-brightness,1)); }
 .vn-world::after { content: ''; position: absolute; inset: 0; background: transparent; pointer-events: none; }
 .vn-stage { --vn-stage-bottom: min(28vh,230px); position: absolute; inset: 8vh 0 var(--vn-stage-bottom); display: flex; align-items: var(--vn-align, flex-end); }
-.vn-character { position: absolute; bottom: 0; transform: translateX(-50%) translate(var(--vn-offset-x,0px),var(--vn-offset-y,0px)) scale(var(--vn-scale,1)); transform-origin: bottom center; height: var(--vn-height,78vh); max-width: 45vw; transition: left .35s ease, filter .35s ease; display: flex; align-items: flex-end; justify-content: center; }
+.vn-character { position: absolute; bottom: 0; transform: translateX(-50%) translate(var(--vn-offset-x,0px),var(--vn-offset-y,0px)) scale(var(--vn-scale,1)); transform-origin: bottom center; height: var(--vn-height,78vh); max-width: 45vw; opacity: var(--vn-quiet-opacity,1); filter: brightness(var(--vn-quiet-brightness,1)); transition: left var(--vn-retreat-time,.35s) ease, filter var(--vn-retreat-time,.35s) ease, opacity var(--vn-retreat-time,.35s) ease; display: flex; align-items: flex-end; justify-content: center; }
 .vn-character img { height: 100%; width: 100%; object-fit: contain; object-position: bottom center; filter: drop-shadow(0 10px 20px #0007); }
 .vn-sprite-visual { position: relative; width: 100%; height: 100%; }
 .vn-sprite-frame { position: absolute; bottom: 0; left: 0; width: 100%; max-height: 100%; aspect-ratio: 1; }
@@ -24,7 +24,8 @@
 .vn-sprite-mesh { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; filter: drop-shadow(0 10px 20px #0007); }
 .vn-sprite-meshed img { visibility: hidden; }
 .vn-no-sprite .vn-sprite-visual { display: none; }
-.vn-inactive { filter: brightness(var(--vn-dim,.45)) saturate(.55); }
+.vn-inactive { filter: brightness(var(--vn-quiet-brightness,var(--vn-dim,.45))) saturate(.55); }
+.vn-character.vn-departing { --vn-retreat-time: 1.4s !important; opacity: 0; filter: brightness(.1) !important; pointer-events: none; }
 .vn-missing-bust { display: none; position: relative; width: 100%; height: 100%; align-items: flex-end; justify-content: center; color: var(--vn-silhouette); } .vn-missing-bust svg { width: 100%; height: 70%; fill: currentColor; stroke: var(--vn-border); stroke-width: 1; filter: drop-shadow(0 5px 10px #0008); } .vn-silhouette-name { position: absolute; bottom: 8%; color: var(--vn-ui-color); background: var(--vn-panel); border: 1px solid var(--vn-border); border-radius: 4px; padding: 3px 8px; font-size: 12px; }
 .vn-no-sprite .vn-missing-bust { display: flex; }.vn-hide-missing.vn-no-sprite { visibility: hidden; }.vn-speaking .vn-missing-bust svg { stroke: var(--vn-ui-accent); }
 .vn-tint, .vn-darkness, .vn-flash { position: absolute; inset: 0; pointer-events: none; }.vn-tint { opacity: .28; }.vn-darkness { background: #000; opacity: 0; transition: opacity .6s; z-index: 3; }.vn-black .vn-darkness { opacity: 1; }.vn-flash { opacity: 0; z-index: 6; }
@@ -75,4 +76,4 @@
 .vnplus-ui .vn-voice-ready[data-state="ready"] { color: var(--vn-ui-accent); }
 
 /* Narration gently lowers cast brightness without changing scene lighting. */
-.vn-narrating .vn-character { filter: brightness(var(--vn-narration-brightness,.85)); }
+.vn-narrating .vn-character { filter: brightness(calc(var(--vn-narration-brightness,.85) * var(--vn-quiet-brightness,1))); }

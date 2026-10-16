@@ -19,13 +19,16 @@ function readVN() {
 
 const vn = readVN();
 if (vn?.available) {
-    console.log(vn.characters); // [{ id, name, emotion, slot, player, speaking }]
+    console.log(vn.characters); // [{ id, name, emotion, slot, player, speaking, present, silentBeats }]
+    console.log(vn.characters.filter(character => character.present !== false)); // Present in this message.
     console.log(vn.player?.emotion, vn.scene?.time);
     console.log(vn.background?.inside, vn.lighting?.level);
 }
 ```
 
 No server plugin or API key is required for message metadata. Snapshot changes use debounced chat saves; artifact actions request an immediate chat save. Raw message text is unchanged.
+
+Recent cast entries are retained as an expression cache. `present: false` identifies a cached character absent from this message; its bust departs instead of remaining on screen. `silentBeats` is a capped 0–4 quiet-beat count. See [character presence](character-presence.md) for the presentation rules. `speaking` describes the current text speaker, including silent thoughts, independently of whether TTS is audible.
 
 | Field | Meaning |
 | --- | --- |

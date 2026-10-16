@@ -25,6 +25,6 @@ Environment CSS that changes stage clearance can use `.vn-stage { --vn-stage-bot
 
 ## Narration lighting
 
-While a narration paragraph is presented, the whole cast—including shadows—gently transitions to 85% brightness. This applies whether the narrator is voiced or muted. Dialogue and character thoughts restore the existing speaker/inactive lighting. Scene brightness, time-of-day lighting and the cached ambient-light values are unchanged; this is a presentation effect. Reduced motion suppresses the transition.
+While a narration paragraph is presented, the whole cast—including shadows—receives an additional 85% brightness multiplier, combined with each character's [quiet-beat dimming and retreat](character-presence.md). This applies whether the narrator is voiced or muted. Dialogue and character thoughts restore focus to their speaker. Scene brightness, time-of-day lighting and the cached ambient-light values are unchanged; this is a presentation effect. Reduced motion suppresses the transition.
 
 Environment CSS can adjust the strength with `:scope { --vn-narration-brightness: .9; }`. A value of `1` disables this dim. The overlay has the `.vn-narrating` class while presenting narration.

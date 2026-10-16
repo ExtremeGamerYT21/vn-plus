@@ -4,6 +4,8 @@ Validation performed on 2026-10-16 against the workspace remake. Installed Silly
 
 ## Automated checks
 
+- Quiet cast retirement passes 259 Node and 130 browser checks in the isolated release; all 99 JavaScript modules pass syntax checks. Four silent beats progressively move and dim present busts, speaking restores focus without replacing their body/frame, and untagged dialogue retains the cached emotion. Current-message absence animates departure, suspends sprite work, releases resources and frees stage slots; quick alias returns cancel removal. Checks cover narration-only messages, explicit entrances/defaults, cold reopening, reduced motion, cleanup, media continuity and unavailable POVs. Shared snapshots distinguish cached identities from present bodies. The Harry Potter preview was visually checked with installed Lyra and Madam Malkin art; no provider calls or real chat/settings writes were made.
+
 - Horizontal dialogue fitting supersedes vertical growth: 256 Node and 126 browser checks pass, along with 96 JavaScript syntax checks. Longer paragraphs widen the box toward a 94%-viewport cap while retaining the configured height; short text restores the normal/theme width. Parchment and typewriter checks verify a stable full-text width, text remains unchanged, music is reused, and maximum-width passages retain hidden-bar scrolling. Replay and Skip viewed are absent from playback; Replay selected is also removed from settings, and scene loading no longer references the removed controls. Desktop, portrait and landscape fixtures were visually checked without provider calls or real chat/settings writes.
 
 - Automatic dialogue sizing passes 256 Node and 126 browser checks in isolation, with 96 JavaScript module syntax checks passing. Long text grows beyond the old half-screen cap, short text restores the compact box, and typewriter reveal reserves its complete paragraph height. Geometry checks keep text below the actual toolbar and playback buttons inside the parchment; toolbar padding changes trigger new measurements. Oversized passages retain hidden-bar scrolling and reset to the top on navigation without changing chat text or music identity. Native Harry Potter artwork was visually checked at 1280×720, 390×650 and 740×390. No provider calls or real chat/settings changes were made.
@@ -86,7 +88,7 @@ Validation performed on 2026-10-16 against the workspace remake. Installed Silly
 | 2. No accidental canonical reveal in VN | Missing/empty/pending tests; no canonical tokens in inspector/transcript. |
 | 3. Three/four NPCs on one scenario card | Node stages four NPCs plus Jason; browser stages four people from one message. |
 | 4. Jason's left priority | Slot tests including a late player entrance. |
-| 5. Silence does not remove characters | Presence assertions through dialogue and narration. |
+| 5. Quiet and absent characters | Quiet beats progressively dim/retreat busts within a message; characters absent from the next message leave while recent expressions remain cached. |
 | 6. Expression and property styling | Exact excited sprite/alias tests; browser sprite/theme assertions. |
 | 7. Background/music/ambience/SFX | State tests, supplied asset paths, independent audio tests and fixture rendering. Audible output remains a live check. |
 | 8. Backward restoration | Snapshot equality and real DOM background/audio-selection restoration. |
@@ -111,7 +113,7 @@ Validation performed on 2026-10-16 against the workspace remake. Installed Silly
 ## Deliberate scope and limits
 
 - The separate model-based POV rewrite/concatenation workflow is outside the renderer, as specified. No prompt manager, separate history, image generation or LLM requests.
-- Responses reconstruct state from the currently selected chat history. Recent-cast inference uses structured headers/commands and speaker activity; free-form prose is not interpreted for implied arrivals/departures. Explicit scene/location transitions and the configurable response window bound cast persistence.
+- Responses reconstruct state from the currently selected chat history. Current-message speaker activity and explicit entrances determine visible cast; free-form prose is not interpreted for implied arrivals/departures. Explicit scene/location transitions and the configurable response window bound cached identities/emotions, independently of visible presence.
 - Snapshots restore track selection/rate, not historical audio sample offset. Replay explicitly enables one-shot effects again.
 - Seen progress is bounded and session-only. Refresh reconstructs from the message starting at its first beat.
 - Prefer fenced HTML for complex documents and multiline quoted dialogue without blank separating lines. Raw HTML parsing is compact rather than a full HTML lexer.

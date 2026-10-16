@@ -1,3 +1,4 @@
+import { characterPresent, characterSilence } from './character-presence.js';
 export const SPEEDS = { normal: 1, slowed: .75, slow: .75, half: .5, sped: 1.4, fast: 1.4, double: 2 };
 const clone = value => structuredClone(value);
 
@@ -22,7 +23,9 @@ export function compileTimeline(tokens, registry, settings, inherited = {}, reco
     for (const id of Object.keys(state.characters)) if (registry.isNarrator(id) || !settings.showPlayerBust && registry.isPlayer(id)) delete state.characters[id];
     const beats = [], errors = [], views = [];
     const names = tokens.filter(token => token.type === 'dialogue' || (token.type === 'command' && token.name === 'ENTER')).map(token => token.character || token.args);
-    const cast = [...new Set([...Object.keys(state.characters), ...names.filter(name => !registry.isNarrator(name)).map(name => registry.identify(name))])];
+    const participants = new Set(names.filter(name => !registry.isNarrator(name)).map(name => registry.identify(name)));
+    for (const character of Object.values(state.characters)) character.present = characterPresent(character) && participants.has(character.id);
+    const cast = [...participants];
     const maxSlots = Math.max(1, cast.filter(id => !registry.isNarrator(id) && (settings.showPlayerBust || !registry.isPlayer(id))).length);
     const enter = (name, emotion) => {
         const id = registry.identify(name);
@@ -30,15 +33,15 @@ export function compileTimeline(tokens, registry, settings, inherited = {}, reco
         if (registry.isPlayer(id)) state.playerEmotion = emotion || state.playerEmotion || registry.get(id).defaultExpression || 'default';
         if (!settings.showPlayerBust && registry.isPlayer(id)) return id;
         const present = state.characters[id];
-        if (present) { if (emotion) present.expression = emotion; return id; }
-        const used = () => new Set(Object.values(state.characters).map(char => char.slot));
+        if (present && characterPresent(present)) { if (emotion) present.expression = emotion; return id; }
+        const used = () => new Set(Object.values(state.characters).filter(characterPresent).map(char => char.slot));
         let slot = 0;
         if (registry.isPlayer(id)) {
-            const occupant = Object.values(state.characters).find(char => char.slot === 0);
+            const occupant = Object.values(state.characters).find(char => characterPresent(char) && char.slot === 0);
             if (occupant) { const occupied = used(); slot = 1; while (occupied.has(slot)) slot++; occupant.slot = slot; }
             slot = 0;
         } else { const occupied = used(); while (occupied.has(slot)) slot++; }
-        state.characters[id] = { id, name: registry.get(id).displayName || name, expression: emotion || registry.get(id).defaultExpression || 'default', slot };
+        state.characters[id] = { id, name: registry.get(id).displayName || name, expression: emotion || present?.expression || registry.get(id).defaultExpression || 'default', slot, present: true, silentBeats: 0 };
         return id;
     };
     for (const token of tokens) {
@@ -48,7 +51,7 @@ export function compileTimeline(tokens, registry, settings, inherited = {}, reco
             if (location(state.scene) && location(state.scene) !== location(token.value)) { state.characters = Object.create(null); state.speaker = null; }
             state.scene = clone(token.value);
         }
-        else if (token.type === 'dialogue') state.speaker = enter(token.character, token.emotion);
+        else if (token.type === 'dialogue') state.speaker = enter(token.character, token.emotion === 'default' && !token.direction && !token.explicitEmotion ? undefined : token.emotion);
         else if (token.type === 'narration' || token.type === 'artifact') state.speaker = null;
         else if (token.type === 'command') {
             const arg = token.args, upper = arg.toUpperCase();
@@ -80,6 +83,9 @@ export function compileTimeline(tokens, registry, settings, inherited = {}, reco
                     break;
                 }
             }
+        }
+        if (['dialogue', 'narration', 'artifact'].includes(token.type)) for (const character of Object.values(state.characters)) if (characterPresent(character)) {
+            character.silentBeats = character.id === state.speaker ? 0 : Math.min(4, characterSilence(character) + 1);
         }
         if (recordBeats) {
             const index = beats.length;

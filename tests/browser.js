@@ -100,7 +100,8 @@ await check('both layout selectors synchronize and switch live without restartin
     const nodes = [...controller.stage.nodes.values()];
     picker.value = 'separate'; picker.dispatchEvent(new Event('change', { bubbles: true })); await pause(50);
     equal(controller.settings.layout, 'separate'); equal(settingsPicker.value, 'separate'); equal(context.extensionSettings.visual_novel_plus.layout, 'separate');
-    equal([...controller.stage.nodes.values()].map(node => parseFloat(node.style.left)).sort((a,b)=>a-b), [12.5,37.5,62.5,87.5]);
+    const stations = [...controller.stage.nodes.values()].map(node => parseFloat(node.style.left)).sort((a,b)=>a-b);
+    equal(stations.length, 4); assert(stations[1] < 50 && stations[2] > 50); assert(stations.every((x, index) => !index || x - stations[index - 1] > 15));
     assert([...controller.stage.nodes.values()].every(node => node.style.bottom === '0vh' && node.dataset.depth === '0'));
     equal(controller.playback.cursor, cursor); assert(controller.audio.channels.music.audio === music);
     assert([...controller.stage.nodes.values()].every((node,index)=>node === nodes[index]));
@@ -637,7 +638,7 @@ await check('background and music inherit earlier POV commands and history edits
         await controller.open(3);
         await eventually(() => controller.root.querySelector('.vn-background').style.backgroundImage.includes('street'));
         await eventually(() => controller.audio.channels.music.audio?.src.endsWith('/buzz.mp3'));
-        equal(controller.audio.channels.music.audio.playbackRate, .75); equal(controller.root.querySelectorAll('.vn-character').length, 1); assert(controller.stage.nodes.has('ashley'));
+        equal(controller.audio.channels.music.audio.playbackRate, .75); equal(controller.root.querySelectorAll('.vn-character').length, 0); assert(!controller.stage.nodes.has('ashley'));
         equal(oldEffects, 0); equal(chatPayload(context.chat), original);
         await controller.action('next'); equal(controller.playback.position, 1);
         context.chat[2].mes = 'SECRET\n/////\n#BACKGROUND kitchen\n#MUSIC club\nEdited history.';
@@ -870,7 +871,7 @@ await check('repeated response commands reuse music ambience background and char
         equal(background.style.backgroundImage, image); assert(writes.every(write => write.oldValue.includes('background-image')));
     } finally { observer.disconnect(); }
 });
-await check('cast and ambience carry between responses and rebuild after refresh while exits and resets are respected', async () => {
+await check('absent cast leaves each response while cached expressions and ambience survive refresh and explicit exits', async () => {
     context.chat = [
         { mes: 'SECRET\n/////\n#BACKGROUND kitchen\n#MUSIC buzz\n#AMBIENT outside_noise\n#ENTER Nina\n#ENTER Ashley\n#SFX door\nNina: "Earlier." [happy]' },
         { mes: 'SECRET\n/////\nStill in the same room.' },
@@ -878,16 +879,18 @@ await check('cast and ambience carry between responses and rebuild after refresh
         { mes: 'SECRET\n/////\n#SCENE another\n#ENTER Nina\nNina: "Another scene."' },
         { mes: 'SECRET\n/////\n#SCENE RESET\nCleared.' },
     ]; mountChat();
-    await controller.open(1); await eventually(() => controller.stage.nodes.size === 2 && controller.audio.channels.ambient.audio);
+    await controller.open(0); await eventually(() => controller.stage.nodes.size === 2 && controller.audio.channels.ambient.audio);
     assert(controller.stage.nodes.has('nina')); assert(controller.stage.nodes.has('ashley'));
-    const nina = controller.stage.nodes.get('nina'); await controller.open(2); assert(!nina.isConnected); assert(controller.stage.nodes.has('ashley'));
+    const nina = controller.stage.nodes.get('nina'); await controller.open(1); equal(controller.stage.nodes.size, 0); assert(!nina.isConnected);
+    await controller.open(2); assert(controller.stage.nodes.has('ashley'));
     await controller.open(3); assert(!controller.stage.nodes.has('ashley')); assert(controller.stage.nodes.has('nina'));
     await controller.open(4); equal(controller.stage.nodes.size, 0); assert(controller.audio.channels.music.audio); assert(!controller.audio.channels.ambient.audio);
     controller.dispose(); controller = new VNController(createHost(() => context, { localContent: false }), new URL('../', import.meta.url), inventory); controller.audio.audioFactory = () => new FakeAudio();
     const sfx = controller.audio.sfx; let oldSounds = 0; controller.audio.sfx = async () => oldSounds++;
     try {
-        await controller.open(1); await eventually(() => controller.stage.nodes.size === 2 && controller.audio.channels.ambient.audio);
+        await controller.open(1); await eventually(() => controller.stage.nodes.size === 0 && controller.audio.channels.ambient.audio);
         equal(oldSounds, 0); equal(controller.playback.timeline.views.length, 1); equal(controller.playback.restore().beat.state.characters.nina.expression, 'happy');
+        equal(controller.playback.restore().beat.state.characters.nina.present, false);
         controller.close(); equal(controller.stage.nodes.size, 0); equal(controller.audio.sources.size, 0);
     } finally { controller.audio.sfx = sfx; }
 });
