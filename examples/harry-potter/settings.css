@@ -7,6 +7,7 @@
     --hp-ink: #30291e;
     --hp-green: #254c39;
     --hp-brass: #a78b52;
+    --hp-green-key: linear-gradient(115deg, #ecdfad12, transparent 48%, #08170d18), repeating-linear-gradient(0deg, #fff9d804 0px, #fff9d804 1px, transparent 1px, transparent 3px), linear-gradient(#3c583e, #203c2b 72%, #294632);
     --hp-serif: "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
     --vn-ui-color: var(--hp-ink);
     --vn-muted: #675338;
@@ -53,17 +54,24 @@ details details { margin-top: 8px; padding-left: 12px; border-left: 2px solid #a
 button {
     min-height: 34px;
     border: 1px solid #8f774c;
+    border-top-color: #c4a66c;
+    border-bottom-color: #6d522c;
     border-radius: 2px;
     padding: 7px 10px;
     color: #f2e5c7;
-    background: #284735;
-    box-shadow: inset 0 0 0 2px #152f2240;
-    text-shadow: none;
+    background-color: #284331;
+    background-image: var(--hp-green-key);
+    box-shadow: 0 2px 0 #755530, 0 4px 5px #70512c2b, inset 0 1px 0 #e5d8a838, inset 0 0 0 1px #0a1c1860;
+    text-shadow: 0 -1px 0 #091c13;
     font: 13px/1.25 var(--hp-serif);
-    transition: background-color .18s;
+    transition: filter .12s, box-shadow .12s, transform .12s;
 }
-button:hover:not(:disabled) { background: #3b5e46; border-color: #725c32; }
-button:disabled { opacity: .5; cursor: default; }
+button:hover:not(:disabled) { filter: brightness(1.1); border-color: #a08248; }
+button:active:not(:disabled) {
+    transform: translateY(2px);
+    box-shadow: inset 0 2px 3px #091b1380, 0 1px 0 #fff4cf99;
+}
+button:disabled { opacity: .62; cursor: default; box-shadow: inset 0 1px 2px #08160d50, 0 1px 0 #fff4cf80; }
 .vn-setting {
     gap: 12px;
     padding-bottom: 9px;
@@ -106,3 +114,4 @@ code { color: #663c2e; background: #be9b5420; font-size: .9em; }
     .vn-setting { gap: 8px; font-size: 12px; }
     .vn-settings-actions button { flex-grow: 1; }
 }
+@media (prefers-reduced-motion: reduce) { button { transition: none; } }
