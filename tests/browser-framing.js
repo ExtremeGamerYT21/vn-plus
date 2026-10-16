@@ -1,6 +1,7 @@
 import { runSceneLightChecks } from './browser-scene-light.js';
 import { runMediaHistoryChecks } from './browser-media-history.js';
 import { runDialogueAttributionChecks } from './browser-dialogue-attribution.js';
+import { runDialogueSizeChecks } from './browser-dialogue-size.js';
 
 export async function runFramingChecks(options) {
     const { check, assert, equal, eventually, context, mountChat, makeController } = options;
@@ -84,4 +85,5 @@ export async function runFramingChecks(options) {
     await runSceneLightChecks(options);
     await runMediaHistoryChecks(options);
     await runDialogueAttributionChecks(options);
+    await runDialogueSizeChecks(options);
 }

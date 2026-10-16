@@ -650,7 +650,7 @@ export class VNController {
     dispose() {
         clearInterval(this.sourceTimer);
         clearTimeout(this.contextTimer); this.sharedState.cancel();
-        this.close(); this.disposed = true; this.audio.onChange = null; this.stage.dispose(); this.observer.disconnect(); clearTimeout(this.mountTimer); this.disposers.forEach(dispose => dispose());
+        this.close(); this.disposed = true; this.audio.onChange = null; this.stage.dispose(); this.dialogue.dispose(); this.observer.disconnect(); clearTimeout(this.mountTimer); this.disposers.forEach(dispose => dispose());
         this.root.remove(); this.settingsPanel?.remove(); document.querySelectorAll('.vn-message-tools').forEach(node => node.remove()); this.seen.clear();
         this.resolver.dispose(); this.catalogResolver.dispose();
         this.environmentStyle.dispose();

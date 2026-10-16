@@ -1,5 +1,6 @@
 import { EMOTION_FLAIR, shouldShakeText } from './emotion-flair.js';
 import { speechRevealCues } from '../core/speech-reveal.js';
+import { DialogueLayout } from './dialogue-layout.js';
 
 /** Small, safe emphasis renderer. Text is always inserted with text nodes. */
 export function appendEmphasis(container, text, letters = []) {
@@ -13,8 +14,9 @@ export function appendEmphasis(container, text, letters = []) {
 }
 
 export class DialogueRenderer {
-    constructor(root, resolver, settings) { this.root = root; this.resolver = resolver; this.settings = settings; this.generation = 0; this.timer = null; this.typing = false; this.letters = []; }
+    constructor(root, resolver, settings) { this.root = root; this.resolver = resolver; this.settings = settings; this.generation = 0; this.timer = null; this.typing = false; this.letters = []; this.layout = new DialogueLayout(root); }
     cancel() { this.generation++; clearTimeout(this.timer); this.timer = null; this.typing = false; }
+    dispose() { this.cancel(); this.layout.dispose(); }
     async render(token, props = {}, effect = 'normal', onDone = () => {}, instant = false, playback = null) {
         this.cancel(); const generation = this.generation;
         const box = this.root.querySelector('.vn-dialogue'), text = box.querySelector('.vn-text');
@@ -48,6 +50,7 @@ export class DialogueRenderer {
             if (effect === 'shout') text.classList.add('vn-shout');
         }
         text.replaceChildren(); this.letters = appendEmphasis(text, token.text || '');
+        box.scrollTop = 0; this.layout.fit();
         const font = props.font || this.settings.dialogueFont;
         if (font) void this.resolver.font(font); // CSS family already chosen; no stale theme callback.
         const animated = !instant && this.settings.typewriterEffect && !this.settings.reducedMotion && this.settings.typewriterSpeed > 0;
