@@ -14,7 +14,7 @@ Since 2.15, **Auto** follows a local beat clock instead of a fixed delay after t
 
 Object duration samples are seeded by the object ID, narration and source line. Replaying unchanged content gives the same sampled duration. There is no object timer for an unpaired visual. A sampled inspection duration controls the narration's dwell time; **it does not close the object early**. The close executes when its script beat is reached. The parser looks for its matching close in the current response, not in hypothetical future messages.
 
-Auto also waits until text reveal and voice playback finish. Clicking once still finishes text reveal; another click advances. Turning Auto off does not disable dialogue-attached reactions. Inspector, voice/transcript panels, the reply editor, modal artifacts and hidden tabs hold the scheduler. Navigation and chat/swipe/environment changes cancel obsolete clocks.
+Auto waits until text reveal, voice playback, the beat's reading/action duration and attached reactions/animations finish, then holds the completed beat for **one additional second** before advancing. The pause does not overlap unfinished text or speech. Pausing/resuming or re-enabling Auto starts a fresh full second once the beat is ready. Clicking once still finishes text reveal; another click advances immediately. Turning Auto off does not disable dialogue-attached reactions. Inspector, voice/transcript panels, the reply editor, modal artifacts and hidden tabs hold the scheduler. Navigation and chat/swipe/environment changes cancel obsolete clocks, including a pending one-second pause.
 
 ## Independent HTML objects
 

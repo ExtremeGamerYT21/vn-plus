@@ -1,4 +1,5 @@
 /** Local semantic rules only. Unknown tags never make a model request. */
+export const AUTO_ADVANCE_DELAY = 1000;
 export const REACTIONS = Object.freeze({
     hurried: { anchor: 'end', delay: 180, animation: 160, easing: 'cubic-bezier(.2,.8,.3,1)' },
     scared: { anchor: 'start', delay: 80, animation: 120, easing: 'ease-out' },
@@ -98,7 +99,7 @@ export class BeatScheduler {
         if (!options.paused?.()) {
             const playback = options.playback;
             if (playback?.status === 'cancelled') { this.cancel(); return; }
-            if (playback?.status === 'loading') { this.timer = this.set(() => this.tick(), 20); return; }
+            if (playback?.status === 'loading') { this.advanceReadyAt = null; this.timer = this.set(() => this.tick(), 20); return; }
             if (playback?.status === 'playing') this.elapsed = Math.max(0, (playback.audio?.currentTime || 0) * 1000);
             else if (playback?.status === 'ended') this.elapsed = Math.max(this.elapsed, this.duration()) + delta;
             else this.elapsed += delta;
@@ -109,8 +110,12 @@ export class BeatScheduler {
                 end = Math.max(end, due + (options.settings.reducedMotion ? 0 : profile.animation));
                 if (!this.fired.has(index) && this.elapsed >= due) { this.fired.add(index); options.onCommand(command, profile); if (this.options !== options) return; }
             }
-            if (options.settings.autoAdvance && (this.estimate || playback) && this.elapsed >= end && options.canAdvance()) { this.cancel(); options.onAdvance(); return; }
-        }
+            const ready = options.settings.autoAdvance && (this.estimate || playback) && this.elapsed >= end && options.canAdvance();
+            if (ready) {
+                this.advanceReadyAt ??= now;
+                if (now - this.advanceReadyAt >= AUTO_ADVANCE_DELAY) { this.cancel(); options.onAdvance(); return; }
+            } else this.advanceReadyAt = null;
+        } else this.advanceReadyAt = null;
         // Keep the clock while Auto is off so dialogue-attached reactions can still occur.
         this.timer = this.set(() => this.tick(), 20);
     }
@@ -118,6 +123,6 @@ export class BeatScheduler {
         const options = this.options; if (!options) return;
         for (const [index, command] of (options.commands || []).entries()) if (!this.fired.has(index)) { this.fired.add(index); options.onCommand(command, resolveReaction(command.token.reaction || options.token.direction)); }
     }
-    wake() { this.clear(this.timer); if (this.options) { this.estimate = estimateTiming(this.options.token, this.options.settings, this.options.visualChecks); this.timer = this.set(() => this.tick(), 0); } }
-    cancel() { this.clear(this.timer); this.timer = null; this.options = null; }
+    wake() { this.clear(this.timer); this.advanceReadyAt = null; if (this.options) { this.estimate = estimateTiming(this.options.token, this.options.settings, this.options.visualChecks); this.timer = this.set(() => this.tick(), 0); } }
+    cancel() { this.clear(this.timer); this.timer = null; this.options = null; this.advanceReadyAt = null; }
 }

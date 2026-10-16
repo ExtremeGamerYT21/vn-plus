@@ -83,4 +83,18 @@ export async function runTimingChecks({ check, assert, equal, eventually, contex
             assert(!controller.timing.options); equal(controller.visuals.items.size, 0); equal(controller.root.querySelectorAll('.vn-visual iframe').length, 0);
         });
     } finally { controller.dispose(); window.removeEventListener('message', listen); }
+    await check('Auto holds a completed beat for a full second while manual continuation stays immediate', async () => {
+        context.chatId = 'autoplay-complete-delay'; context.chat = [{ mes: 'PRIVATE\n/////\nNina: "Hi."\nNina: "Next."' }]; mountChat();
+        const next = makeController(); let now = 0, callback;
+        Object.assign(next.settings, { autoAdvance: true, typewriterEffect: false, reducedMotion: true, autoCreateCharacters: false });
+        next.settings.tts.enabled = false; next.settings.tts.autoGenerate = false;
+        next.timing.now = () => now; next.timing.set = fn => { callback = fn; return 1; }; next.timing.clear = () => callback = null;
+        const step = ms => { now += ms; const fn = callback; callback = null; fn?.(); };
+        try {
+            await next.open(0); await eventually(() => !next.dialogue.typing && next.root.querySelector('.vn-text').textContent.includes('Hi.'));
+            step(300); equal(next.playback.position, 0); step(999); equal(next.playback.position, 0); step(1); equal(next.playback.position, 1);
+            await eventually(() => !next.dialogue.typing && next.root.querySelector('.vn-text').textContent.includes('Next.'));
+            step(500); equal(next.playback.position, 1); await next.action('next'); assert(!next.root.querySelector('.vn-reply').hidden);
+        } finally { next.dispose(); }
+    });
 }

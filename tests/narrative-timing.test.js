@@ -91,10 +91,11 @@ function harness(extra = {}) {
     scheduler.start(options);
     return { scheduler, options, step(ms) { now += ms; const fn = timer; timer = null; fn?.(); }, get commands() { return commands; }, get advanced() { return advanced; }, get pending() { return !!timer; } };
 }
-test('unvoiced scheduling waits for estimated duration plus reaction delay and advances once', () => {
+test('unvoiced scheduling adds a complete second after estimated duration and reactions finish', () => {
     const clock = harness(); clock.step(499); assert.deepEqual(clock.commands, []);
     clock.step(180); assert.equal(clock.advanced, 0); clock.step(1);
-    assert.deepEqual(clock.commands, ['hurried']); assert.equal(clock.advanced, 1); assert.equal(clock.pending, false);
+    assert.deepEqual(clock.commands, ['hurried']); assert.equal(clock.advanced, 0);
+    clock.step(999); assert.equal(clock.advanced, 0); clock.step(1); assert.equal(clock.advanced, 1); assert.equal(clock.pending, false);
 });
 test('voiced timing waits during loading and stalled audio, using actual PCM duration and end event', () => {
     const playback = { status: 'loading', duration: 2, clip: { start: 5, end: 8 }, audio: { currentTime: 0 } };
@@ -102,7 +103,8 @@ test('voiced timing waits during loading and stalled audio, using actual PCM dur
     playback.status = 'playing'; playback.audio.currentTime = 1.9; clock.step(1000);
     clock.step(5000); assert.deepEqual(clock.commands, []); // stalled audio clock
     playback.status = 'ended'; clock.step(20); clock.step(160);
-    assert.deepEqual(clock.commands, ['hurried']); assert.equal(clock.advanced, 1);
+    assert.deepEqual(clock.commands, ['hurried']); assert.equal(clock.advanced, 0);
+    clock.step(999); assert.equal(clock.advanced, 0); clock.step(1); assert.equal(clock.advanced, 1);
 });
 test('scared reactions occur near voice start while end reactions wait until the voice finishes', () => {
     const playback = { status: 'loading', duration: 3, audio: { currentTime: 0 } };
@@ -111,7 +113,8 @@ test('scared reactions occur near voice start while end reactions wait until the
     playback.status = 'playing'; playback.audio.currentTime = .08; clock.step(20); assert.deepEqual(clock.commands, ['scared']);
     playback.audio.currentTime = 2.9; clock.step(2000); assert.deepEqual(clock.commands, ['scared']);
     playback.status = 'ended'; clock.step(20); clock.step(1779); assert.equal(clock.advanced, 0);
-    clock.step(1); assert.deepEqual(clock.commands, ['scared', 'lazy']); assert.equal(clock.advanced, 1);
+    clock.step(1); assert.deepEqual(clock.commands, ['scared', 'lazy']); assert.equal(clock.advanced, 0);
+    clock.step(1000); assert.equal(clock.advanced, 1);
 });
 test('manual mode still performs reactions but no rule never advances, and navigation cancels stale work', () => {
     const manual = harness({ settings: { ...settings, autoAdvance: false } }); manual.step(5000); assert.deepEqual(manual.commands, ['hurried']); assert.equal(manual.advanced, 0);
@@ -125,12 +128,29 @@ test('inspector pause holds reactions, fallback handles failed voice and text re
     const clock = harness({ paused: () => paused, canAdvance: () => ready, playback: { status: 'failed' } });
     clock.step(10000); assert.deepEqual(clock.commands, []); paused = false;
     clock.step(680); assert.deepEqual(clock.commands, ['hurried']); assert.equal(clock.advanced, 0);
-    ready = true; clock.step(20); assert.equal(clock.advanced, 1);
+    ready = true; clock.step(20); assert.equal(clock.advanced, 0); clock.step(999); assert.equal(clock.advanced, 0); clock.step(1); assert.equal(clock.advanced, 1);
 });
 test('Auto allows the visual close animation to finish; manual continuation flushes reactions only once', () => {
     const clock = harness({ settings: { ...settings, reducedMotion: false } });
     clock.step(680); assert.deepEqual(clock.commands, ['hurried']); assert.equal(clock.advanced, 0);
-    clock.step(159); assert.equal(clock.advanced, 0); clock.step(1); assert.equal(clock.advanced, 1);
+    clock.step(159); assert.equal(clock.advanced, 0); clock.step(1); assert.equal(clock.advanced, 0);
+    clock.step(999); assert.equal(clock.advanced, 0); clock.step(1); assert.equal(clock.advanced, 1);
     const manual = harness({ settings: { ...settings, autoAdvance: false } }); manual.scheduler.finishCommands(); manual.scheduler.finishCommands();
     assert.deepEqual(manual.commands, ['hurried']); manual.scheduler.cancel();
+});
+test('the full Auto delay starts only after text is ready and restarts if readiness is lost', () => {
+    let ready = false;
+    const clock = harness({ commands: [], canAdvance: () => ready });
+    clock.step(5000); assert.equal(clock.advanced, 0); ready = true; clock.step(0);
+    clock.step(700); assert.equal(clock.advanced, 0); ready = false; clock.step(20);
+    ready = true; clock.step(0); clock.step(999); assert.equal(clock.advanced, 0); clock.step(1); assert.equal(clock.advanced, 1);
+});
+test('pausing or waking Auto restarts its full delay and cancelling during the delay cannot advance', () => {
+    let paused = false;
+    const clock = harness({ commands: [], paused: () => paused });
+    clock.step(500); clock.step(700); assert.equal(clock.advanced, 0);
+    paused = true; clock.step(10000); paused = false; clock.step(0);
+    clock.step(999); assert.equal(clock.advanced, 0); clock.step(1); assert.equal(clock.advanced, 1);
+    const woke = harness({ commands: [] }); woke.step(500); woke.step(700); woke.scheduler.wake(); woke.step(0);
+    woke.step(999); assert.equal(woke.advanced, 0); woke.scheduler.cancel(); woke.step(5000); assert.equal(woke.advanced, 0);
 });
