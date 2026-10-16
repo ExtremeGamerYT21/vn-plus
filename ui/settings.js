@@ -6,6 +6,7 @@ import { INTENSE_EMOTIONS } from '../renderers/emotion-flair.js';
 import { createThemeSettings } from './theme-settings.js';
 import { SPEECH_DEFAULTS, speechSettings } from '../core/speech-segments.js';
 import { LIGHT_DEFAULTS } from '../core/scene-light.js';
+import { autoAdvancePause, AUTO_ADVANCE_DEFAULT } from '../core/narrative-timing.js';
 
 export const DEFAULT_SETTINGS = {
     ...LIGHT_DEFAULTS,
@@ -15,7 +16,7 @@ export const DEFAULT_SETTINGS = {
     spriteBreathing: true, breathingAmount: 1.6, breathingDuration: 4200, expressionTransition: 280,
     spriteBlinking: true, blinkIntervalMin: 2800, blinkIntervalMax: 6500, blinkDuration: 130,
     typewriterEffect: true, typewriterSpeed: 22, autoAdvance: false, textEffects: true, screenEffects: true,
-    dialogueSecondsPerCharacter: .1, narrationWordsPerMinute: 220,
+    dialogueSecondsPerCharacter: .1, narrationWordsPerMinute: 220, autoAdvancePause: AUTO_ADVANCE_DEFAULT, settingsCollapsed: false,
     hurriedReactionSound: '', scaredReactionSound: '', lazyReactionSound: '', boredReactionSound: '', normalReactionSound: '',
     reducedMotion: false, overlayOpacity: .9, dialogueBoxWidth: 52, dialogueBoxHeight: 180, dialogueFont: '', textScale: 1.15,
     textColor: '', narrationColor: '', dialogueBoxTexture: '', dialogueBoxImageOnly: false, showBoxChrome: true, showBoxBackground: true,
@@ -36,6 +37,8 @@ export function loadSettings(context) {
     if (previous.playerNameOverride && !previous.playerName) settings.playerName = previous.playerNameOverride;
     delete settings.injectFormatHint;
     delete settings.autoAdvanceDelay;
+    settings.autoAdvancePause = autoAdvancePause(settings.autoAdvancePause);
+    settings.settingsCollapsed = settings.settingsCollapsed === true;
     settings.playerAliases = Array.isArray(settings.playerAliases) ? settings.playerAliases : [];
     if (!settings.characters || typeof settings.characters !== 'object' || Array.isArray(settings.characters)) settings.characters = {};
     if (!previous.themeVersion) {
@@ -55,7 +58,7 @@ export function loadSettings(context) {
 const FIELDS = {
     'Scene lighting': [['sceneLightEnabled', 'Enable 2D scene lighting', 'checkbox'], ['sceneLightNormalMaps', 'Use sprite normal and material maps', 'checkbox'], ['sceneLightHud', 'Light HUD and buttons', 'checkbox'], ['sceneLightIntensity', 'Light intensity', 'number', 0, 2], ['sceneLightAmbient', 'Ambient fill (readability)', 'number', 0, 1]],
     General: [['enabled', 'Enable Visual Novel+', 'checkbox'], ['automaticPlayback', 'Open completed responses automatically', 'checkbox'], ['playerName', 'Player identity', 'text'], ['playerAliases', 'Player aliases (comma separated)', 'aliases'], ['showPlayerBust', 'Hide player bust (first-person view)', 'inverse-checkbox'], ['castMemoryTurns', 'Cast memory (VN responses; 0 keeps until exit)', 'number', 0, 50], ['layout', 'Bust layout', STAGE_LAYOUT_OPTIONS], ['spriteFraming', 'Artwork framing', SPRITE_FRAMING_OPTIONS], ['displayMode', 'Default presentation', ['vn', 'cinematic', 'prose', 'black']]],
-    Timing: [['autoAdvance', 'Auto: follow narrative timing', 'checkbox'], ['dialogueSecondsPerCharacter', 'Silent dialogue (seconds per character)', 'number', .01, 1], ['narrationWordsPerMinute', 'Narration reading speed (words/minute)', 'number', 60, 1000], ...['hurried', 'scared', 'lazy', 'bored', 'normal'].map(tag => [`${tag}ReactionSound`, `${tag}: optional reaction SFX name`, 'text'])],
+    Timing: [['autoAdvance', 'Auto: follow narrative timing', 'checkbox'], ['autoAdvancePause', 'Autoplay pause after completion', 'range', 0, 2], ['dialogueSecondsPerCharacter', 'Silent dialogue (seconds per character)', 'number', .01, 1], ['narrationWordsPerMinute', 'Narration reading speed (words/minute)', 'number', 60, 1000], ...['hurried', 'scared', 'lazy', 'bored', 'normal'].map(tag => [`${tag}ReactionSound`, `${tag}: optional reaction SFX name`, 'text'])],
     Presentation: [['typewriterEffect', 'Typewriter', 'checkbox'], ['typewriterSpeed', 'Typewriter delay (ms)', 'number', 0, 200], ['reducedMotion', 'Reduced motion', 'checkbox'], ['textEffects', 'Emotion text effects', 'checkbox'], ['intenseEmotions', 'Emotion tags that shake (comma separated)', 'aliases'], ['screenEffects', 'Screen effects', 'checkbox'], ['dialogueFont', 'Font name or CSS family stack', 'text'], ['textColor', 'Dialogue color override (empty inherits theme)', 'text'], ['narrationColor', 'Narration color override (empty inherits theme)', 'text'], ['textScale', 'Text scale', 'number', .6, 2], ['letterSpacing', 'Letter spacing (px)', 'number', -1, 5], ['dialogueBoxWidth', 'Dialogue width (% viewport)', 'number', 25, 94], ['dialogueBoxHeight', 'Dialogue minimum height (px)', 'number', 100, 450], ['overlayOpacity', 'Dialogue opacity', 'number', .1, 1], ['dialogueBoxTexture', 'Texture path under characters/', 'text'], ['dialogueBoxImageOnly', 'Textbox image only (no fill or frame)', 'checkbox'], ['showBoxChrome', 'Dialogue border and accent', 'checkbox'], ['showBoxBackground', 'Dialogue panel background', 'checkbox']],
     Characters: [['bustScale', 'Global bust scale', 'number', .2, 2], ['bustHeight', 'Bust height (% viewport)', 'number', 20, 100], ['stageSpacing', 'Stage spacing', 'number', .4, 1.2], ['rowSpacing', 'Row inward spacing (% viewport)', 'number', 3, 14], ['rowRise', 'Row depth rise (% viewport)', 'number', 1, 10], ['rowDepthScale', 'Scale per depth step', 'number', .8, 1], ['stageAlignment', 'Stage alignment', ['bottom', 'top']], ['inactiveBrightness', 'Inactive brightness', 'number', .2, 1], ['missingAsset', 'Missing sprite', ['placeholder', 'hide']], ['spriteBreathing', 'Breathing deformation', 'checkbox'], ['breathingAmount', 'Breathing amount (%)', 'number', 0, 5], ['breathingDuration', 'Breathing cycle (ms)', 'number', 1000, 20000], ['expressionTransition', 'Expression blend (ms)', 'number', 0, 2000], ['spriteBlinking', 'Blinking with alternative image', 'checkbox'], ['blinkIntervalMin', 'Blink interval minimum (ms)', 'number', 500, 30000], ['blinkIntervalMax', 'Blink interval maximum (ms)', 'number', 500, 60000], ['blinkDuration', 'Closed-eye duration (ms)', 'number', 60, 350]],
     Audio: [['musicMuted', 'Mute music (ambience/SFX stay audible)', 'checkbox'], ['musicVolume', 'Music volume', 'number', 0, 1], ['ambientVolume', 'Ambient volume', 'number', 0, 1], ['sfxVolume', 'SFX volume', 'number', 0, 1], ['crossfadeDuration', 'Crossfade (ms)', 'number', 0, 10000], ['characterSounds', 'Emotion / character sounds', 'checkbox']],
@@ -63,8 +66,10 @@ const FIELDS = {
 };
 
 export function createSettings(settings, callbacks) {
-    const panel = document.createElement('div'); panel.id = 'vnplus-settings'; panel.className = 'vnplus-ui';
-    const heading = document.createElement('h3'); heading.textContent = 'Visual Novel+'; panel.append(heading);
+    const panel = document.createElement('details'); panel.id = 'vnplus-settings'; panel.className = 'vnplus-ui'; panel.open = !settings.settingsCollapsed;
+    const summary = document.createElement('summary'); summary.className = 'vn-settings-heading';
+    const heading = document.createElement('h3'); heading.textContent = 'Visual Novel+'; summary.append(heading); panel.append(summary);
+    panel.addEventListener('toggle', event => { if (event.target === panel && settings.settingsCollapsed !== !panel.open) { settings.settingsCollapsed = !panel.open; callbacks.change('settingsCollapsed'); } });
     const actions = document.createElement('div'); actions.className = 'vn-settings-actions';
     for (const [label, callback] of [['Enter / resume VN', callbacks.open], ['Replay selected', callbacks.replay], ['Inspect scene', callbacks.debug], ['Refresh assets', callbacks.refresh]]) {
         const button = document.createElement('button'); button.textContent = label; button.addEventListener('click', callback); actions.append(button);
@@ -79,6 +84,14 @@ export function createSettings(settings, callbacks) {
             const row = document.createElement('label'); row.className = 'vn-setting';
             const caption = document.createElement('span'); caption.textContent = label;
             const input = document.createElement(Array.isArray(type) ? 'select' : 'input'); input.dataset.setting = key;
+            if (type === 'range') {
+                const control = document.createElement('span'); control.className = 'vn-range-control';
+                const output = document.createElement('output'); output.id = `vnplus-${key}-value`; input.type = 'range'; input.min = min; input.max = max; input.step = '.05'; input.value = autoAdvancePause(settings[key]); input.setAttribute('aria-label', label); input.setAttribute('aria-describedby', output.id);
+                const show = () => output.value = `${Number(input.value).toFixed(2)} s`; show();
+                const update = () => { const value = autoAdvancePause(Number(input.value)); show(); if (settings[key] !== value) { settings[key] = value; callbacks.change(key); } };
+                input.addEventListener('input', update); input.addEventListener('change', update);
+                control.append(input, output); row.append(caption, control); details.append(row); continue;
+            }
             if (Array.isArray(type)) for (const value of type) { const option = document.createElement('option'); option.value = typeof value === 'string' ? value : value.value; option.textContent = typeof value === 'string' ? value : value.label; input.append(option); }
             else { input.type = type === 'aliases' ? 'text' : type === 'inverse-checkbox' ? 'checkbox' : type; if (type === 'number') { input.min = min; input.max = max; input.step = min === .01 ? '.01' : max <= 5 ? '.05' : '1'; } }
             if (type === 'inverse-checkbox') input.checked = !settings[key]; else if (type === 'checkbox') input.checked = !!settings[key]; else input.value = type === 'aliases' ? settings[key].join(', ') : settings[key];
@@ -101,7 +114,7 @@ export function createSettings(settings, callbacks) {
             const hint = document.createElement('p'); hint.className = 'vn-hint'; hint.textContent = 'Textbox image only uses your character or global texture without a fill, frame, accent, shadow or blur. With no texture configured, the normal box remains. A character can override this with "boxImageOnly":true or false.'; details.append(hint);
         }
         if (group === 'Timing') {
-            const hint = document.createElement('p'); hint.className = 'vn-hint'; hint.textContent = 'Auto uses prepared voice clips and their timestamps, or local dialogue/reading/action rules, then waits one full second after text, speech and reactions finish. Without a rule, continue manually. Visuals stay interactive during narration. Only a matching #VISUAL CLOSE enables an object inspection duration. Reaction tags use local aliases and patterns; no model is called.'; details.append(hint);
+            const hint = document.createElement('p'); hint.className = 'vn-hint'; hint.textContent = 'Auto waits the selected 0–2 seconds after text, speech and reactions finish. Spoken lines ending in an em dash (—) cut straight to the next beat without the extra pause; consecutive voiced lines omit their shared tail/lead padding. Without a timing rule, continue manually. Visuals stay interactive; only a matching #VISUAL CLOSE enables an inspection duration. No model is called for timing.'; details.append(hint);
         }
         if (group === 'Scene lighting') {
             const hint = document.createElement('p'); hint.className = 'vn-hint'; hint.textContent = 'Uses a cached 2D light direction, story time outdoors and a warm overhead light indoors. Background properties can override light.position X/Y, color, intensity and ambient. Optional emotion_normal.png and emotion_material.png add surface shading; material RGB = occlusion, roughness, metallic. Artifacts receive lighting through VNPlus.getLighting() and onLighting().'; details.append(hint);

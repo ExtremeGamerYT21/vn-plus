@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BeatScheduler, resolveReaction, estimateTiming, objectDuration, applyCommandState } from '../core/narrative-timing.js';
+import { BeatScheduler, resolveReaction, estimateTiming, objectDuration, applyCommandState, autoAdvancePause } from '../core/narrative-timing.js';
+import { endsWithEmDash } from '../core/dialogue-text.js';
 import { parsePOV } from '../core/vn-parser.js';
 import { compileTimeline } from '../core/scene-timeline.js';
 import { Playback } from '../core/playback.js';
 import { CharacterRegistry } from '../core/character-registry.js';
 import { contextEntries, reduceContext } from '../core/context-state.js';
-import { DEFAULT_SETTINGS } from '../ui/settings.js';
+import { DEFAULT_SETTINGS, loadSettings } from '../ui/settings.js';
 const settings = { ...structuredClone(DEFAULT_SETTINGS), autoAdvance: true, reducedMotion: true };
 const registry = new CharacterRegistry({ inventory: {}, json: async () => null }, settings);
 const compile = text => compileTimeline(parsePOV(text).tokens, registry, settings);
@@ -153,4 +154,24 @@ test('pausing or waking Auto restarts its full delay and cancelling during the d
     clock.step(999); assert.equal(clock.advanced, 0); clock.step(1); assert.equal(clock.advanced, 1);
     const woke = harness({ commands: [] }); woke.step(500); woke.step(700); woke.scheduler.wake(); woke.step(0);
     woke.step(999); assert.equal(woke.advanced, 0); woke.scheduler.cancel(); woke.step(5000); assert.equal(woke.advanced, 0);
+});
+test('autoplay pause supports 0–2 seconds, defaults to one and safely reloads saved settings', () => {
+    for (const [value, expected] of [[0, 0], [.75, .75], [2, 2], [-1, 0], [8, 2], [NaN, 1], ['bad', 1]]) {
+        assert.equal(autoAdvancePause(value), expected);
+        assert.equal(loadSettings({ extensionSettings: { visual_novel_plus: { autoAdvancePause: value } } }).autoAdvancePause, expected);
+    }
+    for (const pause of [0, .75, 2]) {
+        const clock = harness({ commands: [], settings: { ...settings, autoAdvancePause: pause } }); clock.step(500);
+        if (pause) { clock.step(pause * 1000 - 1); assert.equal(clock.advanced, 0); clock.step(1); }
+        assert.equal(clock.advanced, 1);
+    }
+});
+test('terminal em dashes skip every added handoff delay but never cut off active audio or thoughts', () => {
+    for (const text of ['"Wait—"', '“Wait—” [angry]', '**Wait—**', 'Wait—\n']) assert.equal(endsWithEmDash(text), true);
+    for (const text of ['Wait -', 'Wait –', 'Wait...', 'Wait—please.']) assert.equal(endsWithEmDash(text), false);
+    const playback = { status: 'playing', duration: 1, audio: { currentTime: 1 } };
+    const clock = harness({ token: { type: 'dialogue', text: '"Wait—"' }, settings: { ...settings, autoAdvancePause: 2 }, playback, commands: [{ token: { reaction: 'lazy' } }] });
+    clock.step(5000); assert.equal(clock.advanced, 0); playback.status = 'ended'; clock.step(0);
+    assert.equal(clock.advanced, 1); assert.deepEqual(clock.commands, ['lazy']);
+    const thought = harness({ token: { type: 'dialogue', text: '"Wait—"', thought: true }, commands: [] }); thought.step(500); assert.equal(thought.advanced, 0); thought.step(1000); assert.equal(thought.advanced, 1);
 });

@@ -57,7 +57,7 @@ export function applyMargins(clips, words, duration, { lead = .2, tail = .2 } = 
     const result = clips.map(clip => {
         if (clip.review || clip.approved) return { ...clip };
         const previousEnd = clip.boundaryLeft ?? words[clip.first - 1]?.end ?? 0, nextStart = clip.boundaryRight ?? words[clip.last + 1]?.start ?? duration;
-        return { ...clip, start: Math.max(0, previousEnd, clip.speechStart - lead), end: Math.min(duration, nextStart, clip.speechEnd + tail) };
+        return { ...clip, start: Math.max(0, previousEnd, clip.speechStart - (clip.line?.followsCutOff ? 0 : lead)), end: Math.min(duration, nextStart, clip.speechEnd + (clip.line?.cutOff ? 0 : tail)) };
     });
     for (let index = 1; index < result.length; index++) {
         const a = result[index - 1], b = result[index];

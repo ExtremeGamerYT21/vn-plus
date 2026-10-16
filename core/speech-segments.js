@@ -1,4 +1,5 @@
 import { compileSpeechText } from './speech-text.js';
+import { endsWithEmDash } from './dialogue-text.js';
 
 export const SAMPLE_RATE = 44100;
 export const SPEECH_DEFAULTS = {
@@ -45,7 +46,7 @@ export function speechSegments(timeline, registry, sourceId, options = {}) {
         const props = registry.get(id);
         return [id, props.displayName, ...(Array.isArray(props.aliases) ? props.aliases : typeof props.aliases === 'string' ? [props.aliases] : [])].filter(Boolean);
     });
-    return timeline.beats.flatMap((beat, index) => {
+    const segments = timeline.beats.flatMap((beat, index) => {
         const token = beat.token;
         const narrator = token.type === 'narration' || token.type === 'dialogue' && registry.isNarrator(token.character);
         if (token.thought || (narrator ? !options.narratorEnabled : token.type !== 'dialogue')) return [];
@@ -57,8 +58,11 @@ export function speechSegments(timeline, registry, sourceId, options = {}) {
         const text = spokenText(token.text);
         if (!text) return [];
         return [{ id: `${sourceId}:${index}`, beat: index, character, name: props.displayName || token.character || 'Narration',
-            voice, text, ...compileSpeechText(text, { direction: token.direction, emotion: token.emotion, fullNames: narrator ? [] : fullNames, language: props.ttsLanguage }) }];
+            voice, text, ...(!narrator && endsWithEmDash(token.text) ? { cutOff: true } : {}), ...compileSpeechText(text, { direction: token.direction, emotion: token.emotion, fullNames: narrator ? [] : fullNames, language: props.ttsLanguage }) }];
     });
+    const views = new Map(timeline.views.map((beat, index) => [beat, index]));
+    for (let index = 1; index < segments.length; index++) if (segments[index - 1].cutOff && views.get(segments[index].beat) === views.get(segments[index - 1].beat) + 1) segments[index].followsCutOff = true;
+    return segments;
 }
 export function chapterRequests(segments, settings) {
     validateSpeechSettings(settings);

@@ -8,7 +8,7 @@ import { CharacterRegistry } from '../core/character-registry.js';
 import { DEFAULT_SETTINGS, loadSettings } from '../ui/settings.js';
 import { fishVoiceId, speechSegments, chapterRequests, SAMPLE_RATE, SPEECH_DEFAULTS } from '../core/speech-segments.js';
 import { collectFishStream } from '../core/fish-stream.js';
-import { alignChapter, approveCut } from '../core/speech-alignment.js';
+import { alignChapter, applyMargins, approveCut } from '../core/speech-alignment.js';
 import { joinPCM, wavBytes } from '../core/speech-pcm.js';
 import { finishClip, noiseProfile } from '../core/speech-processing.js';
 import { SpeechEngine } from '../renderers/speech-engine.js';
@@ -223,6 +223,40 @@ test('silence margins share short gaps, preserve long-gap tails and never overla
     clips = alignChapter(lines, [{ text: 'One', start: .3, end: .5 }, { text: 'Two', start: 2, end: 2.2 }], 3);
     assert.equal(clips[0].end, .7); assert.equal(clips[1].start, 1.8);
     assert.throws(() => approveCut(clips, 'a', .1, 2, 3), /overlaps/);
+});
+
+test('em-dash handoffs omit adjacent clip padding across chapters while retaining spoken timestamps and approved cuts', () => {
+    const source = 'Nina: "Wait—"\nAshley: "No."\nNina: "Normal."';
+    const input = fixture(source, { nina: { voiceId: 'nina' }, ashley: { voiceId: 'ashley' } });
+    const originalTokens = structuredClone(input.timeline.beats.map(beat => beat.token));
+    const lines = speechSegments(input.timeline, input.registry, 'cutoff');
+    assert.deepEqual(lines.map(line => [!!line.cutOff, !!line.followsCutOff]), [[true, false], [false, true], [false, false]]);
+    const words = [{ text: 'Wait', start: .2, end: .5 }, { text: 'No', start: 1.2, end: 1.5 }, { text: 'Normal', start: 2.2, end: 2.5 }];
+    const clips = alignChapter(lines, words, 3);
+    assert.ok(clips.every(clip => !clip.review));
+    assert.deepEqual(clips.map(clip => [clip.start, clip.end]), [[0, .5], [1.2, 1.7], [2, 2.7]]);
+    assert.deepEqual(clips.map(clip => [clip.speechStart, clip.speechEnd]), words.map(word => [word.start, word.end]));
+    input.config.tts.chapterSize = 1;
+    const chapters = chapterRequests(lines, input.config.tts);
+    assert.equal(alignChapter(chapters[0].lines, [words[0]], 1)[0].end, .5);
+    assert.equal(alignChapter(chapters[1].lines, [words[1]], 2)[0].start, 1.2);
+    const approved = approveCut(clips, lines[0].id, .1, .6, 3);
+    assert.deepEqual(applyMargins([approved], words, 3, { lead: 1, tail: 1 })[0], approved);
+    const review = { ...clips[0], review: true };
+    assert.deepEqual(applyMargins([review], words, 3)[0], review);
+    assert.deepEqual(input.timeline.beats.map(beat => beat.token), originalTokens);
+    assert.equal(input.timeline.beats[lines[0].beat].token.text.trim(), '"Wait—"');
+});
+
+test('cutoff lead trimming never skips intervening silent beats or treats thoughts/narration as interruptions', () => {
+    for (const middle of ['A door opens.', 'Nina: "(Think.)"', 'Mute: "Wait."']) {
+        const input = fixture(`Nina: "Wait—"\n${middle}\nNina: "Next."`);
+        const lines = speechSegments(input.timeline, input.registry, 'cutoff');
+        assert.equal(lines[0].cutOff, true); assert.equal(lines.at(-1).followsCutOff, undefined);
+    }
+    const input = fixture('Narrator: "Silence—"\nNina: "(Wait—)"\nNina: "Next."', { narrator: { voiceId: 'story' }, nina: { voiceId: 'nina' } });
+    const lines = speechSegments(input.timeline, input.registry, 'cutoff', { narratorEnabled: true });
+    assert.ok(lines.every(line => !line.cutOff && !line.followsCutOff));
 });
 test('PCM assembly uses actual sample counts and WAV exports contain real PCM', () => {
     const joined = joinPCM([{ original: Float32Array.of(.1, .2) }, { original: Float32Array.of(.3) }]);

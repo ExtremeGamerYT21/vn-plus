@@ -86,7 +86,7 @@ export async function runTimingChecks({ check, assert, equal, eventually, contex
     await check('Auto holds a completed beat for a full second while manual continuation stays immediate', async () => {
         context.chatId = 'autoplay-complete-delay'; context.chat = [{ mes: 'PRIVATE\n/////\nNina: "Hi."\nNina: "Next."' }]; mountChat();
         const next = makeController(); let now = 0, callback;
-        Object.assign(next.settings, { autoAdvance: true, typewriterEffect: false, reducedMotion: true, autoCreateCharacters: false });
+        Object.assign(next.settings, { autoAdvance: true, autoAdvancePause: 1, typewriterEffect: false, reducedMotion: true, autoCreateCharacters: false });
         next.settings.tts.enabled = false; next.settings.tts.autoGenerate = false;
         next.timing.now = () => now; next.timing.set = fn => { callback = fn; return 1; }; next.timing.clear = () => callback = null;
         const step = ms => { now += ms; const fn = callback; callback = null; fn?.(); };
@@ -95,6 +95,48 @@ export async function runTimingChecks({ check, assert, equal, eventually, contex
             step(300); equal(next.playback.position, 0); step(999); equal(next.playback.position, 0); step(1); equal(next.playback.position, 1);
             await eventually(() => !next.dialogue.typing && next.root.querySelector('.vn-text').textContent.includes('Next.'));
             step(500); equal(next.playback.position, 1); await next.action('next'); assert(!next.root.querySelector('.vn-reply').hidden);
+        } finally { next.dispose(); }
+    });
+    await check('completion-pause slider and the collapsible extension panel persist without replaying the scene', async () => {
+        const saved = structuredClone(context.extensionSettings.visual_novel_plus);
+        context.chatId = 'timing-settings'; context.chat = [{ mes: 'PRIVATE\n/////\n#MUSIC buzz\nNina: "Keep reading."' }]; mountChat();
+        let next = makeController();
+        Object.assign(next.settings, { autoAdvance: false, typewriterEffect: false, autoCreateCharacters: false });
+        next.settings.tts.enabled = false; next.settings.tts.autoGenerate = false;
+        try {
+            await next.open(0); await eventually(() => !next.dialogue.typing && next.audio.channels.music.audio);
+            const position = next.playback.position, music = next.audio.channels.music.audio, text = next.root.querySelector('.vn-text').textContent;
+            const settings = next.settingsPanel, input = settings.querySelector('[data-setting="autoAdvancePause"]');
+            equal(settings.tagName, 'DETAILS'); equal(input.type, 'range'); equal([Number(input.min), Number(input.max), Number(input.step)], [0, 2, .05]);
+            for (const value of [0, .75, 2]) {
+                input.value = value; input.dispatchEvent(new Event('input', { bubbles: true }));
+                equal(next.settings.autoAdvancePause, value); equal(context.extensionSettings.visual_novel_plus.autoAdvancePause, value);
+                equal(settings.querySelector('#vnplus-autoAdvancePause-value').value, `${value.toFixed(2)} s`);
+                equal(next.playback.position, position); equal(next.audio.channels.music.audio, music); equal(next.root.querySelector('.vn-text').textContent, text);
+            }
+            settings.open = false; await eventually(() => context.extensionSettings.visual_novel_plus.settingsCollapsed === true);
+            equal(next.playback.position, position); equal(next.audio.channels.music.audio, music);
+            next.dispose(); next = makeController();
+            equal(next.settingsPanel.open, false); equal(next.settings.autoAdvancePause, 2);
+            next.settingsPanel.open = true; await eventually(() => context.extensionSettings.visual_novel_plus.settingsCollapsed === false);
+        } finally { next.dispose(); context.extensionSettings.visual_novel_plus = saved; }
+    });
+    await check('a spoken em dash hands off as soon as audio ends while the next ordinary line keeps its selected pause', async () => {
+        context.chatId = 'timing-cutoff'; context.chat = [{ mes: 'PRIVATE\n/////\nNina: "Wait—"\nNina: "Next."' }]; mountChat();
+        const next = makeController(); let now = 0, callback;
+        Object.assign(next.settings, { autoAdvance: true, autoAdvancePause: 2, typewriterEffect: false, reducedMotion: true, autoCreateCharacters: false });
+        next.settings.tts.enabled = false; next.settings.tts.autoGenerate = false;
+        const playback = { status: 'playing', duration: 1, audio: { currentTime: 0 } };
+        next.speech.playBeat = beat => beat === 0 ? playback : null;
+        next.timing.now = () => now; next.timing.set = fn => { callback = fn; return 1; }; next.timing.clear = () => callback = null;
+        const step = ms => { now += ms; const fn = callback; callback = null; fn?.(); };
+        try {
+            await next.open(0); await eventually(() => !next.dialogue.typing);
+            playback.audio.currentTime = 1; step(1000); equal(next.playback.position, 0);
+            playback.status = 'ended'; step(0); equal(next.playback.position, 1);
+            await eventually(() => !next.dialogue.typing && next.root.querySelector('.vn-text').textContent.includes('Next.'));
+            step(500); equal(next.playback.position, 1); step(1999); equal(next.playback.position, 1); step(1); assert(!next.root.querySelector('.vn-reply').hidden);
+            equal(context.chat[0].mes, 'PRIVATE\n/////\nNina: "Wait—"\nNina: "Next."');
         } finally { next.dispose(); }
     });
 }

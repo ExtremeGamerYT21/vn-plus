@@ -274,7 +274,8 @@ export class VNController {
             }
             this.updateVoiceStatus(); return;
         }
-        if (['autoAdvance', 'dialogueSecondsPerCharacter', 'narrationWordsPerMinute'].includes(key) || key.endsWith('ReactionSound')) { this.scheduleAuto(); return; }
+        if (key === 'settingsCollapsed') return;
+        if (['autoAdvance', 'autoAdvancePause', 'dialogueSecondsPerCharacter', 'narrationWordsPerMinute'].includes(key) || key.endsWith('ReactionSound')) { this.scheduleAuto(); return; }
         if (key === 'characters') this.speech.clearScene();
         this.updateLayoutControls(); this.updateFramingControls();
         if (key === 'musicMuted') this.audio.setMusicMuted(this.settings.musicMuted);

@@ -110,6 +110,8 @@ Use **Play original chapter for timing review**, enter chapter-local start/end s
 
 Default margins retain 200 ms before and after speech, independently adjustable from 0–2 seconds. They retain existing audio, without adding silence. Short gaps are shared proportionally without overlap; long gaps retain each requested margin while leaving the unused middle out. Cuts respect chapter edges and adjacent timed words.
 
+A spoken line ending in an em dash (`—`) omits its automatic trailing margin. If the next visible beat is also voiced, that clip omits its leading margin, even across chapter boundaries. Intervening silent beats prevent incoming-margin trimming. Word timestamps, review requirements and approved manual cuts are preserved; these local cuts make no additional Fish request. Auto also skips its configurable completion pause for interrupted spoken dialogue. Playback startup latency may still apply.
+
 Prepared clips play on their corresponding VN dialogue beats when that option is enabled. Narration, thoughts and characters without IDs stay mute. Advancing stops the previous voice; auto advance waits for its voice clip to finish. Original/Processed comparison is available per line. Scene downloads are real WAV files; line downloads are actual MP3 files encoded locally by the bundled LAME library.
 
 ## Optional finishing

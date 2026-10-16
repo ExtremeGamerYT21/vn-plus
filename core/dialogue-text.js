@@ -4,6 +4,9 @@ const verb = '(?:said|says|asked|asks|replied|replies|answered|answers|repeated|
 const delivery = '(?:quietly|softly|flatly|dryly|sharply|firmly|briskly|calmly|loudly|slowly|quickly|gently|angrily|sadly|happily|wearily|evenly|tersely|simply|again|back)';
 const attribution = new RegExp(`^(?:${subject}(?:[ \\t]+${delivery})?[ \\t]+${verb}|${verb}[ \\t]+${subject})(?:[ \\t]+${delivery}){0,2}[.!?,;:]?$`, 'iu');
 
+/** Ignore quote/emphasis wrappers and delivery tags when checking an interrupted utterance. */
+export const endsWithEmDash = text => /—$/.test(String(text || '').replace(/\s*\[[^\]\r\n]*\]\s*$/, '').replace(/[\s"”'’)*_]+$/u, ''));
+
 /** Remove only a short, standalone speech attribution outside a completed quote.
  * Quoted content, independent narration and action clauses are left alone. */
 export function stripDialogueAttribution(text) {

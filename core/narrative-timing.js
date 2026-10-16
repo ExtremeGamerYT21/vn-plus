@@ -1,5 +1,7 @@
 /** Local semantic rules only. Unknown tags never make a model request. */
-export const AUTO_ADVANCE_DELAY = 1000;
+import { endsWithEmDash } from './dialogue-text.js';
+export const AUTO_ADVANCE_DEFAULT = 1;
+export const autoAdvancePause = value => typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(2, value)) : AUTO_ADVANCE_DEFAULT;
 export const REACTIONS = Object.freeze({
     hurried: { anchor: 'end', delay: 180, animation: 160, easing: 'cubic-bezier(.2,.8,.3,1)' },
     scared: { anchor: 'start', delay: 80, animation: 120, easing: 'ease-out' },
@@ -86,6 +88,7 @@ export class BeatScheduler {
     start(options) {
         this.cancel(); this.options = options; this.last = this.now(); this.elapsed = 0; this.fired = new Set();
         this.estimate = estimateTiming(options.token, options.settings, options.visualChecks);
+        this.cutOff = options.token?.type === 'dialogue' && !options.token.thought && endsWithEmDash(options.token.text);
         this.tick();
     }
     duration() {
@@ -107,13 +110,18 @@ export class BeatScheduler {
             for (const [index, command] of (options.commands || []).entries()) {
                 const profile = resolveReaction(command.token.reaction || options.token.direction);
                 const due = (profile.anchor === 'start' ? 0 : this.duration()) + profile.delay;
-                end = Math.max(end, due + (options.settings.reducedMotion ? 0 : profile.animation));
+                if (!this.cutOff) end = Math.max(end, due + (options.settings.reducedMotion ? 0 : profile.animation));
                 if (!this.fired.has(index) && this.elapsed >= due) { this.fired.add(index); options.onCommand(command, profile); if (this.options !== options) return; }
             }
-            const ready = options.settings.autoAdvance && (this.estimate || playback) && this.elapsed >= end && options.canAdvance();
+            const audioReady = !playback || ['ended', 'failed'].includes(playback.status);
+            const ready = options.settings.autoAdvance && audioReady && (this.estimate || playback) && this.elapsed >= end && options.canAdvance();
             if (ready) {
                 this.advanceReadyAt ??= now;
-                if (now - this.advanceReadyAt >= AUTO_ADVANCE_DELAY) { this.cancel(); options.onAdvance(); return; }
+                const delay = this.cutOff ? 0 : autoAdvancePause(options.settings.autoAdvancePause) * 1000;
+                if (now - this.advanceReadyAt >= delay) {
+                    if (this.cutOff) { this.finishCommands(); if (this.options !== options) return; }
+                    this.cancel(); options.onAdvance(); return;
+                }
             } else this.advanceReadyAt = null;
         } else this.advanceReadyAt = null;
         // Keep the clock while Auto is off so dialogue-attached reactions can still occur.
