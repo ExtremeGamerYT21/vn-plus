@@ -11,6 +11,10 @@ export function trackSpec(args) {
     return args ? { name: match ? args.slice(0, match.index) : args, rate: SPEEDS[match?.[1]?.toLowerCase()] || 1 } : null;
 }
 
+// Old clearing/stopping directives are inert; persistent media changes only to a named asset.
+export const backgroundSpec = args => args && !/^(NONE|CLEAR|STOP)$/i.test(args) ? args : null;
+export const musicSpec = args => /^(NONE|CLEAR|STOP)$/i.test(args) ? null : trackSpec(args);
+
 export function compileTimeline(tokens, registry, settings, inherited = {}, recordBeats = true) {
     let state = emptyState(settings.displayMode);
     for (const key of ['background', 'music', 'ambient', 'scene', 'visuals', 'textEffect', 'mode', 'black', 'camera', 'tint', 'playerEmotion']) if (Object.hasOwn(inherited, key)) state[key] = clone(inherited[key]);
@@ -49,8 +53,8 @@ export function compileTimeline(tokens, registry, settings, inherited = {}, reco
         else if (token.type === 'command') {
             const arg = token.args, upper = arg.toUpperCase();
             switch (token.name) {
-                case 'BACKGROUND': state.background = /^(NONE|CLEAR)$/i.test(arg) ? null : arg || null; break;
-                case 'MUSIC': state.music = trackSpec(arg); break;
+                case 'BACKGROUND': if (backgroundSpec(arg)) state.background = backgroundSpec(arg); break;
+                case 'MUSIC': if (musicSpec(arg)) state.music = musicSpec(arg); break;
                 case 'AMBIENT': state.ambient = trackSpec(arg); break;
                 case 'SFX': if (arg) oneShots.push({ type: 'sfx', name: arg }); break;
                 case 'VISUAL': {
@@ -66,7 +70,7 @@ export function compileTimeline(tokens, registry, settings, inherited = {}, reco
                 case 'SHAKE': oneShots.push({ type: 'shake', value: arg || 'LIGHT' }); break;
                 case 'TEXT': state.textEffect = arg.toLowerCase() || 'normal'; break;
                 case 'MODE': if (['vn', 'prose', 'cinematic', 'black'].includes(arg.toLowerCase())) state.mode = arg.toLowerCase(); else errors.push({ line: token.line, message: 'Unknown display mode.' }); break;
-                case 'SCENE': state.characters = Object.create(null); state.speaker = null; if (upper === 'RESET') state = { ...emptyState(settings.displayMode), scene: state.scene }; break;
+                case 'SCENE': state.characters = Object.create(null); state.speaker = null; if (upper === 'RESET') state = { ...emptyState(settings.displayMode), scene: state.scene, background: state.background, music: state.music }; break;
                 case 'TINT': state.tint = arg || 'transparent'; break;
                 case 'CAMERA': {
                     const [action, first, second] = arg.split(/\s+/);

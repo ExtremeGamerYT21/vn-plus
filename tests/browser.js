@@ -646,14 +646,14 @@ await check('background and music inherit earlier POV commands and history edits
         equal(controller.playback.position, 1); assert(controller.root.querySelector('.vn-text').textContent.includes('Second.')); equal(oldEffects, 0);
     } finally { controller.audio.sfx = sfx; }
 });
-await check('a fresh controller restores media from history and explicit clears and chat switches stop inheritance', async () => {
+await check('a fresh controller restores media from history, ignores retired clears and isolates chat switches', async () => {
     controller.dispose(); controller = new VNController(createHost(() => context, { localContent: false }), new URL('../', import.meta.url), inventory);
     controller.audio.audioFactory = () => new FakeAudio(); await controller.open(3);
     await eventually(() => controller.root.querySelector('.vn-background').style.backgroundImage.includes('kitchen') && controller.audio.channels.music.audio?.src.endsWith('/club.mp3'));
     context.chat[2].mes = 'SECRET\n/////\n#BACKGROUND CLEAR\n#MUSIC STOP\nStopped.';
     emit('MESSAGE_SWIPED', 2);
-    await eventually(() => controller.playback.restore().beat.state.background === null && controller.playback.restore().beat.state.music === null);
-    equal(controller.root.querySelector('.vn-background').style.backgroundImage, ''); assert(!controller.audio.channels.music.audio);
+    await eventually(() => controller.root.querySelector('.vn-background').style.backgroundImage.includes('kitchen') && controller.audio.channels.music.audio?.src.endsWith('/buzz.mp3'));
+    equal(controller.playback.restore().beat.state.background, 'kitchen'); equal(controller.playback.restore().beat.state.music.name, 'buzz');
     context.chatId = 'history-isolated'; context.chat = [{ mes: 'SECRET\n/////\nA different chat.' }]; mountChat(); emit('CHAT_CHANGED');
     await eventually(() => controller.parsed && controller.root.querySelector('.vn-text').textContent.includes('A different chat.'));
     equal(controller.root.querySelector('.vn-background').style.backgroundImage, ''); assert(!controller.audio.channels.music.audio);
@@ -882,7 +882,7 @@ await check('cast and ambience carry between responses and rebuild after refresh
     assert(controller.stage.nodes.has('nina')); assert(controller.stage.nodes.has('ashley'));
     const nina = controller.stage.nodes.get('nina'); await controller.open(2); assert(!nina.isConnected); assert(controller.stage.nodes.has('ashley'));
     await controller.open(3); assert(!controller.stage.nodes.has('ashley')); assert(controller.stage.nodes.has('nina'));
-    await controller.open(4); equal(controller.stage.nodes.size, 0); assert(!controller.audio.channels.music.audio); assert(!controller.audio.channels.ambient.audio);
+    await controller.open(4); equal(controller.stage.nodes.size, 0); assert(controller.audio.channels.music.audio); assert(!controller.audio.channels.ambient.audio);
     controller.dispose(); controller = new VNController(createHost(() => context, { localContent: false }), new URL('../', import.meta.url), inventory); controller.audio.audioFactory = () => new FakeAudio();
     const sfx = controller.audio.sfx; let oldSounds = 0; controller.audio.sfx = async () => oldSounds++;
     try {

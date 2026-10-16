@@ -43,11 +43,11 @@ test('location changes clear the old cast, same-place time changes retain it, an
     const timeline = compileTimeline(parsePOV(`${header()}\nNARRATION\nBefore.\n${header('9:30 p.m.', 'Street')}\nAfter.`).tokens, registry, settings, { characters: { ashley: { id: 'ashley', name: 'Ashley', expression: 'happy', slot: 0 } } });
     assert.equal(Object.keys(timeline.beats[timeline.views[0]].state.characters).length, 1); assert.equal(Object.keys(timeline.finalState.characters).length, 0);
 });
-test('explicit exits scene clears resets and stops win over historical and recent cast inference', () => {
+test('explicit exits and scene resets clear cast while background and music retain continuity', () => {
     const chat = context('#ENTER Ashley\n#ENTER Nina\n#BACKGROUND kitchen\n#MUSIC buzz', '#EXIT Nin\n#MUSIC STOP', 'Now.');
-    assert.deepEqual(Object.keys(project(chat).characters), ['ashley']); assert.equal(project(chat).music, null);
+    assert.deepEqual(Object.keys(project(chat).characters), ['ashley']); assert.equal(project(chat).music.name, 'buzz');
     chat.chat.push(assistant('#SCENE RESET\nNow.')); const reset = project(chat);
-    assert.deepEqual(Object.keys(reset.characters), []); assert.equal(reset.background, null); assert.equal(reset.playerEmotion, null);
+    assert.deepEqual(Object.keys(reset.characters), []); assert.equal(reset.background, 'kitchen'); assert.equal(reset.music.name, 'buzz'); assert.equal(reset.playerEmotion, null);
 });
 test('selected swipe edits deletions and bounded historical replay always recompute from authoritative mes', () => {
     const chat = context('#BACKGROUND kitchen\nAshley: "Old." [happy]', '#BACKGROUND street\nNina: "Now." [sad]');

@@ -1,6 +1,6 @@
 import { readMessage } from './message-reader.js';
 import { parsePOV } from './vn-parser.js';
-import { trackSpec, compileTimeline } from './scene-timeline.js';
+import { backgroundSpec, musicSpec, compileTimeline } from './scene-timeline.js';
 import { lastSceneHeader } from './scene-context.js';
 
 export function inheritedScene(context, index) {
@@ -39,25 +39,36 @@ export function inheritedWorld(tokens, registry, settings, scene) {
 
 /** Reconstruct only persistent background/music commands from earlier selected POV swipes. */
 export function inheritedPresentation(context, index) {
-    const result = { background: null, music: null }, found = new Set();
-    if (!Number.isInteger(index) || index < 0 || index >= (context.chat?.length || 0)) return result;
-    for (let i = index - 1; i >= 0 && found.size < 2; i--) {
-        const message = readMessage(context, i);
-        if (message?.status !== 'ready') continue;
-        const tokens = parsePOV(message.pov).tokens;
-        for (let j = tokens.length - 1; j >= 0 && found.size < 2; j--) {
+    if (!Number.isInteger(index) || index < 0 || index >= (context.chat?.length || 0)) return { background: null, music: null };
+    function* earlier() {
+        for (let i = index - 1; i >= 0; i--) {
+            const message = readMessage(context, i);
+            if (message?.status === 'ready') yield parsePOV(message.pov).tokens;
+        }
+    }
+    return restorePresentation(earlier());
+}
+
+/** Newest-first token groups fill missing media independently. Legacy clears/stops
+ * and scene resets do not erase the last chosen background or music. */
+export function restorePresentation(groups, state = {}) {
+    const result = { ...state, background: state.background || null, music: structuredClone(state.music || null) };
+    const missing = new Set(['background', 'music'].filter(key => !result[key]));
+    if (!missing.size) return result;
+    for (const tokens of groups) {
+        for (let j = tokens.length - 1; j >= 0 && missing.size; j--) {
             const token = tokens[j];
             if (token.type !== 'command') continue;
-            if (token.name === 'SCENE' && /^RESET$/i.test(token.args)) {
-                // Reset is a boundary even if older messages contain usable media commands.
-                found.add('background'); found.add('music');
-            } else if (token.name === 'BACKGROUND' && !found.has('background')) {
-                result.background = /^(NONE|CLEAR)$/i.test(token.args) ? null : token.args || null;
-                found.add('background');
-            } else if (token.name === 'MUSIC' && !found.has('music')) {
-                result.music = trackSpec(token.args); found.add('music');
+            if (token.name === 'BACKGROUND' && missing.has('background')) {
+                const value = backgroundSpec(token.args); if (!value) continue;
+                result.background = value;
+                missing.delete('background');
+            } else if (token.name === 'MUSIC' && missing.has('music')) {
+                const value = musicSpec(token.args); if (!value) continue;
+                result.music = value; missing.delete('music');
             }
         }
+        if (!missing.size) break;
     }
     return result;
 }

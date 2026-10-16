@@ -1,4 +1,5 @@
 import { runSceneLightChecks } from './browser-scene-light.js';
+import { runMediaHistoryChecks } from './browser-media-history.js';
 
 export async function runFramingChecks(options) {
     const { check, assert, equal, eventually, context, mountChat, makeController } = options;
@@ -80,4 +81,5 @@ export async function runFramingChecks(options) {
         });
     } finally { controller.dispose(); }
     await runSceneLightChecks(options);
+    await runMediaHistoryChecks(options);
 }

@@ -24,7 +24,7 @@ Each `NARRATION` marker starts a narration block. Plain prose is also accepted i
 
 Commands occupy their own line. Command names are case-insensitive. Unknown commands are ignored and reported, never displayed. Commands are applied in sequence up to the next visible narration/dialogue/artifact beat. Commands after the last visible beat are applied before the reply panel.
 
-Standalone five-field scene headers supply date, phase, time, season and location without adding a visible beat. The latest valid header is inherited from earlier assistant messages; headers in this POV update when reached. A structured header can also precede `/////`, where only its metadata is extracted. See [scene variables and lighting](scene-context.md). Background and music also inherit their latest earlier POV commands, respecting clears/stops/scene resets.
+Standalone five-field scene headers supply date, phase, time, season and location without adding a visible beat. The latest valid header is inherited from earlier assistant messages; headers in this POV update when reached. A structured header can also precede `/////`, where only its metadata is extracted. See [scene variables and lighting](scene-context.md). Missing background and music are recovered independently by searching all earlier selected POV messages; scene resets retain them, and retired clear/stop/empty media commands are ignored.
 
 Cast, expression/slot state, ambience, camera, tint, fade/text effects and presentation mode also persist across responses until changed or cleared. Repeated enters and repeated resolved media reuse the existing scene resources. Use `#EXIT`, `#SCENE`, stops and resets deliberately; see [scene continuity](continuity.md).
 
@@ -32,9 +32,8 @@ Cast, expression/slot state, ambience, camera, tint, fade/text effects and prese
 
 | Command | Meaning |
 | --- | --- |
-| `#BACKGROUND name` | Resolve `backgrounds/name` with common image extensions. `NONE` or `CLEAR` removes it. Characters remain present. |
+| `#BACKGROUND name` | Resolve `backgrounds/name` with common image extensions. Remains selected until another named background. Use `#FADE BLACK` for darkness. Characters remain present. |
 | `#MUSIC name [speed]` | Loop music; changing tracks crossfades. Same-track requests do not restart playback. |
-| `#MUSIC STOP` | Fade out music. |
 | `#AMBIENT name [speed]` | Independent looping ambience; `STOP` stops it. |
 | `#SFX name` | One-shot sound at this point in forward playback. |
 | `#ENTER Character Name` | Stage a character until an exit/reset. Speaking also enters a character automatically. |
@@ -49,7 +48,7 @@ Cast, expression/slot state, ambience, camera, tint, fade/text effects and prese
 | `#CAMERA RESET` | Restore background camera. |
 | `#TINT #72549c` | Scene color tint; valid CSS colors only. |
 | `#SCENE CLEAR` | Clear character presence. |
-| `#SCENE RESET` | Clear all presentation to the configured default baseline. |
+| `#SCENE RESET` | Reset cast, visuals and other presentation settings, retaining the last background, music and story header. |
 
 Speed presets: `normal` (1×), `slowed` / `slow` (0.75×), `half` (0.5×), `sped` / `fast` (1.4×), `double` (2×). Playback deliberately allows pitch to follow speed, matching the original effect where the browser supports it.
 
@@ -79,6 +78,6 @@ Use `html interactive id=diary` as the fence label **and** enable isolated inter
 
 Media commands and character names resolve inside the content environment selected in the VN toolbar or settings. `#BACKGROUND kitchen` can reference different artwork in each environment; missing art never falls back to another world. Environment selection changes presentation assets/properties and preserves the current paragraph without rewriting the message. See `environments/README.md` for folder setup.
 
-Every response/swipe reconstructs persistent state from its currently selected history. Background/music/ambience and story headers carry forward until changed or reset. Cast presence defaults to the last three completed POV responses; speaking/entering refreshes presence. Header location changes clear the previous cast, while time changes at the same location retain it. Use `#EXIT` or `#SCENE CLEAR` for explicit departures; **General → Cast memory** can change the recency window or use 0 to retain cast until a departure/scene transition. Background changes alone do not infer departures from artwork.
+Every response/swipe reconstructs persistent state from its currently selected history. Background and music carry forward until another named selection; ambience and other settings can be reset. Cast presence defaults to the last three completed POV responses; speaking/entering refreshes presence. Header location changes clear the previous cast, while time changes at the same location retain it. Use `#EXIT` or `#SCENE CLEAR` for explicit departures; **General → Cast memory** can change the recency window or use 0 to retain cast until a departure/scene transition. Background changes alone do not infer departures from artwork.
 
 The compiler assigns stable slots in arrival order. If the player arrives after an NPC took slot zero, only that NPC moves to a free slot. **Left and right groups** uses diagonal rows; **Four separate busts** uses four evenly spaced stations without depth scaling/rise, expanding for larger casts. Both assign primary left/right slots first, then inner slots. Layout overrides contain sorted percentages keyed by cast/column count and are assigned from the outer edges inward. You can switch arrangements from the VN toolbar or settings without replaying the scene. Backward navigation restores snapshots without replaying SFX/flash/shake. Replay explicitly permits one-shot effects again. Audio track identity is restored, but playback does not seek to the historical sample position.

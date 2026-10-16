@@ -118,7 +118,7 @@ export async function runSharedChecks({ check, assert, equal, eventually, contex
     });
     await check('opening reconstructs context edits even when the editing extension emitted no event', async () => {
         context.chat[4].mes = 'SECRET\n/////\n#BACKGROUND street\n#MUSIC STOP\n#EXIT Nina\nChanged silently.';
-        await controller.open(); await eventually(() => controller.sharedVariables.available && controller.sharedVariables.music.name === null);
+        await controller.open(); await eventually(() => controller.sharedVariables.available && controller.sharedVariables.music.name === 'club');
         equal(controller.sharedVariables.background.name, 'street'); equal(controller.sharedVariables.characters, []); equal(controller.sharedVariables.source.message, 4);
         controller.close();
     });

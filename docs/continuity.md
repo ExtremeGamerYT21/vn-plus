@@ -16,10 +16,12 @@ The opening state of each response is reconstructed by reducing earlier assistan
 | --- | --- |
 | `#EXIT name` | Remove that character from subsequent scene state. |
 | `#SCENE name` | Clear the cast; keep background/audio and other presentation fields. |
-| `#SCENE RESET` | Reset presentation state, retaining the last structured story header. |
-| `#BACKGROUND NONE` / `CLEAR` | Clear the background. |
-| `#MUSIC STOP` / `#AMBIENT STOP` | Stop that loop. |
+| `#SCENE RESET` | Reset cast, artifacts and presentation effects, retaining background, music and the last structured story header. |
+| `#FADE BLACK` / `#FADE IN` | Hide/reveal the scene while keeping its background and music selected. |
+| `#AMBIENT STOP` | Stop the ambient loop. |
 | `#CAMERA RESET`, `#TEXT normal`, `#FADE IN` | Restore the corresponding persistent setting. |
 | Exit/disable VN, switch chat or switch environment | Release the current world and audio resources. |
 
 Going backward or opening an earlier response reconstructs its preceding state, without using later messages. Edits/swipes of earlier messages rebuild the current scene while keeping its paragraph when possible. Browser reloads recover the scene choices/cast from chat history, but create new audio players; playback position is preserved across live response transitions, not across a full page reload. Canonical prose/commands and user/system messages never supply world state; only the separately requested structured header fields may come from canonical text.
+
+Missing background/music selections use an independent backward scan of all earlier selected POV messages, without a cast-window limit. Named media persists through scene resets. Legacy background clear/none, music stop/none and empty media commands are inert, so they cannot interrupt the search or erase a current selection. A chat with no named media anywhere has no selection to recover; VN+ does not invent an unrelated asset.

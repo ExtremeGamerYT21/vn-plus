@@ -2,6 +2,7 @@ import { readMessage, latestAssistant, sceneKey } from './message-reader.js';
 import { parsePOV } from './vn-parser.js';
 import { lastSceneHeader } from './scene-context.js';
 import { emptyState, compileTimeline } from './scene-timeline.js';
+import { restorePresentation } from './scene-history.js';
 
 /** Only structured scene information crosses this boundary; prose and artifacts never do. */
 export function contextEntries(context, end = latestAssistant(context)) {
@@ -45,7 +46,11 @@ export function reduceContext(entries, registry, settings, { beforeLast = false 
         state = compileTimeline(entry.tokens, registry, settings, state, false).finalState;
         for (const name of names(entry)) if (!registry.isNarrator(name)) seen.set(registry.identify(name), turn);
     }
-    return state;
+    if (state.background && state.music) return state;
+    function* earlier() {
+        for (let index = entries.length - (beforeLast ? 2 : 1); index >= 0; index--) yield entries[index].tokens;
+    }
+    return restorePresentation(earlier(), state);
 }
 
 export const contextNames = entries => entries.flatMap(entry => entry.tokens.filter(token => token.character || token.name === 'ENTER' || token.name === 'EXIT').map(token => token.character || token.args));

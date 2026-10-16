@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { inheritedPresentation, inheritedWorld, worldHistory } from '../core/scene-history.js';
+import { inheritedPresentation, inheritedWorld, worldHistory, restorePresentation } from '../core/scene-history.js';
 import { compileTimeline } from '../core/scene-timeline.js';
 import { parsePOV } from '../core/vn-parser.js';
 import { CharacterRegistry } from '../core/character-registry.js';
@@ -19,15 +19,15 @@ test('history searches independently for the nearest background and music and ke
     assert.deepEqual(inheritedPresentation(context, 2), { background: 'kitchen', music: { name: 'buzz', rate: .75 } });
     assert.deepEqual(inheritedPresentation(context, 0), { background: null, music: null });
 });
-test('history respects clear stop empty commands and scene reset boundaries', () => {
+test('history skips removed clear stop empty commands and scene resets without losing media', () => {
     for (const command of ['#BACKGROUND CLEAR\n#MUSIC STOP', '#BACKGROUND NONE\n#MUSIC NONE', '#BACKGROUND\n#MUSIC', '#SCENE RESET']) {
         const context = history('#BACKGROUND kitchen\n#MUSIC buzz', command, 'Next.');
-        assert.deepEqual(inheritedPresentation(context, 2), { background: null, music: null });
+        assert.deepEqual(inheritedPresentation(context, 2), { background: 'kitchen', music: { name: 'buzz', rate: 1 } });
     }
     const reset = history('#BACKGROUND kitchen\n#MUSIC buzz', '#SCENE RESET\n#MUSIC club', 'Next.');
-    assert.deepEqual(inheritedPresentation(reset, 2), { background: null, music: { name: 'club', rate: 1 } });
+    assert.deepEqual(inheritedPresentation(reset, 2), { background: 'kitchen', music: { name: 'club', rate: 1 } });
     reset.chat[1] = assistant('#BACKGROUND street\n#SCENE RESET\n#BACKGROUND hotel');
-    assert.deepEqual(inheritedPresentation(reset, 2), { background: 'hotel', music: null });
+    assert.deepEqual(inheritedPresentation(reset, 2), { background: 'hotel', music: { name: 'buzz', rate: 1 } });
 });
 test('scan uses POV commands only and ignores user system missing POV code HTML and later messages', () => {
     const context = history('@background kitchen\n@music buzz half', 'Next.');
@@ -58,7 +58,7 @@ test('current commands override inherited state when reached and backward naviga
     const player = new Playback(compile(context, 1));
     const first = player.forward(); assert.equal(first.beat.state.background, 'kitchen'); assert.equal(first.beat.state.music.rate, .75);
     const second = player.forward(); assert.equal(second.beat.state.background, 'street'); assert.equal(second.beat.state.music.name, 'club');
-    const third = player.forward(); assert.equal(third.beat.state.background, null); assert.equal(third.beat.state.music, null);
+    const third = player.forward(); assert.equal(third.beat.state.background, 'street'); assert.equal(third.beat.state.music.name, 'club');
     player.back(); assert.deepEqual(player.back().beat.state, first.beat.state);
 });
 test('background/music-only helper does not add historical cast ambience artifacts effects or beat indexes', () => {
@@ -92,10 +92,31 @@ test('repeated enter commands are idempotent and omitted cast and ambience remai
     const continued = world(context, 2); assert.deepEqual(Object.keys(continued.characters), ['nina']); assert.equal(continued.characters.nina.expression, 'happy');
     assert.equal(continued.ambient.name, 'rain'); const exited = world(context, 3); assert.deepEqual(Object.keys(exited.characters), []); assert.equal(exited.ambient, null);
 });
-test('scene clears reset the cast and full resets clear inherited world fields', () => {
+test('scene resets clear cast and effects while retaining background and music', () => {
     const context = history('#ENTER Nina\n#MUSIC buzz\n#AMBIENT rain\n#CAMERA ZOOM 2\n#FADE BLACK', '#SCENE next\n#ENTER Ashley', '#SCENE RESET', 'Now.');
     const next = world(context, 2); assert.deepEqual(Object.keys(next.characters), ['ashley']); assert.equal(next.music.name, 'buzz'); assert.equal(next.black, true);
-    const reset = world(context, 3); assert.deepEqual(Object.keys(reset.characters), []); assert.equal(reset.music, null); assert.equal(reset.ambient, null); assert.equal(reset.black, false); assert.equal(reset.camera.zoom, 1);
+    const reset = world(context, 3); assert.deepEqual(Object.keys(reset.characters), []); assert.equal(reset.music.name, 'buzz'); assert.equal(reset.ambient, null); assert.equal(reset.black, false); assert.equal(reset.camera.zoom, 1);
+});
+test('cold history lookup crosses arbitrarily many quiet messages and finds each channel independently', () => {
+    const context = history('#BACKGROUND kitchen', '#MUSIC buzz slowed', ...Array(240).fill('Quiet.'), '#SCENE RESET\n#BACKGROUND CLEAR\n#MUSIC STOP', 'Now.');
+    assert.deepEqual(inheritedPresentation(context, context.chat.length - 1), { background: 'kitchen', music: { name: 'buzz', rate: .75 } });
+    context.chat[160] = assistant('#MUSIC club fast'); context.chat[200] = assistant('#BACKGROUND street');
+    assert.deepEqual(inheritedPresentation(context, context.chat.length - 1), { background: 'street', music: { name: 'club', rate: 1.4 } });
+    assert.deepEqual(inheritedPresentation(context, 100), { background: 'kitchen', music: { name: 'buzz', rate: .75 } });
+});
+test('backward fallback fills only missing cached fields, clones music, and stops as soon as both are found', () => {
+    let reads = 0;
+    function* groups() { reads++; yield parsePOV('#MUSIC buzz slow').tokens; reads++; throw Error('Unnecessary history scan'); }
+    const cached = { background: 'street', music: null, unrelated: 'kept' }, snapshot = structuredClone(cached);
+    const result = restorePresentation(groups(), cached); assert.deepEqual(cached, snapshot); assert.equal(result.background, 'street'); assert.equal(result.music.rate, .75); assert.equal(reads, 1);
+    const complete = { background: 'street', music: { name: 'club', rate: 1 } }; restorePresentation(groups(), complete); assert.equal(reads, 1);
+    assert.deepEqual(restorePresentation([]), { background: null, music: null });
+});
+test('removed clear and stop commands are inert during live playback and fade black retains the media underneath', () => {
+    const context = history('#BACKGROUND kitchen\n#MUSIC buzz slow', '#BACKGROUND CLEAR\n#MUSIC STOP\n#SCENE RESET\n#FADE BLACK\nDark.\n#FADE IN\nNARRATION\nVisible.');
+    const player = new Playback(compile(context, 1)), dark = player.forward().beat.state, visible = player.forward().beat.state;
+    assert.equal(dark.black, true); assert.equal(visible.black, false);
+    for (const state of [dark, visible]) { assert.equal(state.background, 'kitchen'); assert.deepEqual(state.music, { name: 'buzz', rate: .75 }); }
 });
 test('world reduction excludes narration artifacts one-shots and canonical user and future commands', () => {
     const context = history('#ENTER Nina\nNina: "Private old prose." [happy]\n#SFX door\n#FLASH WHITE\n#SHAKE LIGHT\n<div>Old artifact</div>', 'Now.', '#ENTER Future');
