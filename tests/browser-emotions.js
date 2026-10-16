@@ -39,4 +39,27 @@ export async function runEmotionChecks({ check, assert, equal, eventually, conte
             equal(context.chat[0].mes, source);
         });
     } finally { controller.dispose(); }
+    await check('unknown emotion tags keep the character body with a neutral safety fallback and preserve the story tag', async () => {
+        const source = 'PRIVATE\n/////\nNina: "Composed." [cool]\nNina: "Quickly." [brisk]';
+        context.chat = [{ mes: source }]; mountChat();
+        const fallbackController = makeController();
+        Object.assign(fallbackController.settings, { autoAdvance: false, autoCreateCharacters: false, typewriterEffect: false, reducedMotion: true });
+        fallbackController.settings.tts.enabled = false;
+        fallbackController.settings.characters = { nina: { assetFolder: 'neutral-safety-test', defaultExpression: 'missing' } };
+        const url = fallbackController.resolver.url.bind(fallbackController.resolver);
+        // Serve the bundled neutral face from a simulated unindexed neutral path.
+        fallbackController.resolver.url = path => url(path === 'characters/neutral-safety-test/sprites/neutral.webp' ? 'characters/nina/default.webp' : path);
+        try {
+            await fallbackController.open(0);
+            await eventually(() => fallbackController.stage.nodes.get('nina')?.dataset.sprite?.endsWith('/default.webp'));
+            const body = fallbackController.stage.nodes.get('nina');
+            assert(!body.classList.contains('vn-no-sprite')); equal(body.dataset.expression, 'cool');
+            equal(fallbackController.resolver.diagnostics.get('emotion:neutral-safety-test:cool').method, 'fallback');
+            equal(fallbackController.playback.restore().beat.state.characters.nina.expression, 'cool');
+            await fallbackController.action('next'); await eventually(() => body.dataset.expression === 'brisk');
+            assert(fallbackController.stage.nodes.get('nina') === body); assert(!body.classList.contains('vn-no-sprite'));
+            await fallbackController.action('back'); await eventually(() => body.dataset.expression === 'cool');
+            equal(context.chat[0].mes, source);
+        } finally { fallbackController.dispose(); }
+    });
 }

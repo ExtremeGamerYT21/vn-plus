@@ -134,3 +134,36 @@ test('automatic blinking uses the chosen ranked expression and never a different
     assert.match(await resolver.blinkSprite('a', ['joy']), /joy_blink.png$/);
     assert.equal(await resolver.blinkSprite('a', ['fear']), null);
 }));
+
+test('unknown story tags fall back to neutral when the configured default file is absent', async () => missing(async () => {
+    const resolver = resolverFor(['characters/lyra/sprites/neutral.png', 'characters/lyra/sprites/joy.png']);
+    for (const tag of ['cool', 'brisk', 'dry', 'unmapped']) {
+        assert.match(await resolver.sprite('lyra', [tag, 'default'], { defaultExpression: 'default' }), /neutral.png$/);
+        const report = resolver.diagnostics.get(`emotion:lyra:${tag}`);
+        assert.equal(report.method, 'fallback'); assert.equal(report.requested, tag);
+    }
+}));
+
+test('neutral safety fallback preserves literal custom art configured defaults overrides and ranked emotions', async () => missing(async () => {
+    const resolver = resolverFor(['characters/a/cool.png', 'characters/a/resting.png', 'characters/a/neutral.png', 'characters/a/joy.png']);
+    assert.match(await resolver.sprite('a', ['cool', 'default']), /cool.png$/);
+    assert.match(await resolver.sprite('a', ['unmapped', 'resting', 'default'], { defaultExpression: 'resting' }), /resting.png$/);
+    assert.match(await resolver.sprite('a', ['unmapped', 'default']), /neutral.png$/);
+    assert.match(await resolver.sprite('a', ['happy', 'default']), /joy.png$/);
+    assert.match(await resolver.sprite('a', ['unmapped', 'default'], { expressionAliases: { unmapped: 'joy' } }), /joy.png$/);
+}));
+
+test('neutral safety fallback probes unindexed artwork and respects assetFolder isolation', async () => {
+    const original = globalThis.fetch, resolver = resolverFor([]);
+    globalThis.fetch = async url => ({ ok: String(url).endsWith('/characters/art/sprites/neutral.png'), headers: { get: () => 'image/png' } });
+    try {
+        assert.match(await resolver.sprite('lyra', ['cool', 'default'], { defaultExpression: 'missing', assetFolder: 'art' }), /characters\/art\/sprites\/neutral.png$/);
+        assert.equal(await resolver.sprite('other', ['cool', 'default']), null);
+    } finally { globalThis.fetch = original; }
+});
+
+test('neutral safety fallback cannot borrow another character environment or blink image', async () => missing(async () => {
+    const resolver = resolverFor(['characters/a/neutral_blink.png', 'characters/a/neutral.blink.webp', 'characters/b/neutral.png']);
+    assert.equal(await resolver.sprite('a', ['cool', 'default']), null);
+    assert.equal(await resolverFor([]).sprite('b', ['cool', 'default']), null);
+}));

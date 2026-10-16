@@ -1,4 +1,6 @@
-# Visual Novel+ 2.20.1
+# Visual Novel+ 2.20.2
+
+Version 2.20.2 keeps characters visible under unknown emotion tags when their configured default image is missing: `neutral` is now a final safe fallback. For example, `[cool]` can use `neutral.png` even if properties still specify a nonexistent `default.png`. Exact artwork, character aliases, ranked expressions and valid defaults retain priority. Original story tags, voices and character properties are preserved. Refresh SillyTavern after updating.
 
 Version 2.20.1 gives the Harry Potter theme a shared parchment sheet around dialogue and playback controls, an original local paper texture, irregular edges, soft paper shadows and raised brass keys with pressed states. Copy the theme's `ui/` folder along with its CSS files. The new `.vn-dialogue-shell` defaults to `display: contents`, preserving other themes and image-only textbox layouts. See [theme installation and customization](examples/harry-potter/README.md). Refresh SillyTavern after updating.
 

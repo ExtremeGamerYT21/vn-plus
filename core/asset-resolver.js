@@ -101,7 +101,9 @@ export class AssetResolver {
                 const url = this.semanticImage(emotion, [`characters/${folder}`], true);
                 if (url) return finish(url, 'keywords');
             }
-            for (const fallback of [...new Set([props.defaultExpression, ...(emotions.includes('default') ? ['default'] : [])].filter(Boolean))]) {
+            // Unknown story tags still have a safe face when the configured
+            // default filename is absent. Probe neutral even in a stale catalog.
+            for (const fallback of [...new Set([props.defaultExpression, ...(emotions.includes('default') ? ['default'] : []), 'neutral'].filter(Boolean))]) {
                 if (!open(fallback)) continue;
                 const url = await this.resolve(paths(fallback)); if (url) return finish(url, 'fallback');
             }
