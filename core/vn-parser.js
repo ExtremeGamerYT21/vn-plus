@@ -1,6 +1,7 @@
 import { isNarratorName } from './character-registry.js';
 import { parseSceneHeader } from './scene-context.js';
 import { parseJournal } from './journal-format.js';
+import { stripDialogueAttribution } from './dialogue-text.js';
 const COMMANDS = new Set(['BACKGROUND', 'MUSIC', 'AMBIENT', 'SFX', 'FADE', 'FLASH', 'SHAKE', 'TEXT', 'ENTER', 'EXIT', 'MODE', 'CAMERA', 'TINT', 'SCENE', 'VISUAL']);
 const LEGACY = { SOUNDFX: 'SFX' };
 const ROOT_HTML = /^\s*(?:<!doctype\s+html\b|<(?:html|article|section|div|main|svg|table|canvas|figure|pre|p|style|h[1-6]|details)\b)/i;
@@ -17,7 +18,7 @@ function thoughtWrapper(text) {
     return null; // Streaming thought with an unfinished outer pair.
 }
 function completedDialogue(text) {
-    const value = text.trim().replace(/\s*\[[^\]\r\n]+\]\s*$/, '').trim();
+    const value = stripDialogueAttribution(text.trim().replace(/\s*\[[^\]\r\n]+\]\s*$/, '')).trim();
     const closing = { '"': '"', '“': '”', "'": "'", '‘': '’' }[value[0]];
     return closing ? value.length > 1 && value.endsWith(closing) : thoughtWrapper(value) === true || /\[[^\]]+\]\s*$/.test(text);
 }
@@ -38,6 +39,7 @@ export function parsePOV(pov) {
         if (current.type === 'dialogue') {
             const tag = /\s*\[([^\]\r\n]+)\][ \t]*(?:\r?\n)?$/.exec(text);
             if (tag) { direction = tag[1].trim(); emotion = direction.toLowerCase(); text = text.slice(0, tag.index); }
+            text = stripDialogueAttribution(text);
             const quote = text.trim()[0];
             const closing = { '"': '"', '“': '”', "'": "'", '‘': '’' }[quote];
             if (closing && (text.trim().length < 2 || !text.trim().endsWith(closing))) {

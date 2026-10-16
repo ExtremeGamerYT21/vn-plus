@@ -1,0 +1,21 @@
+const word = "[\\p{L}][\\p{L}\\p{M}'’.-]*";
+const subject = `${word}(?:[ \\t]+${word}){0,4}`;
+const verb = '(?:said|says|asked|asks|replied|replies|answered|answers|repeated|repeats|added|adds|continued|continues|whispered|whispers|muttered|mutters|murmured|murmurs|shouted|shouts|yelled|yells|snapped|snaps|remarked|remarks|called|calls|noted|notes|responded|responds|exclaimed|exclaims|insisted|insists|explained|explains)';
+const delivery = '(?:quietly|softly|flatly|dryly|sharply|firmly|briskly|calmly|loudly|slowly|quickly|gently|angrily|sadly|happily|wearily|evenly|tersely|simply|again|back)';
+const attribution = new RegExp(`^(?:${subject}(?:[ \\t]+${delivery})?[ \\t]+${verb}|${verb}[ \\t]+${subject})(?:[ \\t]+${delivery}){0,2}[.!?,;:]?$`, 'iu');
+
+/** Remove only a short, standalone speech attribution outside a completed quote.
+ * Quoted content, independent narration and action clauses are left alone. */
+export function stripDialogueAttribution(text) {
+    const value = text.trimEnd(), offset = value.length - value.trimStart().length;
+    const closing = { '"': '"', '“': '”', "'": "'", '‘': '’' }[value[offset]];
+    if (!closing || value.endsWith(closing)) return text;
+    for (let index = value.length - 1; index > offset; index--) {
+        if (value[index] !== closing) continue;
+        let escapes = 0; for (let at = index - 1; value[at] === '\\'; at--) escapes++;
+        if (escapes % 2) continue;
+        const tail = value.slice(index + 1).trim().replace(/^[,—–-]\s*/, '');
+        return tail.length <= 240 && attribution.test(tail) ? value.slice(0, index + 1) : text;
+    }
+    return text;
+}
