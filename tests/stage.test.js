@@ -34,6 +34,8 @@ test('legacy layouts migrate to the selectable modes without losing preferences'
     const settings = loadSettings({ extensionSettings: { visual_novel_plus: previous } });
     assert.equal(settings.layout, 'separate'); assert.equal(settings.stageLayoutVersion, 3); assert.equal(settings.musicVolume, .23);
     assert.equal(settings.characters.nina.bustScale, .8);
+    assert.equal(settings.spriteFraming, 'bust');
+    assert.equal(loadSettings({ extensionSettings: { visual_novel_plus: { spriteFraming: 'full-body' } } }).spriteFraming, 'full-body');
     assert.equal(loadSettings({ extensionSettings: { visual_novel_plus: { ...previous, layout: 'rows', stageLayoutVersion: 2 } } }).layout, 'rows');
     assert.equal(loadSettings({ extensionSettings: { visual_novel_plus: { ...previous, layout: 'compact' } } }).layout, 'separate');
 });

@@ -14,7 +14,7 @@
 .vn-background { position: absolute; inset: -2%; background-size: cover; background-position: center; transition: transform 1.4s ease, filter .6s ease; }
 .vn-background, .vn-stage { filter: brightness(var(--vn-scene-brightness,1)); }
 .vn-world::after { content: ''; position: absolute; inset: 0; background: transparent; pointer-events: none; }
-.vn-stage { position: absolute; inset: 8vh 0 min(28vh,230px); display: flex; align-items: var(--vn-align, flex-end); }
+.vn-stage { --vn-stage-bottom: min(28vh,230px); position: absolute; inset: 8vh 0 var(--vn-stage-bottom); display: flex; align-items: var(--vn-align, flex-end); }
 .vn-character { position: absolute; bottom: 0; transform: translateX(-50%) translate(var(--vn-offset-x,0px),var(--vn-offset-y,0px)) scale(var(--vn-scale,1)); transform-origin: bottom center; height: var(--vn-height,78vh); max-width: 45vw; transition: left .35s ease, filter .35s ease; display: flex; align-items: flex-end; justify-content: center; }
 .vn-character img { height: 100%; width: 100%; object-fit: contain; object-position: bottom center; filter: drop-shadow(0 10px 20px #0007); }
 .vn-sprite-visual { position: relative; width: 100%; height: 100%; }
@@ -67,3 +67,6 @@
 /* Voice readiness follows the selected beat and inherits the environment theme. */
 .vnplus-ui .vn-voice-ready { margin-inline: auto 1em; font-variant-numeric: tabular-nums; }
 .vnplus-ui .vn-voice-ready[data-state="ready"] { color: var(--vn-ui-accent); }
+
+/* Narration gently lowers cast brightness without changing scene lighting. */
+.vn-narrating .vn-character { filter: brightness(var(--vn-narration-brightness,.85)); }

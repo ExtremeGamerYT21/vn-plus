@@ -5,6 +5,7 @@ import { runTimingChecks } from './browser-timing.js';
 import { runJournalChecks } from './browser-journal.js';
 import { runLiveVoiceChecks } from './browser-live-voices.js';
 import { runEmotionChecks } from './browser-emotions.js';
+import { runFramingChecks } from './browser-framing.js';
 import { createHost } from '../integration.js';
 import { DEFAULT_SETTINGS } from '../ui/settings.js';
 import { isolatedDocument } from '../renderers/html-renderer.js';
@@ -842,6 +843,10 @@ await runLiveVoiceChecks({ check, assert, equal, eventually, context, mountChat,
     next.audio.audioFactory = () => new FakeAudio(); return next;
 } });
 await runEmotionChecks({ check, assert, equal, eventually, context, mountChat, makeController() {
+    const next = new VNController(createHost(() => context, { localContent: false }), new URL('../', import.meta.url), inventory);
+    next.audio.audioFactory = () => new FakeAudio(); return next;
+} });
+await runFramingChecks({ check, assert, equal, eventually, context, mountChat, makeController() {
     const next = new VNController(createHost(() => context, { localContent: false }), new URL('../', import.meta.url), inventory);
     next.audio.audioFactory = () => new FakeAudio(); return next;
 } });

@@ -1,4 +1,4 @@
-import { STAGE_LAYOUT_OPTIONS, normalizeStageLayout } from '../core/stage-layout.js';
+import { STAGE_LAYOUT_OPTIONS, normalizeStageLayout, SPRITE_FRAMING_OPTIONS, normalizeSpriteFraming } from '../core/stage-layout.js';
 import { slug } from '../core/character-registry.js';
 import { breathingConfig } from '../renderers/sprite-mesh.js';
 import { DEFAULT_ENVIRONMENT, initializeContentProfiles } from '../core/content-environments.js';
@@ -8,7 +8,7 @@ import { SPEECH_DEFAULTS, speechSettings } from '../core/speech-segments.js';
 
 export const DEFAULT_SETTINGS = {
     enabled: true, automaticPlayback: false, environmentCss: true, playerName: 'Jason', playerAliases: [], showPlayerBust: true,
-    layout: 'rows', stageLayoutVersion: 3, layouts: {}, displayMode: 'vn', bustScale: 1, bustHeight: 78, stageSpacing: 1, stageAlignment: 'bottom', inactiveBrightness: .45,
+    layout: 'rows', spriteFraming: 'bust', stageLayoutVersion: 3, layouts: {}, displayMode: 'vn', bustScale: 1, bustHeight: 78, stageSpacing: 1, stageAlignment: 'bottom', inactiveBrightness: .45,
     rowSpacing: 8, rowRise: 6.5, rowDepthScale: .95,
     spriteBreathing: true, breathingAmount: 1.6, breathingDuration: 4200, expressionTransition: 280,
     spriteBlinking: true, blinkIntervalMin: 2800, blinkIntervalMax: 6500, blinkDuration: 130,
@@ -28,6 +28,7 @@ export const DEFAULT_SETTINGS = {
 export function loadSettings(context) {
     const previous = context.extensionSettings.visual_novel_plus || {};
     const settings = { ...structuredClone(DEFAULT_SETTINGS), ...previous };
+    settings.spriteFraming = normalizeSpriteFraming(settings.spriteFraming);
     settings.layout = normalizeStageLayout(settings.layout); settings.stageLayoutVersion = 3;
     if (previous.reducedMotion === undefined && typeof matchMedia === 'function') settings.reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (previous.playerNameOverride && !previous.playerName) settings.playerName = previous.playerNameOverride;
@@ -50,7 +51,7 @@ export function loadSettings(context) {
 }
 
 const FIELDS = {
-    General: [['enabled', 'Enable Visual Novel+', 'checkbox'], ['automaticPlayback', 'Open completed responses automatically', 'checkbox'], ['playerName', 'Player identity', 'text'], ['playerAliases', 'Player aliases (comma separated)', 'aliases'], ['showPlayerBust', 'Hide player bust (first-person view)', 'inverse-checkbox'], ['castMemoryTurns', 'Cast memory (VN responses; 0 keeps until exit)', 'number', 0, 50], ['layout', 'Bust layout', STAGE_LAYOUT_OPTIONS], ['displayMode', 'Default presentation', ['vn', 'cinematic', 'prose', 'black']]],
+    General: [['enabled', 'Enable Visual Novel+', 'checkbox'], ['automaticPlayback', 'Open completed responses automatically', 'checkbox'], ['playerName', 'Player identity', 'text'], ['playerAliases', 'Player aliases (comma separated)', 'aliases'], ['showPlayerBust', 'Hide player bust (first-person view)', 'inverse-checkbox'], ['castMemoryTurns', 'Cast memory (VN responses; 0 keeps until exit)', 'number', 0, 50], ['layout', 'Bust layout', STAGE_LAYOUT_OPTIONS], ['spriteFraming', 'Artwork framing', SPRITE_FRAMING_OPTIONS], ['displayMode', 'Default presentation', ['vn', 'cinematic', 'prose', 'black']]],
     Timing: [['autoAdvance', 'Auto: follow narrative timing', 'checkbox'], ['dialogueSecondsPerCharacter', 'Silent dialogue (seconds per character)', 'number', .01, 1], ['narrationWordsPerMinute', 'Narration reading speed (words/minute)', 'number', 60, 1000], ...['hurried', 'scared', 'lazy', 'bored', 'normal'].map(tag => [`${tag}ReactionSound`, `${tag}: optional reaction SFX name`, 'text'])],
     Presentation: [['typewriterEffect', 'Typewriter', 'checkbox'], ['typewriterSpeed', 'Typewriter delay (ms)', 'number', 0, 200], ['reducedMotion', 'Reduced motion', 'checkbox'], ['textEffects', 'Emotion text effects', 'checkbox'], ['intenseEmotions', 'Emotion tags that shake (comma separated)', 'aliases'], ['screenEffects', 'Screen effects', 'checkbox'], ['dialogueFont', 'Font name or CSS family stack', 'text'], ['textColor', 'Dialogue color override (empty inherits theme)', 'text'], ['narrationColor', 'Narration color override (empty inherits theme)', 'text'], ['textScale', 'Text scale', 'number', .6, 2], ['letterSpacing', 'Letter spacing (px)', 'number', -1, 5], ['dialogueBoxWidth', 'Dialogue width (% viewport)', 'number', 25, 94], ['dialogueBoxHeight', 'Dialogue minimum height (px)', 'number', 100, 450], ['overlayOpacity', 'Dialogue opacity', 'number', .1, 1], ['dialogueBoxTexture', 'Texture path under characters/', 'text'], ['dialogueBoxImageOnly', 'Textbox image only (no fill or frame)', 'checkbox'], ['showBoxChrome', 'Dialogue border and accent', 'checkbox'], ['showBoxBackground', 'Dialogue panel background', 'checkbox']],
     Characters: [['bustScale', 'Global bust scale', 'number', .2, 2], ['bustHeight', 'Bust height (% viewport)', 'number', 20, 100], ['stageSpacing', 'Stage spacing', 'number', .4, 1.2], ['rowSpacing', 'Row inward spacing (% viewport)', 'number', 3, 14], ['rowRise', 'Row depth rise (% viewport)', 'number', 1, 10], ['rowDepthScale', 'Scale per depth step', 'number', .8, 1], ['stageAlignment', 'Stage alignment', ['bottom', 'top']], ['inactiveBrightness', 'Inactive brightness', 'number', .2, 1], ['missingAsset', 'Missing sprite', ['placeholder', 'hide']], ['spriteBreathing', 'Breathing deformation', 'checkbox'], ['breathingAmount', 'Breathing amount (%)', 'number', 0, 5], ['breathingDuration', 'Breathing cycle (ms)', 'number', 1000, 20000], ['expressionTransition', 'Expression blend (ms)', 'number', 0, 2000], ['spriteBlinking', 'Blinking with alternative image', 'checkbox'], ['blinkIntervalMin', 'Blink interval minimum (ms)', 'number', 500, 30000], ['blinkIntervalMax', 'Blink interval maximum (ms)', 'number', 500, 60000], ['blinkDuration', 'Closed-eye duration (ms)', 'number', 60, 350]],
@@ -106,7 +107,7 @@ export function createSettings(settings, callbacks) {
             row.append(document.createTextNode('Create folders for unknown speakers'), checkbox); details.append(row);
             const folderStatus = document.createElement('p'); folderStatus.className = 'vn-hint'; folderStatus.dataset.characterFoldersStatus = ''; folderStatus.role = 'status';
             folderStatus.textContent = 'New speakers get sprites/, properties.json and a saved random text color in this environment. Uses the VN+ server bridge; no Fish key is needed.'; details.append(folderStatus);
-            const help = document.createElement('p'); help.className = 'vn-hint'; help.textContent = 'Registry overrides: JSON keyed by folder ID. Supports identity/expression aliases, colors, fonts, textures, scale/offsets, sounds, breathing and blink. Fish voice: "voiceId":"your-fish-voice-id". Omit voiceId to keep a character mute. Breathing center: "breathing":{"centerX":0.5,"centerY":0.62}. X runs left to right, Y top to bottom (0–1 over the full sprite image, including transparent padding). Missing blink artwork leaves eyes open.';
+            const help = document.createElement('p'); help.className = 'vn-hint'; help.textContent = 'Registry overrides: JSON keyed by folder ID. Supports identity/expression aliases, colors, fonts, textures, scale/offsets, sounds, breathing and blink. Fish voice: "voiceId":"your-fish-voice-id". Omit voiceId to keep a character mute. Breathing center: "breathing":{"centerX":0.5,"centerY":0.62}. X runs left to right, Y top to bottom (0–1 over the full sprite image, including transparent padding). Missing blink artwork leaves eyes open. Image position: "offsetX":20 shifts right 20 px; "offsetY":-30 shifts up 30 px. Offsets and "bustScale" work with both bust and full-body framing.';
             const editor = document.createElement('textarea'); editor.rows = 8; editor.value = JSON.stringify(settings.characters, null, 2); editor.setAttribute('aria-label', 'Character registry JSON');
             const save = document.createElement('button'); save.textContent = 'Apply registry';
             const status = document.createElement('p'); status.role = 'status'; status.dataset.characterStatus = '';

@@ -4,6 +4,7 @@ export function bindControls(root, callbacks) {
     root.addEventListener('pointerdown', () => callbacks.unlock(), { ...options, capture: true });
     root.addEventListener('change', event => {
         if (event.target.matches?.('[data-layout-picker]')) callbacks.layout(event.target.value);
+        if (event.target.matches?.('[data-framing-picker]')) callbacks.framing(event.target.value);
         if (event.target.matches?.('[data-environment-picker]')) callbacks.environment(event.target.value);
     }, options);
     root.addEventListener('click', event => {

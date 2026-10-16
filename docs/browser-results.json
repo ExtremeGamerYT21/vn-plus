@@ -1,5 +1,5 @@
 {
-  "status": "93 passed · 0 failed",
+  "status": "100 passed · 0 failed",
   "tests": [
     "PASS · POV privacy and four characters from one scenario",
     "PASS · backward restores background, expression and audio state",
@@ -81,6 +81,13 @@
     "PASS · ranked fallbacks update and restore expressions without replacing the character body",
     "PASS · blink lookup follows the selected fallback image rather than the original story tag",
     "PASS · a character override can supersede the master ranking while prose stays unchanged",
+    "PASS · full-body framing anchors artwork at the viewport floor and preserves shadow size and baseline",
+    "PASS · toolbar and settings framing selectors synchronize without restarting playback artwork or music",
+    "PASS · per-character X and Y offsets remain pixel shifts in full-body mode even on scaled artwork",
+    "PASS · full-body artwork stays bottom anchored with top-aligned shadows and custom stage clearance",
+    "PASS · narration gently dims every character and shadow independently of the narrator voice toggle",
+    "PASS · thoughts and spoken dialogue restore normal character lighting after narration",
+    "PASS · failed artwork returns to bust-framed shadows while full-body mode remains selected",
     "PASS · visual overlays preserve the same sandbox and interaction state across dialogue beats",
     "PASS · an open visual reads and writes message extra at the current paragraph rather than its opening paragraph",
     "PASS · Auto progresses to reply with an interactive visual still open and never starts a Fish request",

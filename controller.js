@@ -2,7 +2,7 @@ import { chatIdentity, latestAssistant, readMessage, sceneKey } from './core/mes
 import { parsePOV } from './core/vn-parser.js';
 import { compileTimeline } from './core/scene-timeline.js';
 import { Playback } from './core/playback.js';
-import { normalizeStageLayout } from './core/stage-layout.js';
+import { normalizeStageLayout, normalizeSpriteFraming } from './core/stage-layout.js';
 import { contentEnvironments, activateContentProfile, saveContentProfile, CONTENT_PROFILE_KEYS } from './core/content-environments.js';
 import { mergeContentInventories } from './core/content-inventory.js';
 import { CharacterRegistry } from './core/character-registry.js';
@@ -56,8 +56,8 @@ export class VNController {
         this.sharedState.bind(this.environment);
         this.contextResolver = this.createContentResolver(this.environment); this.contextRegistry = this.createRegistry(this.contextResolver, this.environment);
         this.audio.onChange = () => this.publishPlaybackActivity();
-        this.disposers.push(bindControls(this.root, { action: action => void this.action(action), unlock: () => void this.audio.unlock(), escape: () => this.escape(), layout: value => { this.settings.layout = normalizeStageLayout(value); this.settingsChanged('layout'); }, environment: value => void this.selectEnvironment(value) }));
-        this.bindHost(); this.mount(); this.updateMusicButton(); this.updateLayoutControls(); this.updateEnvironmentControls();
+        this.disposers.push(bindControls(this.root, { action: action => void this.action(action), unlock: () => void this.audio.unlock(), escape: () => this.escape(), layout: value => { this.settings.layout = normalizeStageLayout(value); this.settingsChanged('layout'); }, framing: value => { this.settings.spriteFraming = normalizeSpriteFraming(value); this.settingsChanged('spriteFraming'); }, environment: value => void this.selectEnvironment(value) }));
+        this.bindHost(); this.mount(); this.updateMusicButton(); this.updateLayoutControls(); this.updateFramingControls(); this.updateEnvironmentControls();
         void this.loadEnvironmentStyle();
         void this.refreshContext();
         this.sourceTimer = setInterval(() => this.checkSource(), 500);
@@ -273,13 +273,13 @@ export class VNController {
         }
         if (['autoAdvance', 'dialogueSecondsPerCharacter', 'narrationWordsPerMinute'].includes(key) || key.endsWith('ReactionSound')) { this.scheduleAuto(); return; }
         if (key === 'characters') this.speech.clearScene();
-        this.updateLayoutControls();
+        this.updateLayoutControls(); this.updateFramingControls();
         if (key === 'musicMuted') this.audio.setMusicMuted(this.settings.musicMuted);
         this.updateMusicButton();
         if (key === 'environmentCss') { void this.loadEnvironmentStyle(); return; }
         if (!this.settings.enabled) { this.close(); return; }
         if (key === 'musicMuted') return;
-        if (key === 'layout' || key === 'breathingCenter') { this.applyLayout(); return; }
+        if (key === 'layout' || key === 'spriteFraming' || key === 'breathingCenter') { this.applyLayout(); return; }
         if (['characters', 'showPlayerBust', 'playerName', 'playerAliases', 'displayMode', 'castMemoryTurns', 'autoCreateCharacters'].includes(key)) { this.sceneRevision = null; if (!this.root.hidden) void this.open(this.selected); }
         else if (!this.root.hidden && this.playback) this.present(this.playback.restore());
     }
@@ -369,7 +369,7 @@ export class VNController {
     async open(index) {
         if (!this.settings.enabled) return;
         this.updateMusicButton();
-        this.updateLayoutControls();
+        this.updateLayoutControls(); this.updateFramingControls();
         if (this.root.hidden) { this.previousFocus = document.activeElement; this.root.hidden = false; document.body.classList.add('vnplus-immersive'); this.root.querySelector('[data-action="exit"]').focus(); }
         this.reveal.close();
         const context = this.host.context(), identity = chatIdentity(context);
@@ -437,6 +437,7 @@ export class VNController {
         this.standaloneArtifact = false;
         this.root.querySelector('.vn-status').hidden = true; this.root.querySelector('.vn-reply').hidden = true;
         const { state, token } = result.beat;
+        this.root.classList.toggle('vn-narrating', !result.done && (token.type === 'narration' || token.type === 'dialogue' && this.registry.isNarrator(token.character)));
         this.runtimeState = structuredClone(state);
         this.worldIdentity = JSON.stringify([chatIdentity(this.host.context()), this.environment.id]);
         const playback = this.speech.playBeat(result.done || token.thought ? -1 : result.beat.index);
@@ -634,10 +635,13 @@ export class VNController {
     updateLayoutControls() {
         for (const input of [this.root.querySelector('[data-layout-picker]'), this.settingsPanel?.querySelector('[data-setting="layout"]')]) if (input) input.value = this.settings.layout;
     }
+    updateFramingControls() {
+        for (const input of [this.root.querySelector('[data-framing-picker]'), this.settingsPanel?.querySelector('[data-setting="spriteFraming"]')]) if (input) input.value = this.settings.spriteFraming;
+    }
     applyLayout() {
         const state = this.playback?.restore().beat?.state;
         if (this.root.hidden || this.busy || !this.root.querySelector('.vn-status').hidden || !state) return;
-        void this.stage.render(state, this.playback.timeline.maxSlots).catch(error => this.log(error.message));
+        void this.stage.render(this.runtimeState || state, this.playback.timeline.maxSlots).catch(error => this.log(error.message));
     }
     dispose() {
         clearInterval(this.sourceTimer);

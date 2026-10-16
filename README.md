@@ -1,4 +1,6 @@
-# Visual Novel+ 2.18.0
+# Visual Novel+ 2.19.0
+
+Version 2.19 adds a quick **Busts / Full body** toolbar selector, mirrored in **General → Artwork framing**. Full-body drawings anchor at the screen bottom while missing-art shadows keep their existing bust height and baseline. Existing per-character `offsetX`/`offsetY` pixel shifts and `bustScale` work in either mode. Narration gently dims the cast, restoring speaker lighting when dialogue resumes, independently of narrator voicing. See [framing, offsets and narration lighting](docs/character-framing.md). Refresh SillyTavern after updating; no server restart is needed.
 
 Version 2.18 adds a master emotion routing table with **388 recognized labels/adjectives** and ranked fallbacks over SillyTavern's full **28 base emotions**. Identical artwork wins first, then character `expressionAliases`, then the closest available ranked expression in that character's environment. Sparse sprite sets, legacy names, neutral/default art and newly added closer canonical sprites are supported. Inspect reports the route and rank; blinking follows the selected image. See [emotion routing and examples](docs/emotion-routing.md). Refresh SillyTavern after updating; no server restart is needed.
 
@@ -166,6 +168,8 @@ Property example (all fields optional):
   "sound": "chuckle.ogg"
 }
 ```
+
+`offsetX` and `offsetY` are pixel shifts: positive X moves right and positive Y moves down. Use the toolbar’s **Full body** option to place artwork at the screen bottom while retaining the shadow placeholders’ bust framing. See [character framing](docs/character-framing.md).
 
 Registry overrides in settings use a JSON object keyed by character folder ID and can also specify `assetFolder`. These override file properties. There are sprite previews, expression/identity alias maps, and layout overrides. Actual expression assets always take priority over aliases/defaults; `excited` retains its own presentation flair. Inactive speakers dim; narration does not remove them. Missing sprites use named shadow silhouettes, or can be hidden by preference.
 

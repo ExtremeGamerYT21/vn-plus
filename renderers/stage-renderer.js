@@ -5,6 +5,14 @@ import { sceneLighting } from '../core/scene-context.js';
 
 export class StageRenderer {
     constructor(root, resolver, registry, settings) { this.root = root; this.resolver = resolver; this.registry = registry; this.settings = settings; this.generation = 0; this.nodes = new Map(); this.sprites = new SpriteAnimator(root, resolver, settings); }
+    place(node, position) {
+        const fullBody = this.settings.spriteFraming === 'full-body' && !node.classList.contains('vn-no-sprite');
+        const top = !fullBody && this.settings.stageAlignment === 'top';
+        node.dataset.framing = fullBody ? 'full-body' : 'bust';
+        node.style.bottom = top ? 'auto' : fullBody ? `calc(${position.lift}vh - var(--vn-stage-bottom))` : `${position.lift}vh`;
+        node.style.top = top ? `${position.lift}vh` : 'auto';
+        node.style.transformOrigin = top ? 'top center' : 'bottom center';
+    }
     publishContext(state, inside) {
         const tint = this.root.querySelector('.vn-tint');
         this.appliedTint = tint.style.background || 'transparent';
@@ -21,6 +29,7 @@ export class StageRenderer {
         const generation = ++this.generation, current = () => generation === this.generation;
         const background = this.root.querySelector('.vn-background'), stage = this.root.querySelector('.vn-stage');
         this.root.dataset.mode = state.mode;
+        this.root.dataset.spriteFraming = this.settings.spriteFraming || 'bust';
         this.root.classList.toggle('vn-black', state.black || state.mode === 'black');
         this.root.classList.toggle('vn-reduced-motion', this.settings.reducedMotion);
         this.root.style.setProperty('--vn-height', `${this.settings.bustHeight}vh`);
@@ -46,7 +55,7 @@ export class StageRenderer {
             const props = this.registry.get(character.id);
             let node = this.nodes.get(character.id);
             if (!node) {
-                node = document.createElement('div'); node.className = 'vn-character'; node.dataset.character = character.id;
+                node = document.createElement('div'); node.className = 'vn-character vn-no-sprite'; node.dataset.character = character.id;
                 const fallback = createSilhouette(character.name);
                 node.append(fallback); stage.append(node); this.nodes.set(character.id, node);
             }
@@ -56,16 +65,15 @@ export class StageRenderer {
             const position = stagePosition(character.slot, count, this.settings);
             node.dataset.side = position.side; node.dataset.depth = position.depth;
             node.style.left = `${position.x}%`; node.style.width = `${position.width}vw`;
-            node.style.bottom = this.settings.stageAlignment === 'top' ? 'auto' : `${position.lift}vh`;
-            node.style.top = this.settings.stageAlignment === 'top' ? `${position.lift}vh` : 'auto';
-            node.style.transformOrigin = this.settings.stageAlignment === 'top' ? 'top center' : 'bottom center';
+            this.place(node, position);
             node.style.setProperty('--vn-scale', this.settings.bustScale * (Number(props.bustScale) || 1) * position.scale);
             node.style.setProperty('--vn-offset-x', `${Number(props.offsetX) || 0}px`);
             node.style.setProperty('--vn-offset-y', `${Number(props.offsetY) || 0}px`);
             node.style.zIndex = String(position.z);
-            if (!this.sprites.records.has(node)) node.classList.add('vn-no-sprite');
             node.classList.toggle('vn-hide-missing', this.settings.missingAsset === 'hide');
             await this.sprites.render(node, character.id, character.expression, this.registry.expressionCandidates(character.id, character.expression), props);
+            // Image availability can change during loading. Shadows keep the bust baseline.
+            if (current()) this.place(node, position);
         })]);
     }
     cancelPending() { this.generation++; this.sprites.cancelPending(); }
@@ -74,7 +82,7 @@ export class StageRenderer {
         this.sprites.clear();
         this.nodes.forEach(node => node.remove()); this.nodes.clear();
         const background = this.root.querySelector('.vn-background'); background.style.backgroundImage = ''; background.dataset.asset = ''; this.backgroundUrl = null;
-        this.root.querySelector('.vn-tint').style.background = ''; this.root.classList.remove('vn-black');
+        this.root.querySelector('.vn-tint').style.background = ''; this.root.classList.remove('vn-black', 'vn-narrating');
         this.publishContext({}, false);
     }
     dispose() { this.clear(); this.sprites.dispose(); }

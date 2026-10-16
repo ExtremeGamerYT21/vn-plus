@@ -4,6 +4,11 @@ export const STAGE_LAYOUT_OPTIONS = [
     { value: 'rows', label: 'Left and right groups' },
     { value: 'separate', label: 'Four separate busts' },
 ];
+export const SPRITE_FRAMING_OPTIONS = [
+    { value: 'bust', label: 'Busts' },
+    { value: 'full-body', label: 'Full body' },
+];
+export const normalizeSpriteFraming = value => value === 'full-body' ? 'full-body' : 'bust';
 export function normalizeStageLayout(value) { return ['separate', 'spread', 'compact'].includes(value) ? 'separate' : 'rows'; }
 
 /** Stable slots alternate left/right; inner rows recede upwards and shrink. */

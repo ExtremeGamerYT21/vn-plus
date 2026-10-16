@@ -1,4 +1,4 @@
-import { STAGE_LAYOUT_OPTIONS } from '../core/stage-layout.js';
+import { STAGE_LAYOUT_OPTIONS, SPRITE_FRAMING_OPTIONS } from '../core/stage-layout.js';
 
 export function createOverlay() {
     const root = document.createElement('section'); root.id = 'vnplus-overlay'; root.className = 'vnplus-ui'; root.hidden = true;
@@ -20,5 +20,9 @@ export function createOverlay() {
     for (const { value, label } of STAGE_LAYOUT_OPTIONS) {
         const option = document.createElement('option'); option.value = value; option.textContent = label; root.querySelector('[data-layout-picker]').append(option);
     }
+    const framing = document.createElement('select'); framing.className = 'vn-framing-picker'; framing.dataset.framingPicker = '';
+    framing.setAttribute('aria-label', 'VN artwork framing'); framing.title = 'Anchor full-body artwork at the screen bottom; shadow placeholders keep their bust framing';
+    for (const { value, label } of SPRITE_FRAMING_OPTIONS) { const option = document.createElement('option'); option.value = value; option.textContent = label; framing.append(option); }
+    root.querySelector('[data-layout-picker]').after(framing);
     document.body.append(root); return root;
 }
