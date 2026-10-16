@@ -722,6 +722,62 @@ await check('environment CSS changes dialogue and button layout while scoping re
         assert(css.includes('@keyframes vn-environment-')); assert(!css.includes('@keyframes custom-pop')); assert(!css.includes('@font-face'));
     } finally { controller.environmentStyle.read = original; await controller.loadEnvironmentStyle(); }
 });
+await check('environment settings CSS stays inside VN settings and cannot style the overlay or host', async () => {
+    const original = controller.environmentStyle.read, originalSettings = controller.environmentStyle.readSettings;
+    const send = document.querySelector('#send_but'), outsideColor = getComputedStyle(send).color;
+    controller.environmentStyle.read = async () => '.vn-dialogue { border-radius:19px; } button { letter-spacing:1px; }';
+    controller.environmentStyle.readSettings = async () => `
+        :root { --vn-ledger-test: active; --vn-ledger-font:Georgia,serif; --vn-ledger-string:"one; two"; }
+        #vnplus-settings { border-radius:27px; }
+        button { letter-spacing:3px; }
+        #vnplus-overlay { --vn-settings-escape: bad; }
+        :scope ~ #send_but, #send_but { color:rgb(255,0,0) !important; }
+        @media (min-width:1px) { h3 { padding-left:9px; font:700 21px/1.6 var(--vn-ledger-font); } }
+        textarea { background-image:url("ui/paper.png"); animation:ledger 1s; }
+        @keyframes ledger { from { opacity:1; } to { opacity:1; } }
+    `;
+    try {
+        await controller.loadEnvironmentStyle(); equal(controller.environmentStyleStatus.files.join(','), 'dialogue.css,settings.css');
+        equal(getComputedStyle(controller.settingsPanel).borderTopLeftRadius, '27px');
+        equal(getComputedStyle(controller.settingsPanel).getPropertyValue('--vn-ledger-test').trim(), 'active');
+        equal(getComputedStyle(controller.settingsPanel.querySelector('button')).letterSpacing, '3px');
+        equal(getComputedStyle(controller.root.querySelector('button')).letterSpacing, '1px');
+        equal(getComputedStyle(controller.root.querySelector('.vn-dialogue')).borderTopLeftRadius, '19px');
+        equal(getComputedStyle(controller.settingsPanel.querySelector('h3')).paddingLeft, '9px');
+        equal(getComputedStyle(controller.settingsPanel.querySelector('h3')).fontSize, '21px');
+        assert(getComputedStyle(controller.settingsPanel.querySelector('h3')).fontFamily.includes('Georgia'));
+        equal(getComputedStyle(controller.settingsPanel).getPropertyValue('--vn-ledger-string').trim(), '"one; two"');
+        equal(getComputedStyle(controller.root).getPropertyValue('--vn-ledger-test'), '');
+        equal(getComputedStyle(controller.root).getPropertyValue('--vn-settings-escape'), '');
+        equal(getComputedStyle(send).color, outsideColor); equal(getComputedStyle(document.body).getPropertyValue('--vn-ledger-test'), '');
+        assert(controller.environmentStyle.style.textContent.includes(controller.resolver.base.href + 'ui/paper.png'));
+    } finally { controller.environmentStyle.read = original; controller.environmentStyle.readSettings = originalSettings; await controller.loadEnvironmentStyle(); }
+});
+await check('settings-only CSS follows environment changes remounts disable and disposal', async () => {
+    const original = controller.environmentStyle.read, originalSettings = controller.environmentStyle.readSettings;
+    const environment = controller.environment.id, enabled = controller.settings.environmentCss;
+    controller.environmentStyle.read = async () => null;
+    controller.environmentStyle.readSettings = async resolver => `:scope { --vn-settings-world:${resolver.namespace}; }`;
+    try {
+        controller.settings.environmentCss = true; await controller.loadEnvironmentStyle();
+        equal(controller.environmentStyleStatus.files.join(','), 'settings.css');
+        const old = controller.environmentStyle.style, oldPanel = controller.settingsPanel;
+        oldPanel.remove(); controller.mount();
+        assert(!oldPanel.dataset.vnStyleScope); equal(controller.settingsPanel.dataset.vnStyleScope, controller.environmentStyle.token);
+        equal(getComputedStyle(controller.settingsPanel).getPropertyValue('--vn-settings-world').trim(), environment);
+        await controller.selectEnvironment('harry-potter'); await eventually(() => controller.environmentStyleStatus.status === 'loaded');
+        assert(!old.isConnected); equal(getComputedStyle(controller.settingsPanel).getPropertyValue('--vn-settings-world').trim(), 'harry-potter');
+        controller.settings.environmentCss = false; await controller.loadEnvironmentStyle();
+        equal(getComputedStyle(controller.settingsPanel).getPropertyValue('--vn-settings-world'), '');
+        controller.settings.environmentCss = true; controller.environmentStyle.readSettings = async () => null; await controller.loadEnvironmentStyle();
+        equal(controller.environmentStyleStatus.status, 'missing'); assert(!controller.environmentStyle.style);
+        const root = document.createElement('section'), panel = document.createElement('aside'), style = new EnvironmentStyle(root);
+        style.setSettingsRoot(panel); assert(panel.dataset.vnStyleScope); style.dispose(); assert(!panel.dataset.vnStyleScope); assert(!root.dataset.vnStyleScope);
+    } finally {
+        controller.environmentStyle.read = original; controller.environmentStyle.readSettings = originalSettings;
+        controller.settings.environmentCss = enabled; await controller.selectEnvironment(environment); await controller.loadEnvironmentStyle();
+    }
+});
 await check('environment changes unload the previous CSS and apply each setting without changing the paragraph', async () => {
     const original = controller.environmentStyle.read, environment = controller.environment.id, position = controller.playback.position;
     controller.environmentStyle.read = async resolver => `.vn-dialogue { border-radius:${resolver.namespace === 'harry-potter' ? 22 : 11}px; }`;

@@ -1,0 +1,205 @@
+/* Harry Potter · correspondence & brass
+   Copy to environments/harry-potter/dialogue.css, then Refresh assets.
+   Original CSS; no downloaded artwork, web fonts or network dependencies.
+   Research and customization: examples/harry-potter/README.md */
+
+:scope {
+    --hp-paper: #e9d9b5;
+    --hp-ink: #30291e;
+    --hp-green: #254c39;
+    --hp-brass: #bba16a;
+    --hp-wax: #7d3833;
+    --hp-serif: "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+    --vn-panel: #182920;
+    --vn-world-color: #101a15;
+    --vn-ui-color: #f0e4c9;
+    --vn-muted: #c4b591;
+    --vn-ui-accent: #d8bd7c;
+    --vn-border: #9f8958;
+    font-family: var(--hp-serif);
+}
+
+/* A bound-book header. The fine rules and diamond are drawn entirely in CSS. */
+.vn-top {
+    top: 12px;
+    width: calc(100% - 28px);
+    padding: 11px 16px;
+    gap: 12px 20px;
+    border: 1px solid var(--hp-brass);
+    border-radius: 2px;
+    background: #16271ff5;
+    box-shadow: inset 0 0 0 3px #16271f, inset 0 0 0 4px #bba16a45, 0 5px 18px #0005;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.vn-top > div { display: grid; align-items: center; gap: 5px; flex-shrink: 0; }
+.vn-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+    font: 700 22px/1 var(--hp-serif);
+    letter-spacing: .025em;
+    white-space: nowrap;
+    color: #ead9b1;
+}
+.vn-brand::before {
+    content: "";
+    width: 12px;
+    height: 12px;
+    border: 1px solid var(--hp-brass);
+    outline: 1px solid #bba16a55;
+    outline-offset: 3px;
+    transform: rotate(45deg);
+    margin: 0 5px;
+}
+.vn-scene-label {
+    max-width: 160px;
+    font: 9px/1.5 var(--hp-serif);
+    letter-spacing: .10em;
+    color: #c6b58d;
+}
+.vn-top nav { gap: 6px; align-items: center; margin-left: auto; }
+button, .vn-layout-picker, .vn-environment-picker, .vn-framing-picker {
+    color: #f0e4c9;
+    background: #1b3025;
+    border: 1px solid #a98f5a;
+    border-radius: 2px;
+    padding: 8px 11px;
+    font: 13px/1.25 var(--hp-serif);
+    box-shadow: inset 0 0 0 2px #0d1c1655;
+    text-shadow: none;
+    transition: background-color .18s, border-color .18s;
+}
+.vn-top button, .vn-layout-picker, .vn-environment-picker, .vn-framing-picker { font-size: 12px; }
+.vn-environment-picker { max-width: 200px; }
+button:hover:not(:disabled) { background: #304b36; border-color: #ead39a; }
+button[aria-pressed="true"] { background: #5b2926; border-color: #d3b17a; }
+button:disabled { opacity: .5; cursor: default; }
+button:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-visible {
+    outline: 2px solid #f2d899;
+    outline-offset: 3px;
+}
+select option { background: #1b3025; color: #f0e4c9; }
+
+/* Character colors remain inks. Unspecified colors use the darker paper palette.
+   Image-only boxes retain their authored image and transparent framing. */
+.vn-dialogue:not(.vn-image-only) {
+    --vn-ui-color: var(--hp-ink);
+    --vn-muted: #675338;
+    --vn-ui-accent: var(--hp-green);
+    --vn-border-color: #887044;
+    width: min(860px, calc(100vw - 72px));
+    min-height: 168px;
+    max-height: 44vh;
+    margin-bottom: 16px;
+    padding: 24px 34px 17px;
+    border: 1px solid #887044;
+    border-radius: 2px;
+    color: var(--hp-ink);
+    background-color: var(--hp-paper) !important;
+    background-image:
+        radial-gradient(ellipse at 7% 0%, #ae874629, transparent 48%),
+        radial-gradient(ellipse at 95% 100%, #97733b25, transparent 45%),
+        repeating-linear-gradient(3deg, #5b3c1507 0px, #5b3c1507 1px, transparent 1px, transparent 5px),
+        linear-gradient(100deg, #eadcbb, #f1e5c8 48%, #e5d2a9);
+    background-size: auto;
+    box-shadow: 0 12px 34px #0008, inset 0 0 22px #8e662620;
+    backdrop-filter: none;
+}
+.vn-dialogue:not(.vn-image-only)::before {
+    content: "";
+    position: absolute;
+    inset: 7px;
+    height: auto;
+    background: none;
+    border-block: 1px solid #8870447a;
+    pointer-events: none;
+}
+.vn-dialogue:not(.vn-image-only)::after {
+    content: "";
+    position: absolute;
+    inset: 11px;
+    border-inline: 1px solid #8870445e;
+    pointer-events: none;
+}
+.vn-dialogue:not(.vn-image-only) .vn-speaker {
+    width: fit-content;
+    padding: 0 0 8px;
+    margin: 0 0 10px;
+    border-bottom: 1px solid #88704450;
+    border-radius: 0;
+    background: transparent !important;
+    font: 700 13px/1.35 var(--hp-serif);
+    letter-spacing: .12em;
+}
+.vn-dialogue:not(.vn-image-only) .vn-text {
+    font-family: var(--hp-serif);
+    line-height: 1.65;
+    text-shadow: none;
+}
+.vn-dialogue:not(.vn-image-only) .vn-dialogue-foot {
+    color: #66543a;
+    font: 11px/1.4 var(--hp-serif);
+    margin-top: 15px;
+    letter-spacing: .035em;
+}
+.vn-dialogue:not(.vn-image-only) .vn-dialogue-foot b { color: var(--hp-green); }
+.vn-controls {
+    margin-bottom: max(18px, env(safe-area-inset-bottom));
+    padding: 6px;
+    gap: 6px;
+    border: 1px solid #bba16a65;
+    border-radius: 2px;
+    background: #14251dee;
+    box-shadow: 0 5px 18px #0005;
+}
+.vn-controls button { min-height: 35px; font-size: 13px; backdrop-filter: none; }
+.vn-controls [data-action="next"] {
+    background: #e0c997;
+    border-color: #e9d7ab;
+    color: #24382b;
+    font-weight: 700;
+    min-width: 118px;
+}
+.vn-controls [data-action="next"]:hover { background: #f2e0b6; }
+.vn-panel > section, .vn-reply, .vn-artifact > section {
+    border: 1px solid var(--hp-brass);
+    border-radius: 2px;
+    box-shadow: 0 18px 70px #0009, inset 0 0 0 4px #bba16a20;
+}
+.vn-panel header, .vn-artifact header { font-family: var(--hp-serif); border-bottom-color: #bba16a70; }
+.vn-transcript { font-family: var(--hp-serif); line-height: 1.65; }
+.vn-hint { color: #c4b591; opacity: 1; }
+.vn-reply textarea { border-radius: 1px; font-family: var(--hp-serif); }
+.vn-silhouette-name { border-radius: 1px; font-family: var(--hp-serif); }
+
+@media (min-width: 1600px) {
+    .vn-top { top: 16px; width: calc(100% - 40px); padding: 13px 20px; }
+}
+@media (max-width: 1100px) {
+    .vn-top { gap: 9px; padding: 10px 13px; }
+    .vn-top nav { justify-content: flex-end; }
+    .vn-scene-label { max-width: 50vw; }
+}
+@media (max-width: 600px) {
+    .vn-top { top: 6px; width: calc(100% - 12px); padding: 10px; gap: 9px; }
+    .vn-brand { font-size: 19px; }
+    .vn-scene-label { display: block; max-width: none; font-size: 9px; }
+    .vn-top > div { display: flex; gap: 9px; }
+    .vn-top nav { width: 100%; justify-content: flex-start; gap: 5px; }
+    .vn-top button, .vn-layout-picker, .vn-environment-picker, .vn-framing-picker { padding: 7px 8px; font-size: 11px; }
+    .vn-environment-picker { max-width: 48%; }
+    .vn-dialogue:not(.vn-image-only) {
+        width: calc(100vw - 20px) !important;
+        min-width: 0;
+        min-height: 156px;
+        max-height: 42vh;
+        padding: 20px 22px 14px;
+        margin-bottom: 10px;
+    }
+    .vn-dialogue:not(.vn-image-only) .vn-speaker { font-size: 12px; }
+    .vn-controls { padding: 5px; gap: 5px; margin-inline: 10px; margin-bottom: max(10px, env(safe-area-inset-bottom)); }
+    .vn-controls button { padding: 8px 10px; font-size: 12px; }
+    .vn-controls [data-action="next"] { min-width: 105px; }
+}

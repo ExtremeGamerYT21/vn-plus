@@ -90,7 +90,7 @@ export function createSettings(settings, callbacks) {
             const cssRow = document.createElement('label'); cssRow.className = 'vn-setting';
             const cssToggle = document.createElement('input'); cssToggle.type = 'checkbox'; cssToggle.checked = settings.environmentCss !== false; cssToggle.dataset.setting = 'environmentCss';
             cssToggle.addEventListener('change', () => { settings.environmentCss = cssToggle.checked; callbacks.change('environmentCss'); });
-            cssRow.append(document.createTextNode('Apply environment dialogue.css'), cssToggle); details.append(cssRow);
+            cssRow.append(document.createTextNode('Apply environment CSS (dialogue / settings)'), cssToggle); details.append(cssRow);
             const cssStatus = document.createElement('p'); cssStatus.className = 'vn-hint'; cssStatus.dataset.environmentCssStatus = ''; cssStatus.role = 'status'; details.append(cssStatus);
             const hint = document.createElement('p'); hint.className = 'vn-hint'; hint.dataset.environmentStatus = ''; hint.role = 'status'; details.append(hint);
         }

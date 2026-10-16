@@ -1,0 +1,108 @@
+/* Harry Potter · a settings ledger
+   Copy to environments/harry-potter/settings.css, then Refresh assets.
+   Scoped to VN+ settings only; other SillyTavern extensions are untouched. */
+
+:scope {
+    --hp-paper: #e9d9b5;
+    --hp-ink: #30291e;
+    --hp-green: #254c39;
+    --hp-brass: #a78b52;
+    --hp-serif: "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+    --vn-ui-color: var(--hp-ink);
+    --vn-muted: #675338;
+    --vn-panel: #f4e9cf;
+    --vn-ui-accent: var(--hp-green);
+    --vn-border: #9c835b80;
+    color-scheme: light;
+    color: var(--hp-ink);
+    font: 14px/1.5 var(--hp-serif);
+    padding: 18px 16px;
+    border: 1px solid #a78b52;
+    border-radius: 2px;
+    background-color: var(--hp-paper);
+    background-image:
+        radial-gradient(ellipse at 0% 0%, #99713d18, transparent 65%),
+        repeating-linear-gradient(4deg, #67471805 0px, #67471805 1px, transparent 1px, transparent 6px);
+    box-shadow: inset 0 0 0 4px #e9d9b5, inset 0 0 0 5px #a78b5250;
+    box-sizing: border-box;
+}
+h3 {
+    margin: -7px 0 16px;
+    padding: 13px 2px 14px;
+    border-bottom: 3px double #8f7449;
+    color: var(--hp-green);
+    font: 700 26px/1.2 var(--hp-serif);
+    letter-spacing: .035em;
+}
+h3::before { content: "✦"; color: #95763c; font-size: 17px; margin-right: 10px; }
+details {
+    border-top: 1px solid #9b80554d;
+    padding: 12px 0;
+}
+summary {
+    cursor: pointer;
+    color: var(--hp-green);
+    font: 700 15px/1.4 var(--hp-serif);
+    letter-spacing: .035em;
+    padding: 3px 0;
+}
+summary::marker { color: #866a36; font-size: .75em; }
+details[open] > summary { margin-bottom: 13px; }
+details details { margin-top: 8px; padding-left: 12px; border-left: 2px solid #a78b5255; }
+.vn-settings-actions { gap: 7px; margin-bottom: 16px; }
+button {
+    min-height: 34px;
+    border: 1px solid #8f774c;
+    border-radius: 2px;
+    padding: 7px 10px;
+    color: #f2e5c7;
+    background: #284735;
+    box-shadow: inset 0 0 0 2px #152f2240;
+    text-shadow: none;
+    font: 13px/1.25 var(--hp-serif);
+    transition: background-color .18s;
+}
+button:hover:not(:disabled) { background: #3b5e46; border-color: #725c32; }
+button:disabled { opacity: .5; cursor: default; }
+.vn-setting {
+    gap: 12px;
+    padding-bottom: 9px;
+    margin: 9px 0 0;
+    border-bottom: 1px solid #a78b5225;
+    font: 13px/1.45 var(--hp-serif);
+    color: var(--hp-ink);
+}
+.vn-setting > span { flex: 1; min-width: 0; }
+input:not([type="checkbox"]), .vn-setting input:not([type="checkbox"]), select, .vn-setting select, textarea {
+    color: #30291e;
+    background: #f7eed8;
+    border: 1px solid #a38d65;
+    border-radius: 2px;
+    min-height: 32px;
+    padding: 6px 8px;
+    box-sizing: border-box;
+    font: 13px/1.4 var(--hp-serif);
+    text-shadow: none;
+    box-shadow: inset 0 1px 3px #654b1610;
+}
+.vn-setting input:not([type="checkbox"]), .vn-setting select { width: 45%; min-width: 0; flex-shrink: 0; }
+input[type="checkbox"] { width: 16px; height: 16px; accent-color: #31573d; flex-shrink: 0; }
+input::placeholder, textarea::placeholder { color: #786847; opacity: 1; }
+textarea { width: 100%; font: 12px/1.6 Consolas, monospace; }
+button:focus-visible, summary:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline: 2px solid #31573d;
+    outline-offset: 3px;
+}
+.vn-hint, .vn-speech-status, [role="status"] { color: #625137; opacity: 1; font: 12px/1.65 var(--hp-serif); overflow-wrap: anywhere; }
+.vn-hint { margin: 10px 0; }
+a { color: #254c39; text-decoration-color: #8a6c36; }
+code { color: #663c2e; background: #be9b5420; font-size: .9em; }
+.vn-speech-review { color: #713832; }
+.vn-speech-segment { border-bottom-color: #a78b5255; }
+.vn-sprite-preview { border-bottom: 1px solid #a78b5260; padding-bottom: 8px; }
+
+@media (max-width: 420px) {
+    :scope { padding: 16px 12px; }
+    .vn-setting { gap: 8px; font-size: 12px; }
+    .vn-settings-actions button { flex-grow: 1; }
+}

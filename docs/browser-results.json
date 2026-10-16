@@ -1,5 +1,5 @@
 {
-  "status": "100 passed · 0 failed",
+  "status": "102 passed · 0 failed",
   "tests": [
     "PASS · POV privacy and four characters from one scenario",
     "PASS · backward restores background, expression and audio state",
@@ -41,6 +41,8 @@
     "PASS · obsolete background properties cannot apply outdoor lighting over a newer indoor scene",
     "PASS · header edits and fresh controllers restore story time and a new chat clears variables",
     "PASS · environment CSS changes dialogue and button layout while scoping resources animations and selectors",
+    "PASS · environment settings CSS stays inside VN settings and cannot style the overlay or host",
+    "PASS · settings-only CSS follows environment changes remounts disable and disposal",
     "PASS · environment changes unload the previous CSS and apply each setting without changing the paragraph",
     "PASS · stale stylesheet loads and disposed renderers cannot reinstate old environment styles",
     "PASS · the settings CSS toggle and Refresh assets reload styling without advancing the scene",

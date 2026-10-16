@@ -6,6 +6,7 @@ Each setting owns a directory here. Choose it under General → Content environm
 environments/{id}/
   environment.json           # { "name": "Your setting", "description": "..." }
   dialogue.css              # optional local styling for the box and VN controls
+  settings.css              # optional local styling for VN+ extension settings
   characters/{character}/    # sprites, properties.json, blink images, voice/SFX
   characters/shared/        # dialogue textures and shared character sounds
   backgrounds/              # local properties.json maps filenames to { "inside": true/false }
@@ -27,7 +28,7 @@ Asset names in POV commands remain relative to the selected environment: `#BACKG
 
 Run `npm run backgrounds` to create or fill each environment's ignored `backgrounds/properties.json` without replacing existing values. Mark indoors with `inside: true`; unlisted/unclassified images are outdoors. The shipped Coffin defaults seed its local file. Properties follow the actual matched filename. Refresh assets after edits. See [scene variables and lighting](../docs/scene-context.md).
 
-An optional ignored `dialogue.css` controls that environment's dialogue box and buttons. It is scoped to VN mode, unloads on switching, and reloads with **Refresh assets**. See [environment CSS](../docs/environment-css.md) for examples and selectors.
+An optional ignored `dialogue.css` controls that environment's dialogue box and buttons. An independent `settings.css` styles only VN+'s extension settings. Both unload on switching and reload with **Refresh assets**. See [environment CSS](../docs/environment-css.md) for examples and selectors, or copy the [Harry Potter theme](../examples/harry-potter/README.md) into your local Harry Potter folder.
 
 Character registry overrides, dialogue font choice and dialogue texture choice are saved separately for each environment. Per-character file properties, breathing centers, blink alternatives, themes and sounds live beside that setting's artwork. Global playback/audio/layout preferences continue to apply across environments.
 

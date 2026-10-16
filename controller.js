@@ -178,6 +178,7 @@ export class VNController {
             target.append(this.settingsPanel);
             applyTheme(this.settingsPanel, this.settings);
         }
+        this.environmentStyle.setSettingsRoot(target?.querySelector('#vnplus-settings') || null);
         for (const node of document.querySelectorAll('#chat .mes[mesid]')) {
             const index = Number(node.getAttribute('mesid')), message = readMessage(this.host.context(), index);
             const existing = node.querySelector('.vn-message-tools');
@@ -297,7 +298,7 @@ export class VNController {
         if (resolver !== this.resolver || result.status === 'cancelled') return;
         this.environmentStyleStatus = result;
         const status = this.settingsPanel?.querySelector('[data-environment-css-status]');
-        if (status) status.textContent = result.status === 'loaded' ? 'Environment dialogue.css loaded. Refresh assets after editing it.' : result.status === 'error' ? `Environment CSS: ${result.error}` : result.status === 'disabled' ? 'Environment CSS is disabled.' : 'Optional environment dialogue.css is not present. Built-in styling is active.';
+        if (status) status.textContent = result.status === 'loaded' ? `Environment ${result.files.join(' and ')} loaded. Refresh assets after editing.` : result.status === 'error' ? `Environment CSS: ${result.error}` : result.status === 'disabled' ? 'Environment CSS is disabled.' : 'Optional environment CSS is not present. Built-in styling is active.';
     }
     createRegistry(resolver, environment) {
         const discover = this.host.resolveCharacters ? () => this.host.resolveCharacters({ environment: environment.path ? environment.id : null }) : null;
