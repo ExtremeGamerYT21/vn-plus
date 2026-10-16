@@ -5,8 +5,10 @@ import { DEFAULT_ENVIRONMENT, initializeContentProfiles } from '../core/content-
 import { INTENSE_EMOTIONS } from '../renderers/emotion-flair.js';
 import { createThemeSettings } from './theme-settings.js';
 import { SPEECH_DEFAULTS, speechSettings } from '../core/speech-segments.js';
+import { LIGHT_DEFAULTS } from '../core/scene-light.js';
 
 export const DEFAULT_SETTINGS = {
+    ...LIGHT_DEFAULTS,
     enabled: true, automaticPlayback: false, environmentCss: true, playerName: 'Jason', playerAliases: [], showPlayerBust: true,
     layout: 'rows', spriteFraming: 'bust', stageLayoutVersion: 3, layouts: {}, displayMode: 'vn', bustScale: 1, bustHeight: 78, stageSpacing: 1, stageAlignment: 'bottom', inactiveBrightness: .45,
     rowSpacing: 8, rowRise: 6.5, rowDepthScale: .95,
@@ -51,6 +53,7 @@ export function loadSettings(context) {
 }
 
 const FIELDS = {
+    'Scene lighting': [['sceneLightEnabled', 'Enable 3D scene light', 'checkbox'], ['sceneLightNormalMaps', 'Use sprite normal and material maps', 'checkbox'], ['sceneLightHud', 'Light HUD and buttons', 'checkbox'], ['sceneLightIntensity', 'Light intensity', 'number', 0, 2], ['sceneLightAmbient', 'Ambient fill (readability)', 'number', 0, 1]],
     General: [['enabled', 'Enable Visual Novel+', 'checkbox'], ['automaticPlayback', 'Open completed responses automatically', 'checkbox'], ['playerName', 'Player identity', 'text'], ['playerAliases', 'Player aliases (comma separated)', 'aliases'], ['showPlayerBust', 'Hide player bust (first-person view)', 'inverse-checkbox'], ['castMemoryTurns', 'Cast memory (VN responses; 0 keeps until exit)', 'number', 0, 50], ['layout', 'Bust layout', STAGE_LAYOUT_OPTIONS], ['spriteFraming', 'Artwork framing', SPRITE_FRAMING_OPTIONS], ['displayMode', 'Default presentation', ['vn', 'cinematic', 'prose', 'black']]],
     Timing: [['autoAdvance', 'Auto: follow narrative timing', 'checkbox'], ['dialogueSecondsPerCharacter', 'Silent dialogue (seconds per character)', 'number', .01, 1], ['narrationWordsPerMinute', 'Narration reading speed (words/minute)', 'number', 60, 1000], ...['hurried', 'scared', 'lazy', 'bored', 'normal'].map(tag => [`${tag}ReactionSound`, `${tag}: optional reaction SFX name`, 'text'])],
     Presentation: [['typewriterEffect', 'Typewriter', 'checkbox'], ['typewriterSpeed', 'Typewriter delay (ms)', 'number', 0, 200], ['reducedMotion', 'Reduced motion', 'checkbox'], ['textEffects', 'Emotion text effects', 'checkbox'], ['intenseEmotions', 'Emotion tags that shake (comma separated)', 'aliases'], ['screenEffects', 'Screen effects', 'checkbox'], ['dialogueFont', 'Font name or CSS family stack', 'text'], ['textColor', 'Dialogue color override (empty inherits theme)', 'text'], ['narrationColor', 'Narration color override (empty inherits theme)', 'text'], ['textScale', 'Text scale', 'number', .6, 2], ['letterSpacing', 'Letter spacing (px)', 'number', -1, 5], ['dialogueBoxWidth', 'Dialogue width (% viewport)', 'number', 25, 94], ['dialogueBoxHeight', 'Dialogue minimum height (px)', 'number', 100, 450], ['overlayOpacity', 'Dialogue opacity', 'number', .1, 1], ['dialogueBoxTexture', 'Texture path under characters/', 'text'], ['dialogueBoxImageOnly', 'Textbox image only (no fill or frame)', 'checkbox'], ['showBoxChrome', 'Dialogue border and accent', 'checkbox'], ['showBoxBackground', 'Dialogue panel background', 'checkbox']],
@@ -99,6 +102,9 @@ export function createSettings(settings, callbacks) {
         }
         if (group === 'Timing') {
             const hint = document.createElement('p'); hint.className = 'vn-hint'; hint.textContent = 'Auto uses prepared voice clips and their timestamps, or local dialogue/reading/action rules. Without a rule, continue manually. Visuals stay interactive during narration. Only a matching #VISUAL CLOSE enables an object inspection duration. Reaction tags use local aliases and patterns; no model is called.'; details.append(hint);
+        }
+        if (group === 'Scene lighting') {
+            const hint = document.createElement('p'); hint.className = 'vn-hint'; hint.textContent = 'Uses story time outdoors and a warm overhead light indoors. Background properties can override light.position, color, intensity and ambient. Optional emotion_normal.png and emotion_material.png sit beside the resolved sprite; material RGB = occlusion, roughness, metallic. Artifacts receive lighting through VNPlus.getLighting() and onLighting().'; details.append(hint);
         }
         if (group === 'Characters') {
             const row = document.createElement('label'); row.className = 'vn-setting';

@@ -1,4 +1,5 @@
 import { sceneLighting } from './scene-context.js';
+import { sceneLight } from './scene-light.js';
 
 export const SHARED_STATE_KEY = 'vn_plus';
 
@@ -18,7 +19,7 @@ export function sceneSnapshot({ state, registry, settings, environment, stage, a
         scene: structuredClone(state.scene), timeOfDay: sceneLighting(state.scene, false).period, characters, speaker: state.speaker,
         player: { id: playerId, name: registry.get(playerId).displayName || settings.playerName, emotion: state.playerEmotion || player?.emotion || null, present: !!player },
         background: { name: state.background, asset: stage.backgroundUrl || null, inside: !!stage.variables?.lighting.inside, outside: !stage.variables?.lighting.inside },
-        lighting: { ...sceneLighting(state.scene, !!stage.variables?.lighting.inside), ambientColor: stage.ambientColor || '#ffffff', tint: stage.appliedTint || 'transparent', tintOpacity: .28 },
+        lighting: { ...sceneLighting(state.scene, !!stage.variables?.lighting.inside), ...(settings.sceneLightEnabled ? { light: sceneLight(state.scene, !!stage.variables?.lighting.inside, settings, stage.backgroundProperties) } : {}), ambientColor: stage.ambientColor || '#ffffff', tint: stage.appliedTint || 'transparent', tintOpacity: .28 },
         music: audioState(state.music, audio.channels.music, settings.musicMuted, settings.musicVolume),
         ambient: audioState(state.ambient, audio.channels.ambient, false, settings.ambientVolume),
         presentation: { mode: state.mode, black: state.black, camera: structuredClone(state.camera), textEffect: state.textEffect }, visuals: Object.keys(state.visuals || {}) };

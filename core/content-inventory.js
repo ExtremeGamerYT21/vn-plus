@@ -8,7 +8,7 @@ export function inventoryCharacters(files) {
     for (const file of paths(files).filter(name => name.startsWith('characters/'))) {
         const [, id] = file.split('/'); if (!id || id === 'shared') continue;
         characters[id] ??= { expressions: [] };
-        if (/\.(webp|png|jpe?g|gif|avif)$/i.test(file)) characters[id].expressions.push(file.split('/').at(-1).replace(/\.[^.]+$/, ''));
+        if (/\.(webp|png|jpe?g|gif|avif)$/i.test(file) && !/_(?:normal|material)\.[^.]+$/i.test(file)) characters[id].expressions.push(file.split('/').at(-1).replace(/\.[^.]+$/, ''));
     }
     for (const props of Object.values(characters)) props.expressions = [...new Set(props.expressions)].sort();
     return characters;

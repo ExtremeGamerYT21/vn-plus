@@ -125,7 +125,7 @@ export class VNController {
             this.root.append(tint); const color = getComputedStyle(tint).backgroundColor; tint.remove();
             this.contextProjection = { state, registry, environment, available: entries.some(entry => entry.ready || entry.header),
                 source: entries.length ? { message: entries.at(-1).index, swipe: entries.at(-1).swipe, beat: null, position: null } : null,
-                urls: { background, music, ambient }, stage: { backgroundUrl: background, variables: { lighting: sceneLighting(state.scene, properties.inside) },
+                urls: { background, music, ambient }, stage: { backgroundUrl: background, backgroundProperties: properties, variables: { lighting: sceneLighting(state.scene, properties.inside) },
                     appliedTint: state.tint, ambientColor: color === 'rgba(0, 0, 0, 0)' ? '#ffffff' : color } };
             this.sharedState.commit(this.contextSnapshot(), epoch);
         } catch (error) {
@@ -257,6 +257,7 @@ export class VNController {
         this.observer.observe(document.body, { childList: true, subtree: true });
     }
     settingsChanged(key) {
+        if (key.startsWith('sceneLight')) this.scheduleContextRefresh();
         if (['characters', 'showPlayerBust', 'playerName', 'playerAliases', 'displayMode', 'castMemoryTurns'].includes(key)) this.scheduleContextRefresh();
         if (key === 'environment') { void this.selectEnvironment(this.settings.environment); return; }
         if (CONTENT_PROFILE_KEYS.includes(key) || key === 'breathingCenter' || key === 'themeReset') saveContentProfile(this.settings, this.environment.id);
@@ -538,7 +539,7 @@ export class VNController {
         const color = getComputedStyle(tint).backgroundColor; tint.remove();
         const value = sceneSnapshot({ state, registry, settings: this.settings, environment,
             source: { message: index, swipe: this.host.context().chat[index]?.swipe_id || 0, beat: beat.index, position: null },
-            audio: { channels: { music: {}, ambient: {} } }, stage: { backgroundUrl: background, variables: { lighting: sceneLighting(state.scene, properties.inside) }, appliedTint: state.tint, ambientColor: color === 'rgba(0, 0, 0, 0)' ? '#ffffff' : color } });
+            audio: { channels: { music: {}, ambient: {} } }, stage: { backgroundUrl: background, backgroundProperties: properties, variables: { lighting: sceneLighting(state.scene, properties.inside) }, appliedTint: state.tint, ambientColor: color === 'rgba(0, 0, 0, 0)' ? '#ffffff' : color } });
         value.music.asset = music; value.ambient.asset = ambient; value.basis = 'artifact'; value.updating = false; return value;
     }
     scheduleAuto() {

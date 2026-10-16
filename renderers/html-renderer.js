@@ -1,13 +1,20 @@
+import { currentSceneLight } from './scene-light-renderer.js';
+
 export function artifactPolicy(interactive) {
     return `default-src 'none'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; script-src ${interactive ? "'unsafe-inline'" : "'none'"}; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;
 }
 
 function artifactClient(nonce) {
     let port, sequence = 0, resolveReady;
-    const pending = new Map(), ready = new Promise(resolve => resolveReady = resolve);
+    const pending = new Map(), lightingListeners = new Set(), ready = new Promise(resolve => resolveReady = resolve);
     window.addEventListener('message', event => {
         if (port || event.source !== parent || event.data?.type !== 'vnplus:artifact-init' || event.data.nonce !== nonce || !event.ports[0]) return;
         port = event.ports[0]; port.onmessage = event => {
+            if (event.data?.type === 'lighting') {
+                const lighting = event.data.lighting;
+                for (const callback of lightingListeners) { try { callback(structuredClone(lighting)); } catch (error) { console.warn('Artifact lighting callback failed', error); } }
+                window.dispatchEvent(new CustomEvent('vnplus:lighting', { detail: lighting })); return;
+            }
             const job = pending.get(event.data?.id); if (!job) return;
             pending.delete(event.data.id); clearTimeout(job.timer);
             if (event.data.error) job.reject(new Error(event.data.error)); else job.resolve(event.data.result);
@@ -23,7 +30,8 @@ function artifactClient(nonce) {
     };
     const read = () => request('read'), get = async (key, fallback = null) => { const { data } = await read(); return Object.hasOwn(data, key) ? data[key] : fallback; };
     const extra = Object.freeze({ read, get, set: (key, value) => request('set', { key, value }), push: (key, value) => request('push', { key, value }), remove: key => request('delete', { key }) });
-    Object.defineProperty(window, 'VNPlus', { value: Object.freeze({ ready, read, getScene: async () => (await read()).scene, extra, get, set: extra.set, push: extra.push, remove: extra.remove }), writable: false });
+    const onLighting = callback => { if (typeof callback !== 'function') throw new Error('Use a lighting callback function.'); lightingListeners.add(callback); return () => lightingListeners.delete(callback); };
+    Object.defineProperty(window, 'VNPlus', { value: Object.freeze({ ready, read, getScene: async () => (await read()).scene, getLighting: () => request('lighting'), onLighting, extra, get, set: extra.set, push: extra.push, remove: extra.remove }), writable: false });
 }
 
 export function isolatedDocument(html, interactive = false, bootstrap = '', transparent = false) {
@@ -41,6 +49,11 @@ export function isolatedDocument(html, interactive = false, bootstrap = '', tran
 
 export class HTMLRenderer {
     constructor(root, settings, createSession = null, readLocal = null, options = {}) { this.root = root; this.settings = settings; this.createSession = createSession; this.readLocal = readLocal; this.options = options; this.generation = 0; }
+    lightSnapshot(frame) {
+        const root = this.root.closest('#vnplus-overlay') || this.root, bounds = root.getBoundingClientRect(), rect = frame.getBoundingClientRect();
+        return { ...currentSceneLight(root), viewport: { width: bounds.width, height: bounds.height },
+            artifact: { x: (rect.left - bounds.left) / (bounds.width || 1), y: (rect.top - bounds.top) / (bounds.height || 1), width: rect.width / (bounds.width || 1), height: rect.height / (bounds.height || 1) } };
+    }
     open(token, html = token.html) {
         this.close();
         if (token.local && html === undefined) {
@@ -64,6 +77,7 @@ export class HTMLRenderer {
         frame.setAttribute('sandbox', interactive ? 'allow-scripts' : '');
         frame.setAttribute('allow', "camera 'none'; microphone 'none'; geolocation 'none'; clipboard-read 'none'; clipboard-write 'none'");
         frame.referrerPolicy = 'no-referrer'; frame.title = 'Player-visible artifact';
+        frame.dataset.vnLightHost = String(!session);
         frame.srcdoc = isolatedDocument(html, interactive, session ? `(${artifactClient.toString()})(${JSON.stringify(nonce)});` : '', this.options.transparent);
         if (session) frame.addEventListener('load', () => {
             if (generation !== this.generation || !frame.isConnected) return;
@@ -71,20 +85,24 @@ export class HTMLRenderer {
             let requests = 0;
             channel.port1.onmessage = async event => {
                 const request = event.data;
-                if (generation !== this.generation || !frame.isConnected || !Number.isSafeInteger(request?.id) || !['read', 'set', 'delete', 'push'].includes(request.method) || requests >= 32) return;
+                if (generation !== this.generation || !frame.isConnected || !Number.isSafeInteger(request?.id) || !['read', 'set', 'delete', 'push', 'lighting'].includes(request.method) || requests >= 32) return;
                 requests++;
                 let response;
-                try { response = { id: request.id, result: await session.request(request.method, request.args) }; }
+                try { response = { id: request.id, result: request.method === 'lighting' ? this.lightSnapshot(frame) : await session.request(request.method, request.args) }; }
                 catch (error) { response = { id: request.id, error: error.message }; }
                 requests--;
                 if (generation === this.generation && frame.isConnected) channel.port1.postMessage(response);
             };
             channel.port1.start(); frame.contentWindow.postMessage({ type: 'vnplus:artifact-init', nonce }, '*', [channel.port2]);
+            this.lightRoot = this.root.closest('#vnplus-overlay') || this.root;
+            this.sendLight = () => { if (generation === this.generation && frame.isConnected) channel.port1.postMessage({ type: 'lighting', lighting: this.lightSnapshot(frame) }); };
+            this.lightRoot.addEventListener('vnplus:light-changed', this.sendLight); window.addEventListener('resize', this.sendLight);
+            this.sendLight();
         }, { once: true });
         panel.querySelector('.vn-artifact-content').append(frame); panel.hidden = false;
         if (this.options.focus !== false) this.root.querySelector('[data-action="close-artifact"]').focus();
     }
-    revoke() { this.generation++; this.abort?.abort(); this.abort = null; this.port?.close(); this.port = null; }
+    revoke() { this.generation++; this.abort?.abort(); this.abort = null; this.port?.close(); this.port = null; if (this.sendLight) { this.lightRoot?.removeEventListener('vnplus:light-changed', this.sendLight); window.removeEventListener('resize', this.sendLight); } this.sendLight = this.lightRoot = null; }
     close() { this.revoke(); const panel = this.root.querySelector('.vn-artifact'); panel.hidden = true; panel.querySelector('.vn-artifact-content').replaceChildren(); }
     get active() { return !this.root.querySelector('.vn-artifact').hidden; }
 }

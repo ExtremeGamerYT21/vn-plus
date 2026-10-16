@@ -48,7 +48,7 @@ export class AssetResolver {
     semanticAsset(name, folders, extensions, accepts = () => true) {
         if (!safeAssetPath(name)) return null;
         const files = [...this.files].filter(file => safeAssetPath(file) && folders.some(folder => file.startsWith(`${folder}/`))
-            && extensions.includes(file.split('.').pop().toLowerCase()) && accepts(file));
+            && extensions.includes(file.split('.').pop().toLowerCase()) && (extensions !== IMAGE_EXTS || !/_(?:normal|material)\.[^.]+$/i.test(file)) && accepts(file));
         const folderIndex = file => folders.findIndex(folder => file.startsWith(`${folder}/`));
         files.sort((a, b) => folderIndex(a) - folderIndex(b) || (a < b ? -1 : a > b ? 1 : 0));
         // Keep descriptive subfolders, but remove category/character names from ranking.
@@ -68,7 +68,7 @@ export class AssetResolver {
         return this.remember(`sprite:${folder}:${JSON.stringify([emotions, props.defaultExpression || '', props.expressionAliases || null])}`, async () => {
             const requested = emotions[0] || 'default', route = emotionRanking(requested);
             const paths = emotion => [`characters/${folder}/sprites/${emotion}`, `characters/${folder}/${emotion}`].flatMap(path => this.variants(path, IMAGE_EXTS));
-            const open = name => !/blink/i.test(name);
+            const open = name => !/blink/i.test(name) && !/_(?:normal|material)$/i.test(name);
             const available = [...this.files].flatMap(file => {
                 const prefix = `characters/${folder}/`; if (!file.toLowerCase().startsWith(prefix.toLowerCase()) || !safeAssetPath(file)) return [];
                 const relative = file.slice(prefix.length).replace(/^sprites\//i, ''), match = /^([^/]+)\.([a-z\d]+)$/i.exec(relative);
@@ -121,7 +121,25 @@ export class AssetResolver {
         if (!safeAssetPath(path) || !path.startsWith('backgrounds/')) return { inside: false };
         const [defaults, local] = await Promise.all([this.json('backgrounds/properties.default.json'), this.json('backgrounds/properties.json')]);
         const catalog = local && typeof local === 'object' && !Array.isArray(local) ? local : defaults;
-        return { inside: backgroundEntry(catalog, path)?.inside === true };
+        const entry = backgroundEntry(catalog, path);
+        return { inside: entry?.inside === true, ...(entry?.light && typeof entry.light === 'object' && !Array.isArray(entry.light) ? { light: structuredClone(entry.light) } : {}) };
+    }
+    spriteMaps(url) {
+        if (!url || !url.startsWith(this.base.href)) return Promise.resolve({});
+        let path;
+        try { path = decodeURIComponent(new URL(url).pathname.slice(this.base.pathname.length)); } catch { return Promise.resolve({}); }
+        if (!safeAssetPath(path) || !path.startsWith('characters/') || /_(?:normal|material)\.[^.]+$/i.test(path)) return Promise.resolve({});
+        return this.remember(`maps:${path}`, async () => {
+            const pairs = await Promise.all(['normal', 'material'].map(async kind => {
+                const candidate = path.replace(/\.[^.]+$/, `_${kind}.png`);
+                // One optional PNG per resolved expression; no semantic or cross-character fallback.
+                const known = [...this.files].find(file => file.toLowerCase() === candidate.toLowerCase());
+                if (known) return [kind, this.url(known)];
+                try { const response = await fetch(this.url(candidate), { method: 'HEAD', signal: AbortSignal.timeout(4000) }); if (response.ok && !response.headers.get('content-type')?.includes('text/html')) return [kind, this.url(candidate)]; } catch { /* optional map */ }
+                return [kind, null];
+            }));
+            return Object.fromEntries(pairs.filter(([, value]) => value));
+        });
     }
     blinkSprite(id, emotions, props = {}) {
         const folder = safeAssetPath(props.assetFolder || id), config = props.blink;

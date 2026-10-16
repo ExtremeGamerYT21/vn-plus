@@ -52,7 +52,7 @@ export class SpriteAnimator {
     }
     stopBreathingClock() { if (this.frameId !== null) cancelAnimationFrame(this.frameId); this.frameId = null; }
     startBreathingClock() {
-        if (this.frameId !== null || this.root.hidden || document.hidden || this.reduced || !this.mesh.surfaces.size) return;
+        if (this.frameId !== null || this.root.hidden || document.hidden || this.reduced || !this.mesh.surfaces.size || ![...this.records.values()].some(record => record.breath)) return;
         // One shared clock/context keeps all expressions on the same deformation,
         // including the outgoing image during a crossfade.
         this.frameId = requestAnimationFrame(time => {
@@ -71,15 +71,37 @@ export class SpriteAnimator {
         let hash = 0; for (const char of record.id || '') hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
         record.breath = !this.reduced && config.enabled && config.amount > 0 ? { ...config, phase: hash % config.duration } : null;
         for (const frame of record.visual.querySelectorAll('.vn-sprite-frame')) {
-            if (record.breath) this.mesh.enable(frame); else this.mesh.remove(frame);
+            if (record.breath || this.lighting?.enabled) this.mesh.enable(frame); else this.mesh.remove(frame);
         }
         this.drawBreathing(record);
-        if (!this.mesh.surfaces.size) this.stopBreathingClock();
+        if (!this.mesh.surfaces.size || ![...this.records.values()].some(value => value.breath)) this.stopBreathingClock();
         else this.startBreathingClock();
     }
     drawBreathing(record) {
-        if (!record.breath) return;
-        for (const frame of record.visual.querySelectorAll('.vn-sprite-frame')) this.mesh.draw(frame, record.breath, record.inhale || 0);
+        if (!record.breath && !this.lighting?.enabled) return;
+        for (const frame of record.visual.querySelectorAll('.vn-sprite-frame')) this.mesh.draw(frame, record.breath || { ...breathingConfig(record.props, this.settings), amount: 0 }, record.inhale || 0, this.lighting, record.props?.lighting);
+    }
+    setLighting(light) {
+        this.lighting = light;
+        for (const [node, record] of this.records) {
+            this.configureBreathing(record);
+            if (light?.enabled && light.normalMaps && record.frame) {
+                for (const image of record.frame.querySelectorAll('img.vn-sprite-open,img.vn-sprite-blink')) void this.prepareMaps(node, record, record.revision, record.frame, image);
+            }
+        }
+    }
+    async prepareMaps(node, record, revision, frame, image) {
+        if (!this.lighting?.enabled || !this.lighting.normalMaps || !this.resolver.spriteMaps || image.dataset.mapsRequested) return;
+        image.dataset.mapsRequested = 'true';
+        try {
+            const urls = await this.resolver.spriteMaps(image.src);
+            if (!this.valid(node, record, revision) || !frame.isConnected) { delete image.dataset.mapsRequested; return; }
+            const maps = Object.fromEntries(await Promise.all(Object.entries(urls).map(async ([kind, url]) => [kind, await this.load(url, record)])));
+            if (!this.valid(node, record, revision) || !frame.isConnected) { delete image.dataset.mapsRequested; return; }
+            for (const [kind, map] of Object.entries(maps)) if (!map || map.naturalWidth !== image.naturalWidth || map.naturalHeight !== image.naturalHeight) delete maps[kind];
+            this.mesh.setMaps(frame, image, maps); frame.dataset.normalMap = String(!!maps.normal); frame.dataset.materialMap = String(!!maps.material);
+            this.drawBreathing(record);
+        } catch { /* Optional malformed/unavailable maps leave the original sprite usable. */ }
     }
     removeFrame(frame) { if (frame) { this.mesh.remove(frame); frame.remove(); } }
     async render(node, id, expression, emotions, props) {
@@ -113,6 +135,7 @@ export class SpriteAnimator {
             }
             node.classList.remove('vn-no-sprite'); node.dataset.sprite = url; node.dataset.expression = expression;
             this.configureBreathing(record);
+            void this.prepareMaps(node, record, revision, record.frame, record.frame.querySelector('.vn-sprite-open'));
             void this.prepareBlink(node, record, revision, url);
         })().finally(() => { if (record.revision === revision) record.loading = false; });
         return record.pending;
@@ -128,7 +151,7 @@ export class SpriteAnimator {
             const image = await this.load(url, record);
             if (!image || !this.valid(node, record, revision)) return;
             image.className = 'vn-sprite-blink'; image.alt = ''; image.hidden = true; image.setAttribute('aria-hidden', 'true');
-            record.frame.append(image); this.scheduleBlink(node, record);
+            record.frame.append(image); void this.prepareMaps(node, record, revision, record.frame, image); this.scheduleBlink(node, record);
         } finally { if (record.revision === revision) record.blinkLoading = false; }
     }
     scheduleBlink(node, record) {

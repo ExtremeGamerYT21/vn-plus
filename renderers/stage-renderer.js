@@ -2,9 +2,11 @@ import { stagePosition } from '../core/stage-layout.js';
 import { SpriteAnimator } from './sprite-animator.js';
 import { createSilhouette } from './silhouette.js';
 import { sceneLighting } from '../core/scene-context.js';
+import { sceneLight } from '../core/scene-light.js';
+import { SceneLightRenderer } from './scene-light-renderer.js';
 
 export class StageRenderer {
-    constructor(root, resolver, registry, settings) { this.root = root; this.resolver = resolver; this.registry = registry; this.settings = settings; this.generation = 0; this.nodes = new Map(); this.sprites = new SpriteAnimator(root, resolver, settings); }
+    constructor(root, resolver, registry, settings) { this.root = root; this.resolver = resolver; this.registry = registry; this.settings = settings; this.generation = 0; this.nodes = new Map(); this.sprites = new SpriteAnimator(root, resolver, settings); this.lightRenderer = new SceneLightRenderer(root, light => this.sprites.setLighting(light)); }
     place(node, position) {
         const fullBody = this.settings.spriteFraming === 'full-body' && !node.classList.contains('vn-no-sprite');
         const top = !fullBody && this.settings.stageAlignment === 'top';
@@ -13,12 +15,18 @@ export class StageRenderer {
         node.style.top = top ? `${position.lift}vh` : 'auto';
         node.style.transformOrigin = top ? 'top center' : 'bottom center';
     }
-    publishContext(state, inside) {
+    publishContext(state, properties = {}) {
+        if (typeof properties === 'boolean') properties = { inside: properties };
+        const inside = properties.inside === true; this.backgroundProperties = properties;
         const tint = this.root.querySelector('.vn-tint');
         this.appliedTint = tint.style.background || 'transparent';
         const color = getComputedStyle(tint).backgroundColor;
         this.ambientColor = this.appliedTint === 'transparent' || color === 'rgba(0, 0, 0, 0)' ? '#ffffff' : color;
         const lighting = sceneLighting(state.scene, inside);
+        const light = sceneLight(state.scene, inside, this.settings, properties);
+        if (!state.characters) light.enabled = false;
+        if (light.enabled) lighting.light = light;
+        this.lightRenderer.update(light);
         this.root.style.setProperty('--vn-scene-brightness', lighting.brightness);
         const variables = { ...structuredClone(state.scene || {}), background: state.background || null, lighting };
         if (JSON.stringify(variables) === JSON.stringify(this.variables)) return;
@@ -42,7 +50,7 @@ export class StageRenderer {
             const properties = url ? await this.resolver.backgroundProperties(url) : { inside: false };
             if (current()) {
                 if (url !== this.backgroundUrl) { background.style.backgroundImage = url ? `url("${url}")` : ''; this.backgroundUrl = url; }
-                this.publishContext(state, properties.inside);
+                this.publishContext(state, properties);
             }
         }) : Promise.resolve();
         if (!state.background) { background.style.backgroundImage = ''; this.backgroundUrl = null; this.publishContext(state, false); }
@@ -85,5 +93,5 @@ export class StageRenderer {
         this.root.querySelector('.vn-tint').style.background = ''; this.root.classList.remove('vn-black', 'vn-narrating');
         this.publishContext({}, false);
     }
-    dispose() { this.clear(); this.sprites.dispose(); }
+    dispose() { this.clear(); this.lightRenderer.dispose(); this.sprites.dispose(); }
 }

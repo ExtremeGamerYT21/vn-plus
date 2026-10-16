@@ -1,4 +1,7 @@
-export async function runFramingChecks({ check, assert, equal, eventually, context, mountChat, makeController }) {
+import { runSceneLightChecks } from './browser-scene-light.js';
+
+export async function runFramingChecks(options) {
+    const { check, assert, equal, eventually, context, mountChat, makeController } = options;
     context.chatId = 'framing-check';
     context.chat = [{ mes: 'PRIVATE\n/////\n#MUSIC buzz\n#ENTER NoArtFraming\n#ENTER Nina\n#ENTER Ashley\nNina: "A spoken line." [happy]\nThe narrator describes the room.\nNina: "(A private thought.)" [sad]\nNina: "Speaking again." [sad]' }]; mountChat();
     const controller = makeController();
@@ -76,4 +79,5 @@ export async function runFramingChecks({ check, assert, equal, eventually, conte
             controller.resolver.sprite = sprite;
         });
     } finally { controller.dispose(); }
+    await runSceneLightChecks(options);
 }
