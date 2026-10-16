@@ -40,7 +40,7 @@ export class VNController {
         this.environmentStyle = new EnvironmentStyle(this.root);
         this.dialogue = new DialogueRenderer(this.root, this.resolver, this.settings); this.audio = new AudioEngine(this.resolver, this.settings, message => this.log(message));
         this.speech = new SpeechEngine(host, this.settings); this.speech.onEnded = () => this.scheduleAuto();
-        const speechCallbacks = { prepare: () => this.prepareSpeech(), change: () => this.settingsChanged('speech') };
+        const speechCallbacks = { prepare: () => this.prepareSpeech(), change: key => this.settingsChanged(key === 'parallelBatches' ? 'speechParallel' : 'speech') };
         this.speechSettingsPanel = new SpeechPanel(this.speech, speechCallbacks);
         this.voicePanel = new SpeechPanel(this.speech, speechCallbacks, { expanded: true }); applyTheme(this.root, this.settings);
         this.effects = new EffectsRenderer(this.root, this.settings); this.html = new HTMLRenderer(this.root, this.settings, (token, alive) => this.artifactSession(token, alive), (id, signal) => this.readArtifact(id, signal));
@@ -263,6 +263,7 @@ export class VNController {
         if (key === 'themeReset') for (const name of ['dialogueFont', 'textColor', 'narrationColor']) { const input = this.settingsPanel?.querySelector(`[data-setting="${name}"]`); if (input) input.value = this.settings[name]; }
         this.host.save(this.settings); this.reveal.close(); this.mount();
         applyTheme(this.root, this.settings); if (this.settingsPanel) applyTheme(this.settingsPanel, this.settings);
+        if (key === 'speechParallel') { this.speech.notify('Parallel voice batch setting saved. Applies to the next generation; current requests and recordings continue.'); return; }
         if (key === 'speech') {
             this.speech.configurationChanged();
             if (this.playback && this.parsed && !this.busy && !this.root.hidden) {

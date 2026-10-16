@@ -1,6 +1,6 @@
 export const SAMPLE_RATE = 44100;
 export const SPEECH_DEFAULTS = {
-    enabled: false, autoGenerate: false, narratorEnabled: false, autoPlay: true, syncText: true, model: 's2.1-pro-free', splitChapters: true, chapterSize: 6,
+    enabled: false, autoGenerate: false, narratorEnabled: false, autoPlay: true, syncText: true, model: 's2.1-pro-free', splitChapters: true, chapterSize: 6, parallelBatches: 3,
     temperature: .7, topP: .7, speed: 1, chunkLength: 300, latency: 'normal', normalize: true,
     conditionPrevious: true, bitrate: 128, timeout: 180, volume: 1, lead: .2, tail: .2,
     processing: true, matchVolume: true, targetRms: -20, denoise: 4, soften: 0, ceiling: -1.5, edgeFade: 5,
@@ -9,6 +9,7 @@ export function speechSettings(value = {}) {
     const result = { ...SPEECH_DEFAULTS };
     // Never copy unknown fields (especially credentials) into persisted settings.
     for (const key of Object.keys(result)) if (typeof value?.[key] === typeof result[key]) result[key] = value[key];
+    result.parallelBatches = Number.isFinite(result.parallelBatches) ? Math.max(1, Math.min(5, Math.floor(result.parallelBatches))) : SPEECH_DEFAULTS.parallelBatches;
     return result;
 }
 export function fishVoiceId(value) {

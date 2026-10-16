@@ -302,7 +302,7 @@ test('server bridge saves a per-user secret and exposes only configured status',
     const other = res(); routes.get('get:/status')({ user: { directories: { secrets: 'user-two' } } }, other); assert.equal(other.value.configured, false);
     const removed = res(); routes.get('delete:/secret')(request, removed); assert.equal(stored.has(`user-one:${SECRET_KEY}`), false);
 });
-test('server bridge forwards the timestamp stream with a server-only key and serializes requests per user', async () => {
+test('server bridge forwards the timestamp stream with a server-only key and limits each user to five requests', async () => {
     const routes = new Map(), router = Object.fromEntries(['get', 'post', 'delete'].map(method => [method, (url, callback) => routes.set(`${method}:${url}`, callback)]));
     const input = fixture('Nina: "Hello"'), chapter = chapterRequests(speechSegments(input.timeline, input.registry, 'scene'), input.config.tts)[0];
     const makeRequest = () => Object.assign(new EventEmitter(), { user: { directories: { secrets: 'user-one' } }, body: { model: 's2.1-pro-free', body: chapter.body } });
@@ -320,7 +320,8 @@ test('server bridge forwards the timestamp stream with a server-only key and ser
     registerBridge(router, { readSecret: () => 'FAKE_SERVER_KEY' }, async (_, options) => new Promise((resolve, reject) => {
         options.signal.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), { once: true }); started();
     }));
-    const first = makeRequest(), firstResult = makeResponse(), pending = routes.get('post:/synthesize')(first, firstResult); await ready;
-    const second = makeResponse(); await routes.get('post:/synthesize')(makeRequest(), second); assert.equal(second.statusCode, 409);
-    first.emit('aborted'); await pending; assert.equal(firstResult.statusCode, 502);
+    const requests = Array.from({ length: 5 }, makeRequest), results = requests.map(makeResponse);
+    const pending = requests.map((request, index) => routes.get('post:/synthesize')(request, results[index])); await ready;
+    const sixth = makeResponse(); await routes.get('post:/synthesize')(makeRequest(), sixth); assert.equal(sixth.statusCode, 429);
+    requests.forEach(request => request.emit('aborted')); await Promise.all(pending); assert.ok(results.every(result => result.statusCode === 502));
 });

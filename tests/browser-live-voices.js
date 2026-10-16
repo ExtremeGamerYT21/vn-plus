@@ -65,6 +65,19 @@ export async function runLiveVoiceChecks({ check, assert, equal, eventually, con
             await controller.action('next'); await eventually(() => controller.speech.playback?.status === 'playing');
             equal(posts, 2); await controller.open(); equal(posts, 2);
         });
+        await check('parallel voice batch setting stays synchronized between settings and Voices', async () => {
+            const field = controller.speechSettingsPanel.fields.get('parallelBatches'), previous = controller.settings.tts.parallelBatches;
+            const recording = controller.speech.job, playing = controller.speech.audio;
+            assert(field); equal(field.input.min, '1'); equal(field.input.max, '5');
+            try {
+                field.input.value = '2'; field.input.dispatchEvent(new Event('change', { bubbles: true }));
+                equal(controller.settings.tts.parallelBatches, 2); equal(controller.voicePanel.fields.get('parallelBatches').input.value, '2');
+                assert(controller.speech.job === recording); assert(controller.speech.audio === playing && !playing.paused);
+                const other = controller.voicePanel.fields.get('parallelBatches').input;
+                other.value = '1'; other.dispatchEvent(new Event('change', { bubbles: true }));
+                equal(controller.settings.tts.parallelBatches, 1); equal(field.input.value, '1');
+            } finally { field.input.value = previous; field.input.dispatchEvent(new Event('change', { bubbles: true })); }
+        });
         await check('text waits for a late automatic clip and follows its actual word clock', async () => {
             controller.close(); controller.settings.typewriterEffect = true; controller.settings.reducedMotion = false; controller.settings.typewriterSpeed = 5;
             let release; controller.speech.autoAttempts.clear();
@@ -78,4 +91,38 @@ export async function runLiveVoiceChecks({ check, assert, equal, eventually, con
             assert(controller.dialogue.letters.every(letter => letter.style.visibility !== 'hidden'));
         });
     } finally { controller.dispose(); }
+    await check('parallel chapters expose later voice readiness early and keep recordings and exports in story order', async () => {
+        context.chatId = 'parallel-browser-voices';
+        const source = 'PRIVATE\n/////\nYou listen.\nNina: "Line 0"\nNina: "Line 1"\nNina: "Line 2"';
+        context.chat = [{ mes: source }]; mountChat();
+        const parallel = makeController(), pending = new Map(); let posts = 0;
+        Object.assign(parallel.settings, { autoCreateCharacters: false, autoAdvance: false, typewriterEffect: false });
+        parallel.settings.characters.nina = { voiceId: 'parallel-nina' };
+        Object.assign(parallel.settings.tts, { enabled: true, autoGenerate: false, autoPlay: false, chapterSize: 1, parallelBatches: 2 });
+        parallel.speech.endpoint = async (path, options) => {
+            if (path === 'status') return Response.json({ configured: true, maxParallelBatches: 5 });
+            const index = Number(/Line (\d+)/.exec(JSON.parse(options.body).body.text)[1]); posts++;
+            return new Promise((resolve, reject) => {
+                options.signal.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), { once: true });
+                pending.set(index, () => {
+                    const payload = { audio_base64: btoa('audio'), chunk_seq: 0, chunk_audio_offset_sec: 0, alignment: { segments: [{ text: `Line ${index}`, start: .1, end: .5 }] } };
+                    resolve(new Response(`data: ${JSON.stringify(payload)}\n\n`));
+                });
+            });
+        };
+        parallel.speech.decode = async () => new Float32Array(44100);
+        parallel.speech.process = async chapter => chapter.clips.filter(clip => !clip.review).map(clip => ({ id: clip.id, samples: new Float32Array(4410), notes: [] }));
+        try {
+            await parallel.open(0); const generation = parallel.speech.generate(); await eventually(() => posts === 2);
+            pending.get(1)(); await eventually(() => posts === 3 && parallel.speech.job.chapters[0]?.index === 1);
+            const downloads = parallel.speechSettingsPanel.recordings.querySelectorAll('.vn-settings-actions button');
+            assert(downloads.length === 2 && [...downloads].every(button => button.disabled));
+            await parallel.action('next'); const badge = parallel.root.querySelector('.vn-voice-ready');
+            await eventually(() => badge.dataset.state === 'ready'); assert(badge.textContent.includes('✓'));
+            pending.get(0)(); pending.get(2)(); await generation;
+            equal(parallel.speech.job.chapters.map(chapter => chapter.index).join(','), '0,1,2');
+            assert([...parallel.speechSettingsPanel.recordings.querySelectorAll('.vn-settings-actions button')].every(button => !button.disabled));
+            equal(context.chat[0].mes, source);
+        } finally { parallel.dispose(); }
+    });
 }

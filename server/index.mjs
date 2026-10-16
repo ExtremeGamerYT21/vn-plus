@@ -5,6 +5,7 @@ import { registerCharacterFolders } from './character-folders.mjs';
 
 export const info = { id: 'vn-plus-tts', name: 'VN+ server bridge', description: 'Local character folders and timestamped Fish synthesis with per-user secrets.' };
 export const SECRET_KEY = 'api_key_vn_plus_fish';
+export const MAX_PARALLEL_REQUESTS = 5;
 export function validateRequest(input) {
     const { model, timeout = 180, body } = input || {};
     if (!['s2.1-pro-free', 's2.1-pro'].includes(model)) throw new Error('Choose the free or paid Fish model explicitly.');
@@ -22,9 +23,9 @@ export function validateRequest(input) {
         normalize: body.normalize, condition_on_previous_chunks: body.condition_on_previous_chunks, prosody: { speed: body.prosody.speed, normalize_loudness: true } } };
 }
 export function registerBridge(router, secrets, fetcher = fetch) {
-    const active = new Set();
+    const active = new Map();
     const user = (req, res) => { if (!req.user?.directories) { res.sendStatus(401); return null; } return req.user.directories; };
-    router.get('/status', (req, res) => { const directories = user(req, res); if (directories) res.json({ available: true, configured: !!secrets.readSecret(directories, SECRET_KEY), version: 3 }); });
+    router.get('/status', (req, res) => { const directories = user(req, res); if (directories) res.json({ available: true, configured: !!secrets.readSecret(directories, SECRET_KEY), version: 4, maxParallelBatches: MAX_PARALLEL_REQUESTS }); });
     router.post('/secret', (req, res) => {
         const directories = user(req, res); if (!directories) return;
         const value = req.body?.value;
@@ -41,10 +42,10 @@ export function registerBridge(router, secrets, fetcher = fetch) {
         const directories = user(req, res); if (!directories) return;
         let request; try { request = validateRequest(req.body); } catch (error) { return res.status(400).json({ error: error.message }); }
         const identity = directories.secrets || req.user.profile?.handle || directories.root;
-        if (active.has(identity)) return res.status(409).json({ error: 'A Fish request is already running for this user.' });
+        if ((active.get(identity) || 0) >= MAX_PARALLEL_REQUESTS) return res.status(429).json({ error: 'Five Fish batches are already running for this user. Wait for a slot or lower parallel voice batches.' });
         const key = secrets.readSecret(directories, SECRET_KEY); if (!key) return res.status(400).json({ error: 'Save your Fish API key first.' });
         const abort = new AbortController(), cancel = () => abort.abort(); let bytes = 0;
-        const timeout = setTimeout(cancel, request.timeout * 1000); active.add(identity);
+        const timeout = setTimeout(cancel, request.timeout * 1000); active.set(identity, (active.get(identity) || 0) + 1);
         req.once('aborted', cancel); res.once('close', cancel);
         try {
             const upstream = await fetcher('https://api.fish.audio/v1/tts/stream/with-timestamp', {
@@ -52,7 +53,10 @@ export function registerBridge(router, secrets, fetcher = fetch) {
                 headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', Accept: 'text/event-stream', model: request.model },
                 body: JSON.stringify(request.body),
             });
-            if (!upstream.ok) { await upstream.body?.cancel(); return res.status(upstream.status === 429 ? 429 : 502).json({ error: `Fish request failed (HTTP ${upstream.status}). Check your key, model availability and account.` }); }
+            if (!upstream.ok) {
+                if (upstream.status === 429 && upstream.headers.get('retry-after')) res.set({ 'Retry-After': upstream.headers.get('retry-after') });
+                await upstream.body?.cancel(); return res.status(upstream.status === 429 ? 429 : 502).json({ error: `Fish request failed (HTTP ${upstream.status}). Check your key, model availability and account.` });
+            }
             if (!upstream.body || !upstream.headers.get('content-type')?.includes('text/event-stream')) { await upstream.body?.cancel(); throw new Error('Invalid provider response'); }
             res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' }); res.flushHeaders();
             for await (const chunk of upstream.body) {
@@ -64,7 +68,11 @@ export function registerBridge(router, secrets, fetcher = fetch) {
             if (res.destroyed) return;
             if (!res.headersSent) res.status(502).json({ error: 'Fish synthesis failed or timed out. Completed chapters remain available.' });
             else if (!res.destroyed) res.end('\nevent: error\ndata: {"error":"Synthesis interrupted"}\n\n');
-        } finally { clearTimeout(timeout); active.delete(identity); req.removeListener('aborted', cancel); res.removeListener('close', cancel); }
+        } finally {
+            clearTimeout(timeout); const remaining = (active.get(identity) || 1) - 1;
+            if (remaining) active.set(identity, remaining); else active.delete(identity);
+            req.removeListener('aborted', cancel); res.removeListener('close', cancel);
+        }
     });
 }
 export async function init(router) {

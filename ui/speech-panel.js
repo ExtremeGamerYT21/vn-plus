@@ -23,11 +23,13 @@ export class SpeechPanel {
             ['syncText', 'Reveal dialogue with voice timing', 'checkbox'],
             ['model', 'Fish model', [{ value: 's2.1-pro-free', label: 'S2.1 Pro Free' }, { value: 's2.1-pro', label: 'S2.1 Pro (paid)' }]],
             ['splitChapters', 'Split into short chapters', 'checkbox'], ['chapterSize', 'Spoken segments per chapter', 'number', 1, 200],
+            ['parallelBatches', 'Parallel voice batches (1 = sequential)', 'number', 1, 5],
             ['temperature', 'Temperature', 'number', 0, 1], ['topP', 'Top P', 'number', 0, 1], ['speed', 'Voice speed', 'number', .5, 2],
             ['chunkLength', 'Fish chunk length', 'number', 100, 300], ['latency', 'Latency', ['normal', 'balanced', 'low']], ['bitrate', 'MP3 bitrate (kbps)', [64, 128, 192]],
             ['normalize', 'Normalize text', 'checkbox'], ['conditionPrevious', 'Voice consistency within each chapter', 'checkbox'],
             ['timeout', 'Request timeout (seconds)', 'number', 30, 600], ['volume', 'Voice playback volume', 'number', 0, 1],
         ]) this.field(options, definition);
+        options.append(element('p', 'Up to 5 chapters can generate together; default 3 leaves room for other Fish API use. Takes effect on the next generation when the response has multiple chapters. Restart SillyTavern after a bridge update; older bridges use one batch at a time. Rate-limit rejections back off before retrying, with no paid-model fallback.', 'vn-hint'));
         this.node.append(options);
         const finishing = element('details'); finishing.append(element('summary', 'Clip margins and audio finishing'));
         for (const definition of [
@@ -61,8 +63,8 @@ export class SpeechPanel {
         if (type === 'checkbox') input.checked = this.engine.settings.tts[key]; else input.value = this.engine.settings.tts[key];
         input.addEventListener('change', () => {
             let value = type === 'checkbox' ? input.checked : type === 'number' || key === 'bitrate' ? Number(input.value) : input.value;
-            if (type === 'number') { if (!Number.isFinite(value)) return; value = Math.max(min, Math.min(max, value)); input.value = value; }
-            this.engine.settings.tts[key] = value; this.callbacks.change();
+            if (type === 'number') { if (!Number.isFinite(value)) return; value = Math.max(min, Math.min(max, key === 'parallelBatches' ? Math.floor(value) : value)); input.value = value; }
+            this.engine.settings.tts[key] = value; this.callbacks.change(key);
         }); row.append(input); container.append(row); this.fields.set(key, { input, type });
     }
     refresh() {
@@ -81,9 +83,14 @@ export class SpeechPanel {
         }
         this.recordings.replaceChildren(); if (!engine.job?.chapters.length) return;
         const sourceActions = element('div', '', 'vn-settings-actions');
-        for (const processed of [false, true]) sourceActions.append(this.button(`Download ${processed ? 'processed' : 'original'} scene WAV`, async () => {
-            download(wavBytes(await engine.sourceSamples(processed)), `vn-plus-${processed ? 'processed' : 'original'}.wav`, 'audio/wav');
-        })); this.recordings.append(sourceActions);
+        for (const processed of [false, true]) {
+            const button = this.button(`Download ${processed ? 'processed' : 'original'} scene WAV`, async () => {
+                download(wavBytes(await engine.sourceSamples(processed)), `vn-plus-${processed ? 'processed' : 'original'}.wav`, 'audio/wav');
+            });
+            button.disabled = engine.job.chapters.some((chapter, index) => chapter.index !== index);
+            if (button.disabled) button.title = 'An earlier chapter is still missing. Individual completed clips remain available.';
+            sourceActions.append(button);
+        } this.recordings.append(sourceActions);
         for (const chapter of engine.job.chapters) {
             const section = element('details'); section.open = true; section.append(element('summary', `Chapter ${chapter.index + 1} · ${chapter.duration.toFixed(2)} seconds`));
             section.append(this.button('Play original chapter for timing review', () => engine.playChapter(chapter.index)));

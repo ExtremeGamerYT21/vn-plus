@@ -1,4 +1,6 @@
-# Visual Novel+ 2.20.2
+# Visual Novel+ 2.21.0
+
+Version 2.21 adds **Fish Audio voices → Voice generation and playback → Parallel voice batches (1 = sequential)**, available in extension settings and the Voices panel. Choose 1–5, default 3. Chapters can finish independently while playback, review and exports retain story order; completed batches are cached and failed attempts resume only missing chapters. Rate-limit rejections retry with bounded backoff. Changing this preference leaves current playback and generation running and takes effect on the next generation. **Restart SillyTavern once and refresh the page** to load the updated server bridge; the frontend uses one batch at a time with an older bridge. See [voice setup and parallel generation](docs/speech.md).
 
 Version 2.20.2 keeps characters visible under unknown emotion tags when their configured default image is missing: `neutral` is now a final safe fallback. For example, `[cool]` can use `neutral.png` even if properties still specify a nonexistent `default.png`. Exact artwork, character aliases, ranked expressions and valid defaults retain priority. Original story tags, voices and character properties are preserved. Refresh SillyTavern after updating.
 

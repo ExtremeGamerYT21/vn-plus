@@ -1,5 +1,5 @@
 {
-  "status": "104 passed · 0 failed",
+  "status": "106 passed · 0 failed",
   "tests": [
     "PASS · POV privacy and four characters from one scenario",
     "PASS · backward restores background, expression and audio state",
@@ -79,7 +79,9 @@
     "PASS · narrator properties style silent narration and never produce a narrator body",
     "PASS · the first-person checkbox hides aliased player bodies while retaining dialogue and voice assignment",
     "PASS · automatic voices prepare ahead and the next-line symbol changes to ready without manual generation",
+    "PASS · parallel voice batch setting stays synchronized between settings and Voices",
     "PASS · text waits for a late automatic clip and follows its actual word clock",
+    "PASS · parallel chapters expose later voice readiness early and keep recordings and exports in story order",
     "PASS · ranked ST emotion tags render existing legacy bust art while retaining the story emotion",
     "PASS · ranked fallbacks update and restore expressions without replacing the character body",
     "PASS · blink lookup follows the selected fallback image rather than the original story tag",
