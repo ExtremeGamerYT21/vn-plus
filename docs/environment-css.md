@@ -44,6 +44,7 @@ See [the complete sample](../examples/dialogue.css) or open the local preview at
 | `.vn-dialogue-foot` | Position counter and continue hint |
 | `.vn-controls` | Playback button row |
 | `.vn-top`, `.vn-top nav` | Top bar and scene tools |
+| `.vn-framing-picker`, `[data-framing-picker]` | Bust / full-body artwork selector |
 | `[data-action="back"]` | Back |
 | `[data-action="next"]` | Continue |
 | `[data-action="replay"]`, `[data-action="skip"]` | Replay / Skip viewed |

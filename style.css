@@ -1,9 +1,9 @@
 /* Scoped Visual Novel+ presentation. */
 .vn-content-notice { position: absolute; top: 80px; left: 5%; right: 5%; padding: 10px 14px; background: var(--vn-panel); border: 1px solid var(--vn-border); color: var(--vn-ui-color); font-size: 13px; z-index: 8; }
 .vnplus-ui .vn-thought { font-style: italic; }
-.vn-layout-picker, .vn-environment-picker { color: inherit; font: 12px/1.35 var(--mainFontFamily,system-ui); background: var(--vn-panel); border: 1px solid var(--vn-border); border-radius: 7px; padding: 7px 9px; cursor: pointer; max-width: 100%; }
+.vn-layout-picker, .vn-environment-picker, .vn-framing-picker { color: inherit; font: 12px/1.35 var(--mainFontFamily,system-ui); background: var(--vn-panel); border: 1px solid var(--vn-border); border-radius: 7px; padding: 7px 9px; cursor: pointer; max-width: 100%; }
 .vn-environment-picker { max-width: min(230px,32vw); }
-.vn-layout-picker:focus-visible, .vn-environment-picker:focus-visible { outline: 2px solid var(--vn-ui-accent); outline-offset: 3px; }
+.vn-layout-picker:focus-visible, .vn-environment-picker:focus-visible, .vn-framing-picker:focus-visible { outline: 2px solid var(--vn-ui-accent); outline-offset: 3px; }
 .vnplus-ui { --vn-ui-color: var(--SmartThemeBodyColor,#e5e5e5); --vn-muted: var(--SmartThemeEmColor,#b6b6b6); --vn-panel: var(--SmartThemeBlurTintColor,#242424); --vn-world-color: var(--SmartThemeChatTintColor,#181818); --vn-border: var(--SmartThemeBorderColor,#ffffff30); --vn-ui-accent: var(--SmartThemeQuoteColor,#ddd); --vn-silhouette: color-mix(in srgb,var(--vn-ui-color) 18%,#000); color: var(--vn-ui-color); font-family: var(--mainFontFamily,system-ui); --vn-accent: var(--vn-ui-accent); }
 .vnplus-ui [hidden], .vnplus-ui[hidden] { display: none !important; }
 .vnplus-ui button { color: inherit; font: inherit; border: 1px solid var(--vn-border); background: var(--vn-panel); border-radius: 7px; padding: 7px 12px; cursor: pointer; line-height: 1.35; }
