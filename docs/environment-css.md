@@ -41,6 +41,7 @@ See [the complete sample](../examples/dialogue.css) or open the local preview at
 | Selector | Controls |
 | --- | --- |
 | `:scope` | VN overlay and its CSS variables |
+| `.vn-dialogue-shell` | Shared parent of dialogue and playback controls; defaults to `display: contents`, themes may give it a common frame |
 | `.vn-dialogue` | Box geometry, fill, border, texture and padding |
 | `.vn-dialogue::before` | Accent strip |
 | `.vn-speaker` | Speaker label |

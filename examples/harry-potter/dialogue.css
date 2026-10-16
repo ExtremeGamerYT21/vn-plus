@@ -1,6 +1,6 @@
 /* Harry Potter · correspondence & brass
    Copy to environments/harry-potter/dialogue.css, then Refresh assets.
-   Original CSS; no downloaded artwork, web fonts or network dependencies.
+   Original CSS and generated local paper texture; no web fonts or remote assets.
    Research and customization: examples/harry-potter/README.md */
 
 :scope {
@@ -10,6 +10,7 @@
     --hp-brass: #bba16a;
     --hp-wax: #7d3833;
     --hp-serif: "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+    --hp-parchment: url("ui/parchment-paper.png");
     --vn-panel: #182920;
     --vn-world-color: #101a15;
     --vn-ui-color: #f0e4c9;
@@ -82,46 +83,70 @@ button:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-
 }
 select option { background: #1b3025; color: #f0e4c9; }
 
-/* Character colors remain inks. Unspecified colors use the darker paper palette.
-   Image-only boxes retain their authored image and transparent framing. */
+/* One physical sheet surrounds the text AND playback buttons. display:contents
+   remains the fallback for waiting screens and authored image-only boxes. */
+.vn-dialogue-shell:has(.vn-dialogue:not([hidden])):not(:has(.vn-image-only)) {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    flex-shrink: 0;
+    isolation: isolate;
+    width: min(900px, calc(100vw - 72px));
+    max-height: calc(100dvh - 160px);
+    margin: 0 0 max(20px, env(safe-area-inset-bottom));
+    color: var(--hp-ink);
+    filter: drop-shadow(0 3px 2px #120b0780) drop-shadow(0 13px 17px #0009);
+}
+.vn-dialogue-shell:has(.vn-dialogue:not([hidden])):not(:has(.vn-image-only))::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background-color: var(--hp-paper);
+    background-image:
+        linear-gradient(90deg, #70431935, transparent 3%, transparent 97%, #70431945),
+        linear-gradient(0deg, #8e57232b, transparent 9%, transparent 94%, #fff7dc40),
+        var(--hp-parchment);
+    background-size: 100% 100%;
+    box-shadow: inset 0 0 2px 1px #8c5f32, inset 0 0 24px #9b6a2a33;
+    clip-path: polygon(0.3% 1%, 7% 0.4%, 16% 0.8%, 24% 0.2%, 37% 0.7%, 49% 0.1%, 62% 0.6%, 76% 0.2%, 88% 0.7%, 99.6% 0.3%, 100% 18%, 99.7% 35%, 99.9% 52%, 99.6% 68%, 100% 84%, 99.6% 99.4%, 88% 99.8%, 77% 99.3%, 65% 100%, 52% 99.5%, 40% 99.9%, 27% 99.4%, 15% 100%, 0.3% 99.5%, 0.1% 83%, 0.5% 67%, 0% 51%, 0.3% 36%, 0.1% 18%);
+    pointer-events: none;
+}
+.vn-dialogue-shell:has(.vn-dialogue:not([hidden])):not(:has(.vn-image-only))::after {
+    content: "";
+    position: absolute;
+    inset: 13px 14px;
+    z-index: -1;
+    border: 1px solid #87603152;
+    outline: 1px solid #fff4cf45;
+    outline-offset: 2px;
+    box-shadow: inset 0 0 0 3px #87603108;
+    pointer-events: none;
+}
+
+/* Character colors remain inks. Image-only boxes retain their own artwork. */
 .vn-dialogue:not(.vn-image-only) {
     --vn-ui-color: var(--hp-ink);
     --vn-muted: #675338;
     --vn-ui-accent: var(--hp-green);
     --vn-border-color: #887044;
-    width: min(860px, calc(100vw - 72px));
-    min-height: 168px;
-    max-height: 44vh;
-    margin-bottom: 16px;
-    padding: 24px 34px 17px;
-    border: 1px solid #887044;
-    border-radius: 2px;
+    width: 100%;
+    min-width: 0;
+    min-height: 158px;
+    max-height: 40vh;
+    margin: 0;
+    padding: 27px 37px 16px;
+    border: 0;
+    border-radius: 0;
     color: var(--hp-ink);
-    background-color: var(--hp-paper) !important;
-    background-image:
-        radial-gradient(ellipse at 7% 0%, #ae874629, transparent 48%),
-        radial-gradient(ellipse at 95% 100%, #97733b25, transparent 45%),
-        repeating-linear-gradient(3deg, #5b3c1507 0px, #5b3c1507 1px, transparent 1px, transparent 5px),
-        linear-gradient(100deg, #eadcbb, #f1e5c8 48%, #e5d2a9);
-    background-size: auto;
-    box-shadow: 0 12px 34px #0008, inset 0 0 22px #8e662620;
+    background-color: transparent !important;
+    box-shadow: none;
     backdrop-filter: none;
 }
-.vn-dialogue:not(.vn-image-only)::before {
-    content: "";
-    position: absolute;
-    inset: 7px;
-    height: auto;
-    background: none;
-    border-block: 1px solid #8870447a;
-    pointer-events: none;
-}
+.vn-dialogue:not(.vn-image-only)::before,
 .vn-dialogue:not(.vn-image-only)::after {
-    content: "";
-    position: absolute;
-    inset: 11px;
-    border-inline: 1px solid #8870445e;
-    pointer-events: none;
+    display: none;
 }
 .vn-dialogue:not(.vn-image-only) .vn-speaker {
     width: fit-content;
@@ -163,6 +188,66 @@ select option { background: #1b3025; color: #f0e4c9; }
     min-width: 118px;
 }
 .vn-controls [data-action="next"]:hover { background: #f2e0b6; }
+
+/* Raised, time-worn brass keys mounted on the lower margin of the same sheet. */
+.vn-dialogue-shell:has(.vn-dialogue:not([hidden])):not(:has(.vn-image-only)) .vn-controls {
+    position: relative;
+    flex-shrink: 0;
+    justify-content: flex-end;
+    margin: 0;
+    padding: 17px 36px 25px;
+    gap: 9px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+.vn-dialogue-shell:has(.vn-dialogue:not([hidden])):not(:has(.vn-image-only)) .vn-controls::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 36px;
+    right: 36px;
+    height: 1px;
+    background: #8a693b50;
+    box-shadow: 0 1px 0 #fff5d866;
+    pointer-events: none;
+}
+.vn-dialogue-shell:has(.vn-dialogue:not([hidden])):not(:has(.vn-image-only)) .vn-controls button {
+    min-height: 38px;
+    padding: 8px 14px;
+    border: 1px solid #876539;
+    border-top-color: #bea474;
+    border-bottom: 2px solid #70502d;
+    border-radius: 3px;
+    color: #372a18;
+    background: linear-gradient(180deg, #f3e2b7 0%, #dac18c 45%, #c3a16a 49%, #d9bc85 100%);
+    box-shadow: 0 2px 2px #67411e42, 0 4px 5px #67411e20, inset 0 1px 0 #fff5d6, inset 1px 0 0 #f5e2b7, inset -1px 0 0 #8f6b3a66;
+    text-shadow: 0 1px 0 #fff2cfaa;
+    font-size: 13px;
+    transition: box-shadow .12s, transform .12s, filter .12s;
+}
+.vn-dialogue-shell:has(.vn-dialogue:not([hidden])):not(:has(.vn-image-only)) .vn-controls button:hover:not(:disabled) { filter: brightness(1.06); }
+.vn-dialogue-shell:has(.vn-dialogue:not([hidden])):not(:has(.vn-image-only)) .vn-controls button:active:not(:disabled) {
+    transform: translateY(2px);
+    box-shadow: inset 0 2px 3px #65421866, 0 1px 0 #fff2cc80;
+}
+.vn-dialogue-shell:has(.vn-dialogue:not([hidden])):not(:has(.vn-image-only)) .vn-controls [data-action="next"] {
+    min-width: 138px;
+    color: #f6e6bf;
+    background: linear-gradient(180deg, #53734a, #284a34 48%, #203b2b 51%, #36583c);
+    border-color: #aa8b50;
+    border-bottom-color: #203323;
+    text-shadow: 0 -1px 1px #081a12;
+    box-shadow: 0 2px 2px #67411e42, 0 4px 5px #67411e20, inset 0 1px 0 #c9bd8377, inset 0 0 0 2px #152f2140;
+}
+.vn-dialogue-shell:has(.vn-dialogue:not([hidden])):not(:has(.vn-image-only)) .vn-controls [aria-pressed="true"] {
+    color: #ffebc4;
+    background: linear-gradient(#984a3d, #6e3029);
+    text-shadow: 0 -1px 0 #411713;
+    box-shadow: inset 0 2px 3px #35100c66, 0 1px 0 #fff2cc80;
+}
+.vn-dialogue-shell .vn-controls button:focus-visible { outline-color: #31573d; }
 .vn-panel > section, .vn-reply, .vn-artifact > section {
     border: 1px solid var(--hp-brass);
     border-radius: 2px;
@@ -176,6 +261,9 @@ select option { background: #1b3025; color: #f0e4c9; }
 
 @media (min-width: 1600px) {
     .vn-top { top: 16px; width: calc(100% - 40px); padding: 13px 20px; }
+}
+@media (max-height: 520px) {
+    .vn-dialogue:not(.vn-image-only) { min-height: 0; }
 }
 @media (max-width: 1100px) {
     .vn-top { gap: 9px; padding: 10px 13px; }
@@ -191,15 +279,28 @@ select option { background: #1b3025; color: #f0e4c9; }
     .vn-top button, .vn-layout-picker, .vn-environment-picker, .vn-framing-picker { padding: 7px 8px; font-size: 11px; }
     .vn-environment-picker { max-width: 48%; }
     .vn-dialogue:not(.vn-image-only) {
-        width: calc(100vw - 20px) !important;
+        width: 100% !important;
         min-width: 0;
         min-height: 156px;
         max-height: 42vh;
-        padding: 20px 22px 14px;
-        margin-bottom: 10px;
+        padding: 24px 25px 15px;
+        margin: 0;
     }
     .vn-dialogue:not(.vn-image-only) .vn-speaker { font-size: 12px; }
     .vn-controls { padding: 5px; gap: 5px; margin-inline: 10px; margin-bottom: max(10px, env(safe-area-inset-bottom)); }
     .vn-controls button { padding: 8px 10px; font-size: 12px; }
     .vn-controls [data-action="next"] { min-width: 105px; }
+    .vn-dialogue-shell:has(.vn-dialogue:not([hidden])):not(:has(.vn-image-only)) {
+        width: calc(100vw - 20px);
+        max-height: calc(100dvh - 185px);
+        margin-bottom: max(12px, env(safe-area-inset-bottom));
+    }
+    .vn-dialogue-shell:has(.vn-dialogue:not([hidden])):not(:has(.vn-image-only)) .vn-controls {
+        padding: 15px 24px 24px;
+        justify-content: center;
+        gap: 8px;
+    }
+    .vn-dialogue-shell:has(.vn-dialogue:not([hidden])):not(:has(.vn-image-only)) .vn-controls::before { left: 25px; right: 25px; }
+    .vn-dialogue-shell:has(.vn-dialogue:not([hidden])):not(:has(.vn-image-only)) .vn-controls button { padding: 8px 10px; font-size: 12px; }
+    .vn-dialogue-shell:has(.vn-dialogue:not([hidden])):not(:has(.vn-image-only)) .vn-controls [data-action="next"] { min-width: 112px; }
 }

@@ -1,5 +1,5 @@
 {
-  "status": "102 passed · 0 failed",
+  "status": "103 passed · 0 failed",
   "tests": [
     "PASS · POV privacy and four characters from one scenario",
     "PASS · backward restores background, expression and audio state",
@@ -46,6 +46,7 @@
     "PASS · environment changes unload the previous CSS and apply each setting without changing the paragraph",
     "PASS · stale stylesheet loads and disposed renderers cannot reinstate old environment styles",
     "PASS · the settings CSS toggle and Refresh assets reload styling without advancing the scene",
+    "PASS · Harry Potter parchment surrounds text and controls and releases image-only and hidden boxes",
     "PASS · repeated response commands reuse music ambience background and character frames through generation",
     "PASS · cast and ambience carry between responses and rebuild after refresh while exits and resets are respected",
     "PASS · new generation cancels obsolete world loads while retaining the current music and sprite",

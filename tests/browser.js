@@ -816,6 +816,37 @@ await check('the settings CSS toggle and Refresh assets reload styling without a
         assert(controller.settingsPanel.querySelector('[data-environment-css-status]').textContent.includes('loaded'));
     } finally { controller.settings.environmentCss = enabled; controller.environmentStyle.read = original; await controller.loadEnvironmentStyle(); }
 });
+await check('Harry Potter parchment surrounds text and controls and releases image-only and hidden boxes', async () => {
+    const original = controller.environmentStyle.read, originalSettings = controller.environmentStyle.readSettings;
+    const box = controller.root.querySelector('.vn-dialogue'), controls = controller.root.querySelector('.vn-controls'), hidden = box.hidden;
+    const imageOnly = box.classList.contains('vn-image-only');
+    controller.environmentStyle.read = () => fetch('../examples/harry-potter/dialogue.css').then(response => response.text());
+    controller.environmentStyle.readSettings = async () => null;
+    try {
+        box.hidden = false; box.classList.remove('vn-image-only'); await controller.loadEnvironmentStyle();
+        const shell = controller.root.querySelector('.vn-dialogue-shell');
+        assert(shell.contains(box)); assert(shell.contains(controls)); equal(getComputedStyle(shell).display, 'flex');
+        const paper = shell.getBoundingClientRect(), buttons = controls.getBoundingClientRect();
+        assert(buttons.left >= paper.left && buttons.right <= paper.right + 1); assert(buttons.bottom <= paper.bottom + 1);
+        for (const button of controls.querySelectorAll('button')) assert(button.getBoundingClientRect().bottom < paper.bottom);
+        equal(getComputedStyle(box).backgroundColor, 'rgba(0, 0, 0, 0)'); equal(getComputedStyle(controls).backgroundColor, 'rgba(0, 0, 0, 0)');
+        assert(getComputedStyle(shell, '::before').backgroundImage.includes('parchment-paper.png'));
+        assert(getComputedStyle(controls.querySelector('[data-action="next"]')).boxShadow !== 'none');
+        const text = box.querySelector('.vn-text'), previousText = text.textContent;
+        text.textContent = 'Long dialogue remains scrollable without covering the controls. '.repeat(150);
+        try {
+            assert(box.scrollHeight > box.clientHeight);
+            assert(box.getBoundingClientRect().bottom <= controls.getBoundingClientRect().top + 1);
+            assert(controls.querySelector('[data-action="next"]').getBoundingClientRect().bottom < shell.getBoundingClientRect().bottom);
+        } finally { text.textContent = previousText; }
+        box.classList.add('vn-image-only'); equal(getComputedStyle(shell).display, 'contents');
+        box.classList.remove('vn-image-only'); box.hidden = true; equal(getComputedStyle(shell).display, 'contents');
+    } finally {
+        box.hidden = hidden; box.classList.toggle('vn-image-only', imageOnly);
+        controller.environmentStyle.read = original; controller.environmentStyle.readSettings = originalSettings; await controller.loadEnvironmentStyle();
+        equal(getComputedStyle(controller.root.querySelector('.vn-dialogue-shell')).display, 'contents');
+    }
+});
 await check('repeated response commands reuse music ambience background and character frames through generation', async () => {
     context.chat = [{ mes: 'SECRET\n/////\n#BACKGROUND kitchen\n#MUSIC buzz\n#AMBIENT outside_noise\n#ENTER Nina\nNina: "First." [happy]' }]; mountChat();
     await controller.open(0); await controller.audio.unlock();
