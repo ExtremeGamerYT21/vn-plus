@@ -91,6 +91,37 @@ export async function runLiveVoiceChecks({ check, assert, equal, eventually, con
             assert(controller.dialogue.letters.every(letter => letter.style.visibility !== 'hidden'));
         });
     } finally { controller.dispose(); }
+    await check('S2.1 prompt compilation preserves chat and reveals original German snippets with actual voice timestamps', async () => {
+        context.chatId = 'speech-text-browser';
+        const source = 'PRIVATE\n/////\nNina: "Ja, I understand." [curious]\nNina: "Jason Weber!" [angry]';
+        context.chat = [{ mes: source }]; mountChat();
+        const directed = makeController(), requests = [];
+        Object.assign(directed.settings, { autoCreateCharacters: false, autoAdvance: false, typewriterEffect: true, reducedMotion: false, typewriterSpeed: 5 });
+        directed.settings.characters.nina = { voiceId: 'nina-test' };
+        directed.settings.characters.jason_weber = { displayName: 'Jason', aliases: ['Jason Weber'] };
+        Object.assign(directed.settings.tts, { enabled: true, autoGenerate: true, autoPlay: true, chapterSize: 1, syncText: true });
+        directed.speech.endpoint = async (path, options) => {
+            if (path === 'status') return Response.json({ configured: true });
+            const body = JSON.parse(options.body); requests.push(body.body.text);
+            const first = body.body.text.includes('understand');
+            const segments = (first ? ['Ya', 'I', 'understand'] : ['Jason', 'Weber']).map((text, i) => ({ text, start: .2 + i * .2, end: .35 + i * .2 }));
+            return new Response(`data: ${JSON.stringify({ audio_base64: btoa('audio'), chunk_seq: 0, chunk_audio_offset_sec: 0, alignment: { segments } })}\n\n`);
+        };
+        directed.speech.decode = async () => new Float32Array(44100);
+        directed.speech.process = async chapter => chapter.clips.filter(clip => !clip.review).map(clip => ({ id: clip.id, samples: new Float32Array(44100), notes: [] }));
+        directed.speech.audioFactory = () => ({ currentTime: 0, paused: true, async play() { this.paused = false; }, pause() { this.paused = true; }, removeAttribute() {}, load() {} });
+        try {
+            await directed.open(0); await eventually(() => directed.speech.playback?.status === 'playing');
+            assert(requests.includes('<|speaker:0|>[curious] Ya, I understand.'));
+            await eventually(() => requests.includes('<|speaker:0|>[stern, controlled displeasure] Jason Weber!'));
+            equal(directed.root.querySelector('.vn-text').textContent.trim(), '"Ja, I understand."');
+            directed.speech.audio.currentTime = .21;
+            await eventually(() => directed.dialogue.letters.filter(letter => letter.style.visibility !== 'hidden').map(letter => letter.textContent).join('').trim() === '"Ja,');
+            assert(directed.dialogue.typing, 'Phonetic spelling forced ordinary estimated typewriter timing');
+            directed.speech.audio.currentTime = .61; await eventually(() => !directed.dialogue.typing);
+            equal(context.chat[0].mes, source);
+        } finally { directed.dispose(); }
+    });
     await check('parallel chapters expose later voice readiness early and keep recordings and exports in story order', async () => {
         context.chatId = 'parallel-browser-voices';
         const source = 'PRIVATE\n/////\nYou listen.\nNina: "Line 0"\nNina: "Line 1"\nNina: "Line 2"';

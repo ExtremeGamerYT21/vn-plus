@@ -1,3 +1,5 @@
+import { compileSpeechText } from './speech-text.js';
+
 export const SAMPLE_RATE = 44100;
 export const SPEECH_DEFAULTS = {
     enabled: false, autoGenerate: false, narratorEnabled: false, autoPlay: true, syncText: true, model: 's2.1-pro-free', splitChapters: true, chapterSize: 6, parallelBatches: 3,
@@ -30,9 +32,19 @@ export function spokenText(text) {
     let value = String(text || '').trim();
     const close = { '"': '"', '“': '”', "'": "'", '‘': '’' }[value[0]];
     if (close && value.endsWith(close)) value = value.slice(1, -1);
-    return value.replace(/<\|speaker:\d+\|>/g, '').replace(/\*\*([^*]+)\*\*|\*([^*]+)\*|_([^_]+)_/g, (_, bold, em, under) => bold || em || under).trim();
+    return value.replace(/<\|speaker:\d+\|>/g, '').split(/(\[[^\]\r\n]*\])/g)
+        .map(part => part.startsWith('[') ? part : part.replace(/\*\*([^*]+)\*\*|\*([^*]+)\*|_([^_]+)_/g, (_, bold, em, under) => bold || em || under)).join('').trim();
 }
 export function speechSegments(timeline, registry, sourceId, options = {}) {
+    const ids = new Set([
+        ...Object.keys(registry.resolver?.inventory?.characters || {}), ...registry.properties.keys(),
+        ...registry.entries().map(entry => entry.id),
+        ...timeline.beats.filter(beat => beat.token.type === 'dialogue').map(beat => registry.identify(beat.token.character)),
+    ]);
+    const fullNames = [...ids].flatMap(id => {
+        const props = registry.get(id);
+        return [id, props.displayName, ...(Array.isArray(props.aliases) ? props.aliases : typeof props.aliases === 'string' ? [props.aliases] : [])].filter(Boolean);
+    });
     return timeline.beats.flatMap((beat, index) => {
         const token = beat.token;
         const narrator = token.type === 'narration' || token.type === 'dialogue' && registry.isNarrator(token.character);
@@ -45,7 +57,7 @@ export function speechSegments(timeline, registry, sourceId, options = {}) {
         const text = spokenText(token.text);
         if (!text) return [];
         return [{ id: `${sourceId}:${index}`, beat: index, character, name: props.displayName || token.character || 'Narration',
-            voice, text, synthesisText: `${token.direction ? `[${token.direction}] ` : ''}${text}` }];
+            voice, text, ...compileSpeechText(text, { direction: token.direction, emotion: token.emotion, fullNames: narrator ? [] : fullNames, language: props.ttsLanguage }) }];
     });
 }
 export function chapterRequests(segments, settings) {

@@ -1,5 +1,6 @@
 import { speechTokens } from './speech-alignment.js';
 import { SAMPLE_RATE } from './speech-segments.js';
+import { speechWordMatches } from './speech-text.js';
 
 /** Map actual rendered text to provider word times; never estimate from total clip duration. */
 export function speechRevealCues(text, clip, words = []) {
@@ -8,7 +9,7 @@ export function speechRevealCues(text, clip, words = []) {
     const visible = [...masked.matchAll(/[\p{L}\p{N}][\p{L}\p{M}\p{N}]*(?:['’][\p{L}\p{M}\p{N}]+)*/gu)]
         .flatMap(match => speechTokens(match[0]).map(token => ({ text: token, start: match.index, end: match.index + match[0].length })));
     const timed = words.flatMap(word => speechTokens(word.text).map(token => ({ ...word, text: token }))).slice(clip.first, clip.last + 1);
-    if (!visible.length || visible.length !== timed.length || visible.some((word, index) => word.text !== timed[index].text)) return null;
+    if (!visible.length || visible.length !== timed.length || visible.some((word, index) => !speechWordMatches(timed[index].text, word.text, clip.line, index))) return null;
     const origin = Math.round(clip.start * SAMPLE_RATE) / SAMPLE_RATE;
     if (!Number.isFinite(origin) || !Number.isFinite(clip.end) || timed.some((word, index) => !Number.isFinite(word.start) || !Number.isFinite(word.end) || word.start < origin - 1 / SAMPLE_RATE || word.end > clip.end + 1 / SAMPLE_RATE || word.end < word.start || (index && word.start < timed[index - 1].start))) return null;
     return visible.map((word, index) => {

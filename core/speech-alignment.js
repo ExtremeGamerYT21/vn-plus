@@ -1,11 +1,10 @@
-export function speechTokens(text) {
-    return String(text || '').normalize('NFKC').toLowerCase().replace(/<\|speaker:\d+\|>|\[[^\]]*\]/g, ' ')
-        .replace(/['’]/g, '').match(/[\p{L}\p{N}]+/gu) || [];
-}
+import { speechTokens, speechWordMatches } from './speech-text.js';
+export { speechTokens } from './speech-text.js';
 /** Monotonic minimum-edit alignment; ambiguous paths never produce automatic cuts. */
 export function alignChapter(lines, words, duration, margins = {}) {
-    const expected = lines.flatMap((line, lineIndex) => speechTokens(line.text).map(text => ({ text, lineIndex })));
+    const expected = lines.flatMap((line, lineIndex) => speechTokens(line.text).map((text, word) => ({ text, lineIndex, line, word })));
     const timed = words.flatMap((word, index) => speechTokens(word.text).map(text => ({ ...word, text, index })));
+    const matchesWord = (a, b) => speechWordMatches(b.text, a.text, a.line, a.word);
     const n = expected.length, m = timed.length;
     if (n > 6000 || m > 6000) throw new Error('Chapter has too many alignment tokens. Use smaller chapters.');
     const directions = new Uint8Array((n + 1) * (m + 1));
@@ -14,7 +13,7 @@ export function alignChapter(lines, words, duration, margins = {}) {
     for (let i = 1; i <= n; i++) {
         const current = new Uint16Array(m + 1), ways = new Uint8Array(m + 1); current[0] = i; ways[0] = 1; directions[i * (m + 1)] = 2;
         for (let j = 1; j <= m; j++) {
-            const diagonal = previous[j - 1] + (expected[i - 1].text === timed[j - 1].text ? 0 : 1);
+            const diagonal = previous[j - 1] + (matchesWord(expected[i - 1], timed[j - 1]) ? 0 : 1);
             const up = previous[j] + 1, left = current[j - 1] + 1, cost = Math.min(diagonal, up, left);
             let direction = 0, count = 0;
             if (diagonal === cost) { direction |= 1; count += previousWays[j - 1]; }
@@ -27,7 +26,7 @@ export function alignChapter(lines, words, duration, margins = {}) {
     const matches = new Map(); let i = n, j = m;
     while (i || j) {
         const direction = directions[i * (m + 1) + j];
-        if (direction & 1) { if (expected[i - 1].text === timed[j - 1].text) matches.set(i - 1, j - 1); i--; j--; }
+        if (direction & 1) { if (matchesWord(expected[i - 1], timed[j - 1])) matches.set(i - 1, j - 1); i--; j--; }
         else if (direction & 2) i--; else j--;
     }
     const invalidTiming = timed.some((word, index) => !Number.isFinite(word.start) || !Number.isFinite(word.end) || word.start < 0 || word.end < word.start || word.end > duration + 1 / 44100 || (index && (word.start < timed[index - 1].start || word.end < timed[index - 1].end)));
