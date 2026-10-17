@@ -1,3 +1,5 @@
+import { runLanguageVoiceChecks } from './browser-speech-language.js';
+
 export async function runLiveVoiceChecks({ check, assert, equal, eventually, context, mountChat, makeController }) {
     const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
     context.chatId = 'live-voices'; context.chat = [{ mes: 'Canonical only.' }]; mountChat();
@@ -156,4 +158,5 @@ export async function runLiveVoiceChecks({ check, assert, equal, eventually, con
             equal(context.chat[0].mes, source);
         } finally { parallel.dispose(); }
     });
+    await runLanguageVoiceChecks({ check, assert, equal, eventually, context, mountChat, makeController });
 }

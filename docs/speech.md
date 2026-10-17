@@ -62,7 +62,7 @@ Open **Extensions → Visual Novel+ → Fish Audio voices**, check the bridge, s
 2. Open **Voices** in the VN toolbar or the Fish area in extension settings.
 3. **Prepare selected dialogue** lists only spoken segments with character voice IDs. Preparation makes no synthesis request. You can deselect individual lines.
 4. **Generate selected dialogue** validates the whole selection before making requests. It defaults to `s2.1-pro-free`; the paid `s2.1-pro` model requires explicit selection. There is no automatic paid fallback. Only explicit HTTP 429 rejections receive bounded automatic retries; other failures require an explicit resume.
-5. Requests use chapters of six spoken segments by default, with up to three chapters generating in parallel. A segment is one utterance, not a pair of turns. Chapter size is adjustable from 1–200, or splitting can be disabled. Each chapter builds a fresh ordered character/voice mapping with `<|speaker:N|>` tags. Emotion directions such as `[curious]`, `[whispering]` and `[laughing]` stay in the synthesis input.
+5. Requests use chapters of six spoken segments by default, with up to three chapters generating in parallel. A segment is one utterance, not a pair of turns. Chapter size is adjustable from 1–200, or size splitting can be disabled. Language changes still start separate requests. Each chapter builds a fresh ordered character/voice mapping with `<|speaker:N|>` tags. Emotion directions such as `[curious]`, `[whispering]` and `[laughing]` stay in the synthesis input.
 6. Completed chapters survive cancellation or a later failure. **Generate remaining chapters** resumes explicitly. A completed matching recording is reused without another Fish request when the same scene is rendered, reopened or generated again during the current session.
 
 ## S2.1 dialogue delivery and pronunciation
@@ -74,11 +74,30 @@ Deterministic phrase rules run automatically for both supported S2.1 models:
 - An angry, serious, stern or annoyed **opening full-name address** becomes `[stern, controlled displeasure]`. `Henry: "Jason Weber!" [angry]` sends `[stern, controlled displeasure] Jason Weber!`. VN+ checks known folder names, display names and aliases, including mute characters. Mentioning a name later in a sentence, a first-name call, or a happy greeting does not trigger this rule. An explicit whispering/shouting modifier is preserved.
 - Explicit `[voice_break]`, `[voice breaks]` and `[voice cracks]` become `[voice breaking]`. A repeated initial such as `I-I` with a sad/tearful direction adds a voice-breaking hint; a nervous/scared direction adds hesitant stammering. Ordinary compounds and calm stutters receive no invented emotional direction.
 - Short standalone vocalizations receive sound cues while keeping their written sounds: `Ha ha!` / `Hahaha!` → `[laughing]`, `Heh.` → `[chuckling]`, `Ugh.` → `[groaning]`, `Ahem.` → `[clear throat]`, and `Huff, puff.` → `[panting]`. Standalone `Sigh.`, `Gasp!` and `Yawn.` are supported too. Existing vocal directions are not duplicated.
-- Short German interjections in otherwise English dialogue use `Ja` → `Ya` and `Ach so` → `Ach zo`, preserving capitalization and whole-word boundaries. These are English-friendly spellings for code-switches, not a German translation or a general pronunciation dictionary. Recognizable German passages are left intact. Set `"ttsLanguage": "de-DE"` (or another non-English language code) in a character's `properties.json` to disable these English snippet substitutions for that character; `en-GB` / `en-US` allow them. This property only controls this local preprocessing, and does not change the Fish voice/accent.
+- Short German interjections in otherwise English dialogue use `Ja` → `Ya` and `Ach so` → `Ach zo`, preserving capitalization and whole-word boundaries. These are English-friendly spellings for code-switches, not a German translation or a general pronunciation dictionary. Recognizable German passages are left intact. Set `"ttsLanguage": "de-DE"` (or another non-English language code) in a character's `properties.json` to disable these English snippet substitutions for that character; `en-GB` / `en-US` allow them. This property also disambiguates language grouping for short/unknown lines; it does not change the Fish voice/accent.
 
 Chat text, narration, sprite emotions and character properties are never rewritten by this compiler. Only eligible spoken segments reach it: thought/mute/narrator settings still apply. For pronunciation substitutions, chapter alignment and synchronized text accept either the original or phonetic spelling **only at that changed word**. Displayed `Ja` therefore follows the actual `Ya` timestamp. Other mismatches, missing words, ambiguous cuts and invalid timings still require review; vocal sounds without usable transcript words do not get guessed timestamps. Recordings remain cached by their compiled prompt, so a changed pronunciation/direction generates a new recording rather than reusing old audio. Parsing changes take effect after refreshing the page; they require no new server-bridge installation.
 
 Automated checks cover prompt construction, registry names, transcript alignment and browser text reveal using simulated Fish responses. Actual vocal acting and pronunciation still depend on the selected voice and need a listening check.
+
+## Whole-language voice batches
+
+Whole non-English utterances automatically start a separate Fish request. Consecutive voiced utterances in the same detected language share that request, including different characters, until the chapter-size limit. English resumes in a new request. Disabling **Split into short chapters** removes the size split; it still keeps languages separate. Requests stay in story order and use the existing parallel queue, cancellation, timestamp alignment and audio cache. No new server installation is required.
+
+For example, these lines create three batches: **English / German + German / English**:
+
+```text
+Henry: "Do it as I say, ja?"
+Henry: "Ja, wir gehen jetzt nach Hause."
+Jason: "Ich bin gleich bereit."
+Jason: "I understand, Dad."
+```
+
+The English snippet becomes `ya` only in the Fish prompt. The German batch retains `Ja`, umlauts, original emotion cues and the same character voice IDs. Original VN text is unchanged. **Prepare selected dialogue** shows each line's language; completed chapters show it too. Deselecting English lines can leave a single German batch.
+
+Detection runs locally, without LLM/API requests or downloaded models. Weighted vocabularies distinguish English, German, French, Spanish, Portuguese, Italian, Dutch, Polish, Russian and Ukrainian. Shared words such as `in`, `die`, `no` and `a` carry less weight; clear English wording keeps a mixed utterance in the English group. Writing-system checks also isolate Japanese, Chinese, Korean, Arabic, Greek, Devanagari, Hebrew and Thai text. This is a heuristic, particularly for short replies, names, related languages and shared scripts. An ambiguous reply such as `Ja!` uses its character's valid `ttsLanguage` hint first, otherwise the preceding detected speech (or following speech at the start), otherwise English. A clear sentence can override a character's usual language. Unknown Latin-language sentences need a property hint when the vocabulary cannot identify them. VN+ does not split an English/German mixture inside one utterance into separate clips.
+
+Separating the requests gives Fish foreign-language text without English speech from the preceding batch. It does not guarantee an accent. Fish's [TTS API documentation](https://docs.fish.audio/api-reference/endpoint/openapi-v1/text-to-speech) says its `language` parameter affects normalization and timestamps, not the model's accent. VN+ leaves that API parameter unset and lets Fish infer the language from each request; the language labels above are local metadata.
 
 ## Parallel voice batches
 

@@ -145,7 +145,7 @@ export class SpeechEngine {
                             const samples = job.chapters.reduce((sum, chapter) => sum + chapter.original.length, 0);
                             if ((samples + original.length) / SAMPLE_RATE > 600) throw new Error('Recording exceeds the ten-minute local safeguard. Completed chapters remain available.');
                             const words = stream.words.map(word => ({ ...word, chunk: `${index}:${word.chunk}` }));
-                            const chapter = { index, original, words, offsetSamples: null, duration: original.length / SAMPLE_RATE, noise: null,
+                            const chapter = { index, language: plan[index].language, original, words, offsetSamples: null, duration: original.length / SAMPLE_RATE, noise: null,
                                 clips: alignChapter(plan[index].lines, words, original.length / SAMPLE_RATE, settings), processed: null };
                             job.chapters.push(chapter); job.chapters.sort((a, b) => a.index - b.index);
                             let offset = 0, contiguous = true;

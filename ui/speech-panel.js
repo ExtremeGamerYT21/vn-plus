@@ -1,4 +1,5 @@
 import { wavBytes } from '../core/speech-pcm.js';
+import { speechLanguageName } from '../core/speech-language.js';
 
 const element = (tag, text, className) => { const node = document.createElement(tag); if (text) node.textContent = text; if (className) node.className = className; return node; };
 function download(bytes, name, type) {
@@ -30,6 +31,7 @@ export class SpeechPanel {
             ['timeout', 'Request timeout (seconds)', 'number', 30, 600], ['volume', 'Voice playback volume', 'number', 0, 1],
         ]) this.field(options, definition);
         options.append(element('p', 'Up to 5 chapters can generate together; default 3 leaves room for other Fish API use. Takes effect on the next generation when the response has multiple chapters. Restart SillyTavern after a bridge update; older bridges use one batch at a time. Rate-limit rejections back off before retrying, with no paid-model fallback.', 'vn-hint'));
+        options.append(element('p', 'Whole non-English lines generate separately from English. Consecutive lines in the same detected language share a batch, within the chapter-size limit, even with chapter splitting off. Short ambiguous replies use nearby speech or the character’s ttsLanguage property. Mixed English lines keep their pronunciation rules.', 'vn-hint'));
         this.node.append(options);
         const finishing = element('details'); finishing.append(element('summary', 'Clip margins and audio finishing'));
         for (const definition of [
@@ -78,7 +80,7 @@ export class SpeechPanel {
             for (const segment of engine.prepared?.segments || []) {
                 const label = element('label', '', 'vn-speech-segment'), input = element('input'); input.type = 'checkbox'; input.checked = !engine.excluded.has(segment.id);
                 input.addEventListener('change', () => engine.include(segment.id, input.checked)); label.append(input, element('span', `${segment.name}: ${segment.text}`));
-                const voice = element('small', `Voice: ${segment.voice}`, 'vn-hint'); label.append(voice); this.segments.append(label);
+                const voice = element('small', `Voice: ${segment.voice} · ${speechLanguageName(segment.language || 'en')}`, 'vn-hint'); label.append(voice); this.segments.append(label);
             }
         }
         this.recordings.replaceChildren(); if (!engine.job?.chapters.length) return;
@@ -92,7 +94,7 @@ export class SpeechPanel {
             sourceActions.append(button);
         } this.recordings.append(sourceActions);
         for (const chapter of engine.job.chapters) {
-            const section = element('details'); section.open = true; section.append(element('summary', `Chapter ${chapter.index + 1} · ${chapter.duration.toFixed(2)} seconds`));
+            const section = element('details'); section.open = true; section.append(element('summary', `Chapter ${chapter.index + 1} · ${speechLanguageName(chapter.language || chapter.clips[0]?.line?.language || 'en')} · ${chapter.duration.toFixed(2)} seconds`));
             section.append(this.button('Play original chapter for timing review', () => engine.playChapter(chapter.index)));
             if (chapter.processingError) section.append(element('p', chapter.processingError, 'vn-hint'));
             const notes = [...new Set([...(chapter.processed?.results.values() || [])].flatMap(result => result.notes))];

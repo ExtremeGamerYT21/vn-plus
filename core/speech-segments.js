@@ -1,5 +1,6 @@
 import { compileSpeechText } from './speech-text.js';
 import { endsWithEmDash } from './dialogue-text.js';
+import { detectSpeechLanguage, speechLanguageCode } from './speech-language.js';
 
 export const SAMPLE_RATE = 44100;
 export const SPEECH_DEFAULTS = {
@@ -46,7 +47,7 @@ export function speechSegments(timeline, registry, sourceId, options = {}) {
         const props = registry.get(id);
         return [id, props.displayName, ...(Array.isArray(props.aliases) ? props.aliases : typeof props.aliases === 'string' ? [props.aliases] : [])].filter(Boolean);
     });
-    const segments = timeline.beats.flatMap((beat, index) => {
+    const entries = timeline.beats.flatMap((beat, index) => {
         const token = beat.token;
         const narrator = token.type === 'narration' || token.type === 'dialogue' && registry.isNarrator(token.character);
         if (token.thought || (narrator ? !options.narratorEnabled : token.type !== 'dialogue')) return [];
@@ -57,8 +58,20 @@ export function speechSegments(timeline, registry, sourceId, options = {}) {
         if (!voice) return [];
         const text = spokenText(token.text);
         if (!text) return [];
-        return [{ id: `${sourceId}:${index}`, beat: index, character, name: props.displayName || token.character || 'Narration',
-            voice, text, ...(!narrator && endsWithEmDash(token.text) ? { cutOff: true } : {}), ...compileSpeechText(text, { direction: token.direction, emotion: token.emotion, fullNames: narrator ? [] : fullNames, language: props.ttsLanguage }) }];
+        const detected = detectSpeechLanguage(text), hint = speechLanguageCode(props.ttsLanguage);
+        return [{ line: { id: `${sourceId}:${index}`, beat: index, character, name: props.displayName || token.character || 'Narration',
+            voice, text, ...(!narrator && endsWithEmDash(token.text) ? { cutOff: true } : {}) }, token, props, narrator,
+            language: detected === 'und-Cyrl' && hint && hint !== 'en' ? hint : detected || hint }];
+    });
+    let following = null, previous = null;
+    for (let index = entries.length - 1; index >= 0; index--) {
+        const entry = entries[index]; following = entry.language || following; entry.following = following;
+    }
+    const segments = entries.map(({ line, token, props, narrator, language: detected, following }) => {
+        const language = detected || previous || following || 'en';
+        previous = language;
+        return { ...line, language, ...compileSpeechText(line.text, { direction: token.direction, emotion: token.emotion, fullNames: narrator ? [] : fullNames,
+            language: language === 'en' ? props.ttsLanguage : language }) };
     });
     const views = new Map(timeline.views.map((beat, index) => [beat, index]));
     for (let index = 1; index < segments.length; index++) if (segments[index - 1].cutOff && views.get(segments[index].beat) === views.get(segments[index - 1].beat) + 1) segments[index].followsCutOff = true;
@@ -72,17 +85,21 @@ export function chapterRequests(segments, settings) {
     if (new Set(segments.map(segment => segment.character)).size > 8) throw new Error('Select at most eight voiced characters.');
     const count = settings.splitChapters ? Math.max(1, Math.min(200, Math.floor(settings.chapterSize))) : segments.length;
     const chapters = [];
-    for (let offset = 0; offset < segments.length; offset += count) {
-        const lines = segments.slice(offset, offset + count), speakers = [...new Set(lines.map(line => line.character))];
+    for (let offset = 0; offset < segments.length;) {
+        const language = segments[offset].language || 'en';
+        let end = offset + 1;
+        while (end < segments.length && end - offset < count && (segments[end].language || 'en') === language) end++;
+        const lines = segments.slice(offset, end), speakers = [...new Set(lines.map(line => line.character))];
         const reference_id = speakers.map(character => lines.find(line => line.character === character).voice);
         const text = lines.map(line => `<|speaker:${speakers.indexOf(line.character)}|>${line.synthesisText}`).join('\n');
         if (text.length > 20000) throw new Error('A chapter exceeds the 20,000-character local safeguard. Use smaller chapters.');
-        chapters.push({ index: chapters.length, lines, speakers, body: {
+        chapters.push({ index: chapters.length, language, lines, speakers, body: {
             text, reference_id, format: 'mp3', sample_rate: SAMPLE_RATE, mp3_bitrate: settings.bitrate,
             temperature: settings.temperature, top_p: settings.topP, chunk_length: settings.chunkLength,
             latency: settings.latency, normalize: settings.normalize, condition_on_previous_chunks: settings.conditionPrevious,
             prosody: { speed: settings.speed, normalize_loudness: true },
         } });
+        offset = end;
     }
     return chapters;
 }
