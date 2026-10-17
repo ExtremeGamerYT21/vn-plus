@@ -60,16 +60,15 @@ export async function runFramingChecks(options) {
         await check('narration gently dims every character and shadow independently of the narrator voice toggle', async () => {
             assert(!controller.root.classList.contains('vn-narrating')); await controller.action('next');
             assert(controller.root.classList.contains('vn-narrating'));
-            for (const node of controller.stage.nodes.values()) assert(parseFloat(getComputedStyle(node).filter.match(/brightness\(([^)]+)/)[1]) < .85);
+            for (const node of controller.stage.nodes.values()) equal(getComputedStyle(node).filter, 'brightness(0.85)');
             toggle('bust'); toggle('full-body'); assert(controller.root.classList.contains('vn-narrating'));
             controller.settings.tts.narratorEnabled = true; controller.present(controller.playback.restore());
-            for (const node of controller.stage.nodes.values()) assert(parseFloat(getComputedStyle(node).filter.match(/brightness\(([^)]+)/)[1]) < .85);
+            for (const node of controller.stage.nodes.values()) equal(getComputedStyle(node).filter, 'brightness(0.85)');
             controller.settings.tts.narratorEnabled = false;
         });
         await check('thoughts and spoken dialogue restore normal character lighting after narration', async () => {
             await controller.action('next'); assert(!controller.root.classList.contains('vn-narrating'));
-            assert(parseFloat(getComputedStyle(shadow).filter.match(/brightness\(([^)]+)/)[1]) < 1);
-            assert(getComputedStyle(shadow).filter.includes('saturate(0.55)'));
+            equal(getComputedStyle(shadow).filter, 'brightness(1)'); assert(!shadow.classList.contains('vn-inactive'));
             assert(getComputedStyle(nina).filter !== 'brightness(0.85)');
             await controller.action('next'); assert(!controller.root.classList.contains('vn-narrating'));
             controller.close(); assert(!controller.root.classList.contains('vn-narrating'));

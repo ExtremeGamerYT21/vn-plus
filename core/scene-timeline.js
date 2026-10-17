@@ -1,4 +1,4 @@
-import { characterPresent, characterSilence } from './character-presence.js';
+import { characterPresent, characterSilence, SILENT_BEAT_GRACE, QUIET_FADE_BEATS } from './character-presence.js';
 export const SPEEDS = { normal: 1, slowed: .75, slow: .75, half: .5, sped: 1.4, fast: 1.4, double: 2 };
 const clone = value => structuredClone(value);
 
@@ -24,8 +24,8 @@ export function compileTimeline(tokens, registry, settings, inherited = {}, reco
     const beats = [], errors = [], views = [];
     const names = tokens.filter(token => token.type === 'dialogue' || (token.type === 'command' && token.name === 'ENTER')).map(token => token.character || token.args);
     const participants = new Set(names.filter(name => !registry.isNarrator(name)).map(name => registry.identify(name)));
-    for (const character of Object.values(state.characters)) character.present = characterPresent(character) && participants.has(character.id);
-    const cast = [...participants];
+    for (const character of Object.values(state.characters)) character.present = characterPresent(character) && (participants.has(character.id) || characterSilence(character) <= SILENT_BEAT_GRACE);
+    const cast = [...new Set([...participants, ...Object.values(state.characters).filter(characterPresent).map(character => character.id)])];
     const maxSlots = Math.max(1, cast.filter(id => !registry.isNarrator(id) && (settings.showPlayerBust || !registry.isPlayer(id))).length);
     const enter = (name, emotion) => {
         const id = registry.identify(name);
@@ -85,7 +85,8 @@ export function compileTimeline(tokens, registry, settings, inherited = {}, reco
             }
         }
         if (['dialogue', 'narration', 'artifact'].includes(token.type)) for (const character of Object.values(state.characters)) if (characterPresent(character)) {
-            character.silentBeats = character.id === state.speaker ? 0 : Math.min(4, characterSilence(character) + 1);
+            character.silentBeats = character.id === state.speaker ? 0 : Math.min(SILENT_BEAT_GRACE + QUIET_FADE_BEATS, characterSilence(character) + 1);
+            if (!participants.has(character.id) && character.silentBeats > SILENT_BEAT_GRACE) character.present = false;
         }
         if (recordBeats) {
             const index = beats.length;

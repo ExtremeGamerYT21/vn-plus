@@ -4,7 +4,7 @@ import { createSilhouette } from './silhouette.js';
 import { sceneLighting } from '../core/scene-context.js';
 import { sceneLight } from '../core/scene-light.js';
 import { SceneLightRenderer } from './scene-light-renderer.js';
-import { characterPresent, quietPresentation } from '../core/character-presence.js';
+import { characterPresent, characterSilence, quietPresentation } from '../core/character-presence.js';
 
 export class StageRenderer {
     constructor(root, resolver, registry, settings) { this.root = root; this.resolver = resolver; this.registry = registry; this.settings = settings; this.generation = 0; this.nodes = new Map(); this.departures = new Map(); this.sprites = new SpriteAnimator(root, resolver, settings); this.lightRenderer = new SceneLightRenderer(root, light => this.sprites.setLighting(light)); }
@@ -88,10 +88,10 @@ export class StageRenderer {
             }
             node.dataset.name = character.name;
             node.classList.toggle('vn-speaking', character.id === state.speaker);
-            node.classList.toggle('vn-inactive', !!state.speaker && character.id !== state.speaker);
             const position = stagePosition(character.slot, count, this.settings);
             const quiet = quietPresentation(character, state.speaker, this.settings);
-            node.dataset.presence = quiet.quiet ? 'quiet' : 'active'; node.dataset.silentBeats = quiet.quiet;
+            node.classList.toggle('vn-inactive', quiet.quiet > 0 && !!state.speaker && character.id !== state.speaker);
+            node.dataset.presence = character.id === state.speaker ? 'active' : 'quiet'; node.dataset.silentBeats = characterSilence(character);
             node.style.setProperty('--vn-retreat-time', quiet.quiet ? '1.8s' : '.35s');
             node.style.setProperty('--vn-quiet-brightness', quiet.brightness);
             node.style.setProperty('--vn-quiet-opacity', quiet.quiet ? 1 - quiet.quiet * .1 : 1);

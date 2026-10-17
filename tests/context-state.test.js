@@ -21,7 +21,7 @@ test('context reconstructs the final selected world including trailing commands 
     assert.equal(state.scene.time, '12:26'); assert.deepEqual(Object.keys(state.characters), ['ashley', 'nina']); assert.equal(state.characters.nina.expression, 'sad'); assert.equal(state.speaker, null);
 });
 test('recent cast is a delta of the last three completed POV responses, independent from media history', () => {
-    const chat = context('#BACKGROUND kitchen\n#MUSIC buzz\nAshley: "First." [happy]', 'Nina: "Next." [sad]', 'Quiet.', 'Quiet again.');
+    const chat = context('#BACKGROUND kitchen\n#MUSIC buzz\nAshley: "First." [happy]', 'Nina: "Next." [sad]', 'Quiet.', 'Quiet again.', 'Quiet third.', 'Quiet fourth.', 'Quiet fifth.');
     assert.deepEqual(Object.keys(project(chat).characters), ['nina']); assert.equal(project(chat).background, 'kitchen'); assert.equal(project(chat).music.name, 'buzz');
     chat.chat.push(assistant('Nin: "Still here." [angry]')); const state = project(chat);
     assert.deepEqual(Object.keys(state.characters), ['nina']); assert.equal(state.characters.nina.expression, 'angry');
@@ -59,7 +59,7 @@ test('selected swipe edits deletions and bounded historical replay always recomp
 });
 test('playback seed excludes current body changes but includes its canonical header and cast recency boundary', () => {
     const chat = context(`${header()}\n#BACKGROUND kitchen\nAshley: "Old." [happy]`, 'Quiet.', 'Quiet.', '#BACKGROUND street\nNina: "New." [sad]');
-    const seed = project(chat, {}, 3, true); assert.equal(seed.background, 'kitchen'); assert.deepEqual(Object.keys(seed.characters), []);
+    const seed = project(chat, {}, 3, true); assert.equal(seed.background, 'kitchen'); assert.deepEqual(Object.keys(seed.characters), ['ashley']); assert.equal(seed.characters.ashley.silentBeats, 2);
     chat.chat[3].mes = `${header('9:00 p.m.', 'Street')}\nPRIVATE\n/////\nNina: "Here." [sad]`;
     assert.equal(project(chat, {}, 3, true).scene.time, '21:00');
 });

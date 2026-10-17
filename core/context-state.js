@@ -3,6 +3,7 @@ import { parsePOV } from './vn-parser.js';
 import { lastSceneHeader } from './scene-context.js';
 import { emptyState, compileTimeline } from './scene-timeline.js';
 import { restorePresentation } from './scene-history.js';
+import { characterPresent } from './character-presence.js';
 
 /** Only structured scene information crosses this boundary; prose and artifacts never do. */
 export function contextEntries(context, end = latestAssistant(context)) {
@@ -39,7 +40,7 @@ export function reduceContext(entries, registry, settings, { beforeLast = false 
         const entry = entries[index];
         if (entry.ready) {
             turn++;
-            if (limit) for (const id of Object.keys(state.characters)) if (turn - (seen.get(id) ?? -Infinity) >= limit) delete state.characters[id];
+            if (limit) for (const id of Object.keys(state.characters)) if (!characterPresent(state.characters[id]) && turn - (seen.get(id) ?? -Infinity) >= limit) delete state.characters[id];
         }
         applyContextHeader(state, entry.header);
         if (beforeLast && index === entries.length - 1) break;

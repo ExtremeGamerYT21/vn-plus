@@ -71,7 +71,7 @@ export async function runSharedChecks({ check, assert, equal, eventually, contex
         await controller.selectEnvironment(DEFAULT_ENVIRONMENT);
         context.chatId = 'context-live'; context.chat = [
             { mes: '[3 August 1991 | Before First Year | 9:00 p.m. | Summer | Shop]\nPRIVATE_CONTEXT\n/////\n#BACKGROUND kitchen\n#MUSIC buzz\nAshley: "PRIVATE_OLD" [happy]\nJason: "Old." [sad]' },
-            { mes: 'SECRET\n/////\nQuiet.' },
+            { mes: 'SECRET\n/////\nQuiet.\nNARRATION\nStill quiet.\nNARRATION\nWaiting.\nNARRATION\nMore waiting.\nNARRATION\nThe pause ends.' },
             { mes: 'SECRET\n/////\nNina: "Recent." [happy]' },
             { mes: 'SECRET\n/////\nQuiet again.' },
         ];
