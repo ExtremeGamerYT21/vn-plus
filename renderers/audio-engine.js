@@ -4,6 +4,7 @@ export class AudioEngine {
     constructor(resolver, settings, report = () => {}, audioFactory = () => new Audio()) {
         this.resolver = resolver; this.settings = settings; this.report = report; this.audioFactory = audioFactory;
         this.channels = { music: {}, ambient: {} }; this.sources = new Set(); this.musicSources = new Set(); this.timers = new Map(); this.unlocked = false; this.epoch = 0; this.sfxEpoch = 0;
+        this.suspended = false; this.resumeSources = new Set();
     }
     async unlock() {
         this.unlocked = true;
@@ -11,10 +12,20 @@ export class AudioEngine {
     }
     async play(audio) {
         if (!this.unlocked) return;
-        try { await audio.play(); } catch (error) { this.report(`Audio waiting for browser permission: ${error.message}`); }
+        if (this.suspended) { this.resumeSources.add(audio); return; }
+        try { await audio.play(); if (this.suspended && this.sources.has(audio)) { this.resumeSources.add(audio); audio.pause(); } } catch (error) { this.report(`Audio waiting for browser permission: ${error.message}`); }
         this.onChange?.();
     }
-    stop(audio) { if (!audio) return; clearInterval(this.timers.get(audio)); this.timers.delete(audio); audio.pause(); audio.removeAttribute?.('src'); audio.load?.(); this.sources.delete(audio); this.musicSources.delete(audio); }
+    setSuspended(value) {
+        if (this.suspended === !!value) return; this.suspended = !!value;
+        if (this.suspended) {
+            this.sfxEpoch++;
+            for (const audio of this.sources) { if (!audio.loop) this.stop(audio); else { if (!audio.paused) this.resumeSources.add(audio); audio.pause(); } }
+        }
+        else { const sources = [...this.resumeSources]; this.resumeSources.clear(); for (const audio of sources) if (this.sources.has(audio)) void this.play(audio); }
+        this.onChange?.();
+    }
+    stop(audio) { if (!audio) return; clearInterval(this.timers.get(audio)); this.timers.delete(audio); this.resumeSources.delete(audio); audio.pause(); audio.removeAttribute?.('src'); audio.load?.(); this.sources.delete(audio); this.musicSources.delete(audio); }
     setMusicMuted(muted) {
         this.settings.musicMuted = !!muted;
         // Also silence fading tracks; volume ramps continue normally underneath.
@@ -72,10 +83,10 @@ export class AudioEngine {
     async sfx(name, character = null) {
         const epoch = this.sfxEpoch;
         const url = character ? await this.resolver.voice(character, name) : await this.resolver.audio('sfx', name);
-        if (epoch !== this.sfxEpoch || !url || !this.unlocked || this.sources.size > 32) return;
+        if (epoch !== this.sfxEpoch || !url || !this.unlocked || this.suspended || this.sources.size > 32) return;
         const audio = this.audioFactory(); audio.src = url; audio.volume = clamp(this.settings.sfxVolume); this.sources.add(audio);
         audio.onended = () => this.stop(audio); audio.onerror = () => this.stop(audio);
-        try { await audio.play(); } catch { this.stop(audio); }
+        try { await audio.play(); if (this.suspended || epoch !== this.sfxEpoch) this.stop(audio); } catch { this.stop(audio); }
     }
     cancelOneShots() { this.sfxEpoch++; for (const audio of [...this.sources]) if (!audio.loop) this.stop(audio); }
     cancelPending() {

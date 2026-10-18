@@ -62,9 +62,36 @@ export class VNController {
         void this.loadEnvironmentStyle();
         void this.refreshContext();
         this.sourceTimer = setInterval(() => this.checkSource(), 500);
-        const checkVisibility = () => void this.checkSource();
+        this.syncVisibility();
+        const checkVisibility = () => this.visibilityChanged();
         document.addEventListener('visibilitychange', checkVisibility);
         this.disposers.push(() => document.removeEventListener('visibilitychange', checkVisibility));
+    }
+    pageHidden() { return typeof document !== 'undefined' && document.hidden; }
+    syncVisibility() {
+        const hidden = this.pageHidden(); this.audio.setSuspended(hidden); this.speech.setSuspended(hidden); return hidden;
+    }
+    visibilityChanged() {
+        const hidden = this.syncVisibility(); this.timing.wake();
+        const deferred = this.deferredScene;
+        if (!hidden && deferred) {
+            this.deferredScene = null;
+            if (!this.disposed && !this.busy && this.settings.enabled && deferred.identity === chatIdentity(this.host.context()) && (!this.root.hidden || this.settings.automaticPlayback)) {
+                const index = this.root.hidden || this.followLatest ? latestAssistant(this.host.context()) : deferred.index;
+                void this.open(index).catch(error => this.log(`POV refresh: ${error.message}`)); return;
+            }
+        }
+        void this.checkSource();
+    }
+    async prepareQuiet(index) {
+        const context = this.host.context(), message = readMessage(context, index), fingerprint = this.sourceFingerprint(context, index);
+        if (fingerprint !== this.observedSource || this.root.hidden || !this.playback) this.deferredScene = { identity: chatIdentity(context), index };
+        if (this.busy || !message || message.status !== 'ready' || unfinishedPOV(parsePOV(message.pov))) return;
+        if (this.settings.tts.enabled && this.settings.tts.autoGenerate) {
+            try { await this.prepareSpeech(index); this.speech.requestAutomatic(); }
+            catch (error) { if (!this.disposed) { this.speech.notify(error.message); this.log(`Voice preparation: ${error.message}`); } }
+        }
+        this.observedSource = fingerprint; this.settlingSource = null;
     }
     sourceFingerprint(context = this.host.context(), index = this.selected) {
         const message = readMessage(context, index);
@@ -88,7 +115,8 @@ export class VNController {
         }
         this.sourceChecking = true;
         try {
-            if (!closed || this.settings.automaticPlayback) await this.open(index);
+            if (this.pageHidden()) await this.prepareQuiet(index);
+            else if (!closed || this.settings.automaticPlayback) await this.open(index);
             else {
                 await this.prepareSpeech(index);
                 this.observedSource = fingerprint; this.settlingSource = null;
@@ -393,6 +421,7 @@ export class VNController {
     }
     async open(index) {
         if (!this.settings.enabled) return;
+        if (this.syncVisibility()) return this.prepareQuiet(Number.isInteger(index) && index >= 0 ? index : latestAssistant(this.host.context()));
         this.updateMusicButton();
         this.updateLayoutControls(); this.updateFramingControls();
         if (this.root.hidden) { this.previousFocus = document.activeElement; this.root.hidden = false; document.body.classList.add('vnplus-immersive'); this.root.querySelector('[data-action="exit"]').focus(); }
@@ -460,6 +489,7 @@ export class VNController {
     }
     present(result) {
         if (!result || !result.beat || this.root.hidden || this.busy) return;
+        if (this.syncVisibility()) { this.deferredScene = { identity: chatIdentity(this.host.context()), index: this.selected }; return; }
         this.timing.cancel(); this.html.close(); this.dialogue.cancel(); this.effects.clear(); this.audio.cancelOneShots();
         this.standaloneArtifact = false;
         this.root.querySelector('.vn-status').hidden = true; this.root.querySelector('.vn-reply').hidden = true;
@@ -662,7 +692,7 @@ export class VNController {
         else this.close();
     }
     close() {
-        this.root.hidden = true; this.invalidate();
+        this.root.hidden = true; this.deferredScene = null; this.invalidate();
         // Exiting VN is deliberate. Auto-open waits for another source revision.
         if (this.settings.automaticPlayback) { this.observedSource = this.sourceFingerprint(this.host.context(), latestAssistant(this.host.context())); this.settlingSource = null; }
         document.body.classList.remove('vnplus-immersive'); this.reveal.close(); if (this.previousFocus?.isConnected) this.previousFocus.focus();

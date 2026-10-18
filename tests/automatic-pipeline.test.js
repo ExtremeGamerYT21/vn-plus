@@ -17,9 +17,8 @@ function fixture() {
     return { context, controller, calls, async tick() { await controller.checkSource(); await controller.checkSource(); } };
 }
 
-test('automatic opening follows a stable completed POV without reading document visibility', async () => {
+test('automatic opening follows a stable completed POV while the page is visible', async () => {
     const h = fixture(); h.controller.settings.automaticPlayback = true;
-    // There is no document in this Node process. Visibility must not gate the pipeline.
     await h.tick(); assert.deepEqual(h.calls, [['open', 0]]);
     await h.tick(); assert.equal(h.calls.length, 1);
     h.context.chat.push({ mes: 'PRIVATE\n/////\nNina: "Next."' });
@@ -30,6 +29,15 @@ test('automatic voices prepare the latest response with VN closed and automatic 
     const h = fixture(); Object.assign(h.controller.settings.tts, { enabled: true, autoGenerate: true });
     h.context.chat.push({ mes: 'PRIVATE\n/////\nNina: "Latest."' });
     await h.tick(); assert.deepEqual(h.calls, [['prepare', 1], 'generate']); assert.ok(h.controller.root.hidden);
+    await h.tick(); assert.equal(h.calls.length, 2);
+});
+
+test('a hidden page prepares quietly even when automatic opening is enabled and defers presentation', async () => {
+    const h = fixture(); h.controller.settings.automaticPlayback = true;
+    Object.assign(h.controller.settings.tts, { enabled: true, autoGenerate: true });
+    h.controller.pageHidden = () => true;
+    await h.tick(); assert.deepEqual(h.calls, [['prepare', 0], 'generate']); assert.ok(h.controller.root.hidden);
+    assert.deepEqual(h.controller.deferredScene, { identity: chatIdentity(h.context), index: 0 });
     await h.tick(); assert.equal(h.calls.length, 2);
 });
 
