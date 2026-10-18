@@ -1,6 +1,6 @@
 import { chatIdentity, latestAssistant, readMessage, sceneKey } from './core/message-reader.js';
 import { parsePOV } from './core/vn-parser.js';
-import { compileTimeline } from './core/scene-timeline.js';
+import { compileTimeline, emptyState } from './core/scene-timeline.js';
 import { Playback } from './core/playback.js';
 import { normalizeStageLayout, normalizeSpriteFraming } from './core/stage-layout.js';
 import { contentEnvironments, activateContentProfile, saveContentProfile, CONTENT_PROFILE_KEYS } from './core/content-environments.js';
@@ -28,11 +28,14 @@ import { BeatScheduler, applyCommandState } from './core/narrative-timing.js';
 import { VisualRenderer } from './renderers/visual-renderer.js';
 import { collectJournals } from './core/journal-collector.js';
 import { SourceMonitor } from './core/source-monitor.js';
+import { ManualBackground } from './core/manual-background.js';
+import { backgroundPicker } from './ui/background-picker.js';
 const unfinishedPOV = parsed => parsed.errors.some(error => error.message.startsWith('Incomplete') || error.message.startsWith('Unclosed'));
 
 export class VNController {
     constructor(host, base, inventory = {}) {
         this.host = host; this.settings = loadSettings(host.context());
+        this.manualBackground = new ManualBackground();
         this.base = base; this.inventory = inventory; this.catalogResolver = new AssetResolver(base);
         this.environments = contentEnvironments(inventory);
         this.environment = this.environments.find(entry => entry.id === this.settings.environment) || this.environments.find(entry => entry.id === inventory.defaultEnvironment) || this.environments[0];
@@ -310,6 +313,7 @@ export class VNController {
                 this.mount(); if (!this.root.hidden && !this.busy) void this.open(this.selected); return;
             }
             this.chatId = identity; this.selected = latestAssistant(this.host.context()); this.busy = false; this.pendingIndex = null;
+            this.manualBackground.clear();
             this.speech.clearScene();
             this.reveal.close(); this.invalidate(); this.playback = null; this.parsed = null; this.sceneRevision = null; this.seen.clear(); this.mount();
             this.playbackState.bind(this.environment); this.publishPlaybackActivity();
@@ -387,6 +391,7 @@ export class VNController {
         if (next.id === this.environment.id && !force) { this.settings.environment = next.id; this.updateEnvironmentControls(); return false; }
         const message = readMessage(this.host.context(), this.selected);
         const resume = this.playback && message ? { key: sceneKey(this.host.context(), message), position: this.playback.position } : this.environmentResume;
+        this.manualBackground.clear();
         this.speech.clearScene(); this.invalidate(); this.resolver.dispose();
         activateContentProfile(this.settings, next.id, this.environment.id); this.environment = next;
         this.contextProjection = null; this.sharedState.bind(next);
@@ -452,7 +457,7 @@ export class VNController {
         if (this.root.hidden) { this.previousFocus = document.activeElement; this.root.hidden = false; document.body.classList.add('vnplus-immersive'); this.root.querySelector('[data-action="exit"]').focus(); }
         this.reveal.close();
         const context = this.host.context(), identity = chatIdentity(context);
-        if (identity !== this.chatId) { this.invalidate(); this.chatId = identity; this.sceneRevision = null; this.playback = null; this.seen.clear(); this.playbackState.bind(this.environment); }
+        if (identity !== this.chatId) { this.manualBackground.clear(); this.invalidate(); this.chatId = identity; this.sceneRevision = null; this.playback = null; this.seen.clear(); this.playbackState.bind(this.environment); }
         else if (!this.playbackState.binding?.current()) this.playbackState.bind(this.environment);
         void this.refreshContext();
         this.selected = Number.isInteger(index) && index >= 0 ? index : latestAssistant(context);
@@ -555,10 +560,13 @@ export class VNController {
         }
     }
     renderState(state, source, profile) {
+        const manual = this.manualBackground.resolve(state, this.backgroundScope());
+        this.root.querySelector('[data-action="background"]').setAttribute('aria-pressed', String(!!manual));
+        if (manual) state = { ...state, background: manual.name, black: false, mode: state.mode === 'black' ? 'vn' : state.mode };
         if (!this.playbackState.binding?.current() || this.playbackState.binding.index !== this.selected) this.playbackState.bind(this.environment, this.selected);
         const sharedEpoch = this.playbackState.begin();
         this.visuals.sync(state.visuals, profile);
-        void Promise.allSettled([this.stage.render(state, this.playback.timeline.maxSlots), this.audio.sync(state)]).then(results => {
+        void Promise.allSettled([this.stage.render(state, this.playback?.timeline.maxSlots || 0, manual), this.audio.sync(state)]).then(results => {
             for (const result of results) if (result.status === 'rejected') this.log(result.reason?.message || String(result.reason));
             if (sharedEpoch !== this.playbackState.epoch || this.root.hidden || this.busy || !this.playbackState.binding?.current()) return;
             this.playbackState.commit({ ...sceneSnapshot({ state, source, registry: this.registry, settings: this.settings, environment: this.environment, stage: this.stage, audio: this.audio }), basis: 'playback', updating: false }, sharedEpoch);
@@ -632,6 +640,29 @@ export class VNController {
         this.root.querySelector('#vnplus-reply').focus();
     }
     speechSceneId(message) { return `${this.environment.id}:${sceneKey(this.host.context(), message)}`; }
+    backgroundScope() { return JSON.stringify([this.environment.id, chatIdentity(this.host.context())]); }
+    backgroundState() { return this.playback?.restore().beat ? this.runtimeState || this.playback.restore().beat.state : emptyState(this.settings.displayMode); }
+    redrawBackground() {
+        if (this.root.hidden) return;
+        this.renderState(this.backgroundState(), { message: this.selected, swipe: readMessage(this.host.context(), this.selected)?.swipe ?? 0,
+            beat: this.playback?.cursor ?? null, position: this.playback?.position ?? null });
+    }
+    openBackgroundPicker() {
+        const panel = this.root.querySelector('.vn-panel'), content = panel.querySelector('.vn-panel-content');
+        const scope = this.backgroundScope(), generation = this.generation, resolver = this.resolver;
+        const current = this.manualBackground.resolve(this.backgroundState(), scope);
+        panel.querySelector('.vn-panel-title').textContent = 'Choose background';
+        const valid = () => !this.disposed && !this.root.hidden && !panel.hidden && content.contains(picker) && scope === this.backgroundScope() && generation === this.generation;
+        const finish = () => { this.redrawBackground(); panel.hidden = true; this.root.querySelector('[data-action="background"]').focus(); this.scheduleAuto(); };
+        const picker = backgroundPicker({ resolver, current, apply: image => {
+            if (!valid()) throw new Error('The scene changed. Open the background picker again.');
+            this.manualBackground.set(image, this.backgroundState(), scope); finish();
+        }, reset: () => {
+            if (!valid()) throw new Error('The scene changed. Open the background picker again.');
+            this.manualBackground.clear(); finish();
+        } });
+        content.replaceChildren(picker); panel.hidden = false; picker.querySelector('input').focus();
+    }
     prepareSceneSpeech(message, timeline, parsed) {
         try {
             if (unfinishedPOV(parsed || parsePOV(message.pov))) throw new Error('The selected POV contains unfinished dialogue or artifacts. Wait for a completed response.');
@@ -676,6 +707,7 @@ export class VNController {
         if (action === 'exit') { this.close(); return; }
         if (!this.settings.enabled) return;
         try {
+            if (action === 'background') { this.openBackgroundPicker(); return; }
             if (action === 'mute-music') {
                 this.audio.setMusicMuted(!this.settings.musicMuted); this.host.save(this.settings); this.updateMusicButton();
                 const input = this.settingsPanel?.querySelector('[data-setting="musicMuted"]'); if (input) input.checked = this.settings.musicMuted;
@@ -736,10 +768,11 @@ export class VNController {
     applyLayout() {
         const state = this.playback?.restore().beat?.state;
         if (this.root.hidden || this.busy || !this.root.querySelector('.vn-status').hidden || !state) return;
-        void this.stage.render(this.runtimeState || state, this.playback.timeline.maxSlots).catch(error => this.log(error.message));
+        this.redrawBackground();
     }
     dispose() {
         this.sourceMonitor.dispose();
+        this.manualBackground.clear();
         clearTimeout(this.contextTimer); this.sharedState.cancel();
         this.close(); this.disposed = true; this.audio.onChange = null; this.stage.dispose(); this.dialogue.dispose(); this.observer.disconnect(); clearTimeout(this.mountTimer); this.disposers.forEach(dispose => dispose());
         this.root.remove(); this.settingsPanel?.remove(); document.querySelectorAll('.vn-message-tools').forEach(node => node.remove()); this.seen.clear();

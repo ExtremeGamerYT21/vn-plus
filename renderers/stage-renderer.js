@@ -46,8 +46,9 @@ export class StageRenderer {
         this.variables = variables;
         this.root.dispatchEvent(new CustomEvent('vnplus:scene-context', { bubbles: true, detail: structuredClone(variables) }));
     }
-    async render(state, maxSlots) {
+    async render(state, maxSlots, manualBackground = null) {
         const generation = ++this.generation, current = () => generation === this.generation;
+        this.manualBackground = manualBackground;
         const background = this.root.querySelector('.vn-background'), stage = this.root.querySelector('.vn-stage');
         this.root.dataset.mode = state.mode;
         this.root.dataset.spriteFraming = this.settings.spriteFraming || 'bust';
@@ -59,8 +60,8 @@ export class StageRenderer {
         background.style.transform = this.settings.reducedMotion || !this.settings.screenEffects ? '' : `translate(${state.camera.x}%, ${state.camera.y}%) scale(${state.camera.zoom})`;
         this.root.querySelector('.vn-tint').style.background = CSS.supports('color', state.tint) ? state.tint : 'transparent';
         background.dataset.asset = state.background || '';
-        const backgroundRequest = state.background ? this.resolver.background(state.background).then(async url => {
-            const properties = url ? await this.resolver.backgroundProperties(url) : { inside: false };
+        const backgroundRequest = state.background ? (manualBackground ? Promise.resolve(manualBackground.url) : this.resolver.background(state.background)).then(async url => {
+            const properties = manualBackground?.properties || (url ? await this.resolver.backgroundProperties(url) : { inside: false });
             if (current()) {
                 if (url !== this.backgroundUrl) { background.style.backgroundImage = url ? `url("${url}")` : ''; this.backgroundUrl = url; }
                 this.publishContext(state, properties);
@@ -112,6 +113,7 @@ export class StageRenderer {
     cancelPending() { this.generation++; this.sprites.cancelPending(); }
     clear() {
         this.generation++;
+        this.manualBackground = null;
         for (const id of this.departures.keys()) this.finishDeparture(id);
         this.sprites.clear();
         this.nodes.forEach(node => node.remove()); this.nodes.clear();
