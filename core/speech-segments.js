@@ -1,6 +1,7 @@
 import { compileSpeechText } from './speech-text.js';
 import { endsWithEmDash } from './dialogue-text.js';
 import { detectSpeechLanguage, speechLanguageCode } from './speech-language.js';
+import { narratedVocalCues } from './speech-actions.js';
 
 export const SAMPLE_RATE = 44100;
 export const SPEECH_DEFAULTS = {
@@ -38,6 +39,7 @@ export function spokenText(text) {
         .map(part => part.startsWith('[') ? part : part.replace(/\*\*([^*]+)\*\*|\*([^*]+)\*|_([^_]+)_/g, (_, bold, em, under) => bold || em || under)).join('').trim();
 }
 export function speechSegments(timeline, registry, sourceId, options = {}) {
+    const vocalCues = narratedVocalCues(timeline, registry);
     const ids = new Set([
         ...Object.keys(registry.resolver?.inventory?.characters || {}), ...registry.properties.keys(),
         ...registry.entries().map(entry => entry.id),
@@ -71,7 +73,7 @@ export function speechSegments(timeline, registry, sourceId, options = {}) {
         const language = detected || previous || following || 'en';
         previous = language;
         return { ...line, language, ...compileSpeechText(line.text, { direction: token.direction, emotion: token.emotion, fullNames: narrator ? [] : fullNames,
-            language: language === 'en' ? props.ttsLanguage : language }) };
+            language: language === 'en' ? props.ttsLanguage : language, vocalCues: narrator ? [] : vocalCues.get(line.beat) || [] }) };
     });
     const views = new Map(timeline.views.map((beat, index) => [beat, index]));
     for (let index = 1; index < segments.length; index++) if (segments[index - 1].cutOff && views.get(segments[index].beat) === views.get(segments[index - 1].beat) + 1) segments[index].followsCutOff = true;

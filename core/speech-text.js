@@ -1,14 +1,16 @@
+import { vocalCueFamily, vocalCueFamilies } from './speech-actions.js';
+
 // S2.1 delivery hints are presentation instructions, never edits to chat prose.
 const CUE_ALIASES = new Map(Object.entries({
     joy: 'happy', happiness: 'happy', anger: 'angry', sadness: 'sad', fear: 'scared',
     surprise: 'surprised', disgust: 'disgusted', amusement: 'amused', curiosity: 'curious',
     whisper: 'whispering', shout: 'shouting', scream: 'screaming', hurried: 'in a hurry tone',
     laugh: 'laughing', chuckle: 'chuckling', sob: 'sobbing', sigh: 'sighing', groan: 'groaning',
-    gasp: 'gasping', pant: 'panting', yawn: 'yawning', throat_clearing: 'clear throat',
+    gasp: 'gasping', pant: 'panting', yawn: 'yawning', cough: 'coughing', sneeze: 'sneezing', throat_clearing: 'clear throat',
     voice_break: 'voice breaking', voice_breaks: 'voice breaking', voice_crack: 'voice breaking', voice_cracks: 'voice breaking',
     breaking_voice: 'voice breaking', broken_voice: 'voice breaking',
 }));
-const POSITIONAL_CUE = /^(?:emphasis|break|long-break|laughing|chuckling|sobbing|crying loudly|sighing|groaning|panting|gasping|yawning|snoring|clear throat|(?:audience|background|crowd) laugh(?:ing|ter))$/;
+const POSITIONAL_CUE = /^(?:emphasis|break|long-break|laughing|chuckling|coughing|sneezing|sobbing|crying loudly|sighing|groaning|panting|gasping|yawning|snoring|clear throat|(?:audience|background|crowd) laugh(?:ing|ter))$/;
 const TAG = /\[([^\]\r\n]+)\]/g;
 const stripSpeakers = value => String(value || '').replace(/<\|speaker:\d+\|>/g, '');
 const cueKey = value => value.toLowerCase().replace(/[ _-]+/g, '_');
@@ -87,7 +89,7 @@ function pronounceSnippets(text, language) {
 }
 
 /** Compile only the Fish prompt. Original words and source offsets remain intact. */
-export function compileSpeechText(text, { direction, emotion, fullNames = [], language } = {}) {
+export function compileSpeechText(text, { direction, emotion, fullNames = [], language, vocalCues = [] } = {}) {
     let value = stripSpeakers(text).trim();
     const global = [];
     // Trailing sentence emotions describe the utterance. Timed effects stay put.
@@ -112,7 +114,13 @@ export function compileSpeechText(text, { direction, emotion, fullNames = [], la
     }
     plain += value.slice(cursor);
     const explicit = cue(direction || (emotion && emotion !== 'default' ? emotion : ''));
-    const opening = [...(explicit ? [explicit] : []), ...global, ...(groups.get(0) || [])];
+    const authored = new Set([direction, emotion, ...[...String(text || '').matchAll(TAG)].map(match => match[1])].flatMap(vocalCueFamilies));
+    const inferred = vocalCues.filter(value => {
+        const family = vocalCueFamily(value);
+        if (!family || authored.has(family)) return false;
+        authored.add(family); return true;
+    }).map(cue);
+    const opening = [...(explicit ? [explicit] : []), ...global, ...(groups.get(0) || []), ...inferred];
     groups.set(0, delivery(opening, plain, fullNames));
     // Descending insertion preserves the offsets found before any cues are added.
     for (const [at, hints] of [...groups].sort((a, b) => b[0] - a[0])) {
