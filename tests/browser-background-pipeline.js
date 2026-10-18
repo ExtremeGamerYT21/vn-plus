@@ -1,3 +1,5 @@
+import { wavBytes } from '../core/speech-pcm.js';
+
 export async function runBackgroundPipelineChecks({ check, assert, equal, eventually, context, mountChat, makeController }) {
     const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
     let hidden = true;
@@ -6,6 +8,7 @@ export async function runBackgroundPipelineChecks({ check, assert, equal, eventu
         hidden = true;
         context.chatId = id; context.chat = [{ mes: 'Canonical only.' }]; mountChat();
         const controller = makeController(), requests = [], played = [];
+        const decode = controller.speech.decode, process = controller.speech.process;
         Object.assign(controller.settings, { autoCreateCharacters: false, automaticPlayback, autoAdvance: false, typewriterEffect: false });
         controller.settings.characters.nina = { voiceId: 'background-nina' };
         Object.assign(controller.settings.tts, { enabled: true, autoGenerate: true, autoPlay: true, narratorEnabled: false, chapterSize: 6, splitChapters: true });
@@ -21,12 +24,60 @@ export async function runBackgroundPipelineChecks({ check, assert, equal, eventu
         controller.speech.process = async chapter => chapter.clips.filter(clip => !clip.review).map(clip => ({ id: clip.id, samples: new Float32Array(4410), notes: [] }));
         const audioFactory = () => ({ paused: true, currentTime: 0, loop: false, async play() { this.paused = false; played.push(this); }, pause() { this.paused = true; }, removeAttribute() {}, load() {} });
         controller.speech.audioFactory = audioFactory; controller.audio.audioFactory = audioFactory;
-        return { controller, requests, played };
+        return { controller, requests, played, decode, process };
     }
     const hiddenDescriptor = Object.getOwnPropertyDescriptor(document, 'hidden');
     // Exercise the browser's actual source pipeline while visibility reports hidden.
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
     try {
+        await check('worker source discovery generates a silently replaced hidden POV without any main-page interval', async () => {
+            const interval = window.setInterval; let h;
+            try {
+                window.setInterval = () => { throw new Error('Main-page intervals are unavailable'); };
+                h = fixture('background-worker-clock', true);
+            } finally { window.setInterval = interval; }
+            const { controller, requests, played } = h;
+            try {
+                equal(controller.sourceMonitor.mode, 'worker');
+                context.chat[0].mes = 'PRIVATE\n/////\nNina: "Hello."\nNina: "Ready."';
+                await eventually(() => requests.length === 1 && controller.speech.job?.status === 'complete' && played.length === 1);
+                assert(document.hidden && controller.root.hidden); assert(!controller.playback);
+                controller.speech.audio.onended(); await pause(650); equal(played.length, 1);
+            } finally { controller.dispose(); }
+        });
+        await check('Flowchart-style message rerenders wake source discovery without an ST update event or page timer', async () => {
+            const { controller, requests } = fixture('background-mutation-trigger', true);
+            const worker = controller.sourceMonitor.worker, tick = worker.onmessage;
+            worker.onmessage = () => worker.postMessage('received'); // Hold confirmations to isolate the DOM trigger.
+            try {
+                context.chat[0].mes = 'PRIVATE\n/////\nNina: "Hello."';
+                const message = document.createElement('div'); message.className = 'mes_text'; message.textContent = 'Rerendered POV';
+                document.querySelector('#chat .mes_block').append(message);
+                await eventually(() => controller.settlingSource === controller.sourceFingerprint(context, 0));
+                equal(requests.length, 0, 'A DOM notification bypassed the stability check');
+                worker.onmessage = tick;
+                await eventually(() => controller.speech.job?.status === 'complete');
+                equal(requests.length, 1); assert(controller.root.hidden);
+            } finally { controller.dispose(); }
+        });
+        await check('background synthesis completes actual audio decoding and worker finishing before the tab returns', async () => {
+            const { controller, decode, process, played } = fixture('background-audio-finishing', true);
+            let requests = 0;
+            controller.speech.decode = decode; controller.speech.process = process;
+            const samples = Float32Array.from({ length: 44100 }, (_, index) => index > 4410 && index < 22050 ? Math.sin(index * .05) * .1 : 0);
+            const bytes = wavBytes(samples); let binary = ''; for (const byte of bytes) binary += String.fromCharCode(byte);
+            controller.speech.endpoint = async path => {
+                if (path === 'status') return Response.json({ configured: true, maxParallelBatches: 5 });
+                requests++;
+                return new Response(`data: ${JSON.stringify({ audio_base64: btoa(binary), chunk_seq: 0, chunk_audio_offset_sec: 0, alignment: { segments: [{ text: 'Hello', start: .1, end: .5 }] } })}\n\n`);
+            };
+            try {
+                context.chat[0].mes = 'PRIVATE\n/////\nNina: "Hello."';
+                await eventually(() => controller.speech.job?.status === 'complete' && played.length === 1);
+                equal(requests, 1); assert(controller.root.hidden && document.hidden);
+                assert(controller.speech.job.chapters[0].processed.results.size === 1);
+            } finally { controller.dispose(); }
+        });
         await check('a hidden tab announces one completed workflow line once without opening VN or advancing', async () => {
             const { controller, requests, played } = fixture('background-auto-open', true);
             try {

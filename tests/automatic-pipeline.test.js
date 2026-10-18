@@ -96,6 +96,13 @@ test('a changing transformer revision must settle again and overlapping checks s
     assert.deepEqual(h.calls, [['open', 0]]); release(); await pending; assert.equal(h.controller.sourceChecking, false);
 });
 
+test('repeated transform and host notifications wait for a later confirmation before automatic generation', async () => {
+    const h = fixture(); h.controller.settings.automaticPlayback = true;
+    await h.controller.checkSource(false); await h.controller.checkSource(false); await h.controller.checkSource(false);
+    assert.deepEqual(h.calls, []);
+    await h.controller.checkSource(true); assert.deepEqual(h.calls, [['open', 0]]);
+});
+
 test('visible historical playback retains its selected scene while later responses arrive', async () => {
     const h = fixture(); h.controller.root.hidden = false; h.controller.followLatest = false;
     h.controller.observedSource = h.controller.sourceFingerprint();

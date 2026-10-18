@@ -27,6 +27,7 @@ import { sceneLighting } from './core/scene-context.js';
 import { BeatScheduler, applyCommandState } from './core/narrative-timing.js';
 import { VisualRenderer } from './renderers/visual-renderer.js';
 import { collectJournals } from './core/journal-collector.js';
+import { SourceMonitor } from './core/source-monitor.js';
 const unfinishedPOV = parsed => parsed.errors.some(error => error.message.startsWith('Incomplete') || error.message.startsWith('Unclosed'));
 
 export class VNController {
@@ -61,7 +62,7 @@ export class VNController {
         this.bindHost(); this.mount(); this.updateMusicButton(); this.updateLayoutControls(); this.updateFramingControls(); this.updateEnvironmentControls();
         void this.loadEnvironmentStyle();
         void this.refreshContext();
-        this.sourceTimer = setInterval(() => this.checkSource(), 500);
+        this.sourceMonitor = new SourceMonitor(confirm => this.checkSource(confirm), { onError: error => this.log(`POV monitor: ${error.message}`) });
         this.syncVisibility();
         const checkVisibility = () => this.visibilityChanged();
         document.addEventListener('visibilitychange', checkVisibility);
@@ -113,7 +114,7 @@ export class VNController {
         const message = readMessage(context, index);
         return JSON.stringify([chatIdentity(context), this.root.hidden || this.followLatest ? latestAssistant(context) : null, index, message?.swipe, message?.raw, contextEntries(context, index)]);
     }
-    async checkSource() {
+    async checkSource(confirm = true) {
         if (this.disposed || this.busy || this.sourceChecking || !this.settings.enabled) return;
         const closed = this.root.hidden;
         if (closed && !this.settings.automaticPlayback && !(this.settings.tts.enabled && this.settings.tts.autoGenerate)) { this.settlingSource = null; return; }
@@ -123,6 +124,7 @@ export class VNController {
         if (fingerprint === this.observedSource) { this.settlingSource = null; return; }
         // Let a silent transformer finish replacing its output before preparing paid audio.
         if (this.settlingSource !== fingerprint) { this.settlingSource = fingerprint; return; }
+        if (!confirm) return; // Repeated host/DOM notifications cannot substitute for a later clock tick.
         // Some transformers replace mes without emitting a SillyTavern event.
         // Keep following the latest response, while preserving deliberate history playback.
         const message = readMessage(context, index);
@@ -265,6 +267,7 @@ export class VNController {
             if (contextEvents.has(name) && !changedChat) this.scheduleContextRefresh();
             const result = callback(...args);
             if (changedChat) this.scheduleContextRefresh();
+            if (contextEvents.has(name) || ['GENERATION_ENDED', 'GENERATION_STOPPED'].includes(name)) this.sourceMonitor?.wake();
             return result;
         }));
         subscribe('GENERATION_STARTED', (type, options, dryRun) => {
@@ -314,13 +317,19 @@ export class VNController {
         });
         subscribe('MORE_MESSAGES_LOADED', () => { this.mount(); if (!this.root.hidden && !this.busy) void this.open(this.selected); }); subscribe('APP_READY', () => this.mount());
         this.observer = new MutationObserver(records => {
+            // Flowchart edits mes and rerenders the message without emitting MESSAGE_UPDATED.
+            // Mutation observers run independently of rendering frames and page polling timers.
+            if (records.some(record => {
+                const target = record.target.nodeType === 1 ? record.target : record.target.parentElement;
+                return target?.closest('#chat') && !target.closest('.vnplus-ui');
+            })) this.sourceMonitor?.wake();
             if (records.some(record => {
                 if (record.target.closest?.('.vnplus-ui')) return false;
                 const nodes = [...record.addedNodes, ...record.removedNodes].filter(node => node.nodeType === 1 && !node.matches?.('.vnplus-ui'));
                 return nodes.some(node => node.matches?.('#chat,.mes,#extensions_settings') || node.querySelector?.('#chat,.mes,#extensions_settings'));
             })) { clearTimeout(this.mountTimer); this.mountTimer = setTimeout(() => this.mount(), 60); }
         });
-        this.observer.observe(document.body, { childList: true, subtree: true });
+        this.observer.observe(document.body, { childList: true, characterData: true, subtree: true });
     }
     settingsChanged(key) {
         if (key.startsWith('sceneLight')) this.scheduleContextRefresh();
@@ -730,7 +739,7 @@ export class VNController {
         void this.stage.render(this.runtimeState || state, this.playback.timeline.maxSlots).catch(error => this.log(error.message));
     }
     dispose() {
-        clearInterval(this.sourceTimer);
+        this.sourceMonitor.dispose();
         clearTimeout(this.contextTimer); this.sharedState.cancel();
         this.close(); this.disposed = true; this.audio.onChange = null; this.stage.dispose(); this.dialogue.dispose(); this.observer.disconnect(); clearTimeout(this.mountTimer); this.disposers.forEach(dispose => dispose());
         this.root.remove(); this.settingsPanel?.remove(); document.querySelectorAll('.vn-message-tools').forEach(node => node.remove()); this.seen.clear();
