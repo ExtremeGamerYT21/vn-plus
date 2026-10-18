@@ -69,7 +69,9 @@ export class VNController {
     }
     pageHidden() { return typeof document !== 'undefined' && document.hidden; }
     syncVisibility() {
-        const hidden = this.pageHidden(); this.audio.setSuspended(hidden); this.speech.setSuspended(hidden); return hidden;
+        const hidden = this.pageHidden(); this.audio.setSuspended(hidden);
+        // A current line may finish (including one waiting for synthesis). Scene audio stays quiet.
+        this.speech.setSuspended(hidden && !this.speech.playback); return hidden;
     }
     visibilityChanged() {
         const hidden = this.syncVisibility(); this.timing.wake();
@@ -88,10 +90,24 @@ export class VNController {
         if (fingerprint !== this.observedSource || this.root.hidden || !this.playback) this.deferredScene = { identity: chatIdentity(context), index };
         if (this.busy || !message || message.status !== 'ready' || unfinishedPOV(parsePOV(message.pov))) return;
         if (this.settings.tts.enabled && this.settings.tts.autoGenerate) {
-            try { await this.prepareSpeech(index); this.speech.requestAutomatic(); }
+            try { await this.prepareSpeech(index); this.speech.requestAutomatic(); this.playBackgroundLine(index); }
             catch (error) { if (!this.disposed) { this.speech.notify(error.message); this.log(`Voice preparation: ${error.message}`); } }
         }
         this.observedSource = fingerprint; this.settlingSource = null;
+    }
+    playBackgroundLine(index) {
+        if (!this.pageHidden() || this.disposed || this.busy || !this.settings.enabled || !this.settings.tts.enabled || !this.settings.tts.autoPlay || this.root.hidden && !this.settings.automaticPlayback) return;
+        const message = readMessage(this.host.context(), index), prepared = this.speech.prepared;
+        if (!message || !prepared || prepared.sourceId !== this.speechSceneId(message)) return;
+        const revision = `${this.environment.id}:${chatIdentity(this.host.context())}:${message.index}:${message.swipe}:${message.pov}`;
+        // An open, unchanged scene already owns its current voice. Never replay it or skip silent beats.
+        if (!this.root.hidden && this.playback && this.sceneSourceRevision === revision) return;
+        if (this.backgroundVoiceSignature === prepared.signature) return;
+        const line = prepared.segments.find(segment => !this.speech.excluded.has(segment.id));
+        if (!line) return;
+        this.backgroundVoiceSignature = prepared.signature;
+        this.speech.setSuspended(false); this.speech.playBeat(line.beat);
+        // This is a completion cue for a newly prepared response, not a playback/navigation loop.
     }
     sourceFingerprint(context = this.host.context(), index = this.selected) {
         const message = readMessage(context, index);

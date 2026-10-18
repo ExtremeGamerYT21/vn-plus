@@ -8,7 +8,7 @@ export async function runBackgroundPipelineChecks({ check, assert, equal, eventu
         const controller = makeController(), requests = [], played = [];
         Object.assign(controller.settings, { autoCreateCharacters: false, automaticPlayback, autoAdvance: false, typewriterEffect: false });
         controller.settings.characters.nina = { voiceId: 'background-nina' };
-        Object.assign(controller.settings.tts, { enabled: true, autoGenerate: true, autoPlay: true, narratorEnabled: false });
+        Object.assign(controller.settings.tts, { enabled: true, autoGenerate: true, autoPlay: true, narratorEnabled: false, chapterSize: 6, splitChapters: true });
         controller.speech.endpoint = async (path, options) => {
             if (path === 'status') return Response.json({ configured: true, maxParallelBatches: 5 });
             assert(path === 'synthesize'); const input = JSON.parse(options.body); requests.push(input.body.text);
@@ -27,7 +27,7 @@ export async function runBackgroundPipelineChecks({ check, assert, equal, eventu
     // Exercise the browser's actual source pipeline while visibility reports hidden.
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
     try {
-        await check('a hidden tab prepares completed workflow voices without opening VN or playing audio until return', async () => {
+        await check('a hidden tab announces one completed workflow line once without opening VN or advancing', async () => {
             const { controller, requests, played } = fixture('background-auto-open', true);
             try {
                 controller.busy = true;
@@ -40,8 +40,12 @@ export async function runBackgroundPipelineChecks({ check, assert, equal, eventu
                 }
                 context.chat[0].mes = 'PRIVATE\n/////\nYou listen.\nNina: "Hello."';
                 await eventually(() => controller.speech.job?.status === 'complete');
-                assert(document.hidden && controller.root.hidden); equal(requests.length, 1); equal(played.length, 0);
+                await eventually(() => played.length === 1);
+                assert(document.hidden && controller.root.hidden); equal(requests.length, 1);
                 equal(controller.stage.nodes.size, 0);
+                const voice = controller.speech.audio; voice.onended();
+                await controller.open(); await controller.checkSource(); await pause(650);
+                equal(played.length, 1); assert(!controller.playback, 'Background cue created a narrative playback loop');
                 visibility(false); await eventually(() => !controller.root.hidden && !!controller.playback);
                 equal(controller.root.querySelector('.vn-voice-ready').dataset.state, 'ready'); equal(requests.length, 1);
                 await pause(1100); equal(requests.length, 1);
@@ -49,7 +53,7 @@ export async function runBackgroundPipelineChecks({ check, assert, equal, eventu
                 visibility(true);
                 context.chat[0].mes = 'PRIVATE\n/////\nYou listen.\nNina: "Ready."';
                 await eventually(() => requests.length === 2 && controller.speech.job?.status === 'complete');
-                assert(controller.root.hidden); equal(played.length, 0);
+                await eventually(() => played.length === 2); assert(controller.root.hidden);
                 visibility(false); await eventually(() => !controller.root.hidden && controller.root.querySelector('.vn-voice-ready').dataset.state === 'ready');
                 equal(requests.length, 2); equal(context.chat[0].mes, 'PRIVATE\n/////\nYou listen.\nNina: "Ready."');
             } finally { controller.dispose(); }
@@ -89,28 +93,74 @@ export async function runBackgroundPipelineChecks({ check, assert, equal, eventu
                 visibility(true);
                 context.chat[0].mes = 'PRIVATE\n/////\nYou listen.\nNina: "Hello."';
                 await eventually(() => controller.speech.job?.status === 'complete');
-                equal(requests.length, 1); assert(!controller.root.hidden); equal(played.length, 0);
+                await eventually(() => played.length === 1);
+                equal(requests.length, 1); assert(!controller.root.hidden);
                 equal(controller.playback.position, originalPosition); equal(controller.sceneSourceRevision, originalRevision);
                 visibility(false); await eventually(() => controller.sceneSourceRevision !== originalRevision);
                 equal(requests.length, 1); equal(controller.playback.position, 0);
             } finally { controller.dispose(); }
         });
-        await check('minimizing pauses current voice music and ambience while returning resumes the same sources and positions', async () => {
+        await check('minimizing lets the current voice finish once without advancing while music and ambience pause', async () => {
             const { controller, requests, played } = fixture('background-pause-current', true);
             try {
                 visibility(false); controller.audio.unlocked = true;
                 controller.resolver.audio = async (kind, name) => `${kind}/${name}.mp3`;
-                context.chat[0].mes = 'PRIVATE\n/////\n#MUSIC song\n#AMBIENT rain\nNina: "Hello."';
+                context.chat[0].mes = 'PRIVATE\n/////\n#MUSIC song\n#AMBIENT rain\nNina: "Hello."\nNina: "Stay here."';
                 await controller.open(); await eventually(() => controller.speech.playback?.status === 'playing' && !!controller.audio.channels.music.audio);
                 const voice = controller.speech.audio, music = controller.audio.channels.music.audio, ambient = controller.audio.channels.ambient.audio;
                 voice.currentTime = .15; music.currentTime = 12.5; ambient.currentTime = 7;
                 const position = controller.playback.position;
-                visibility(true); assert(voice.paused && music.paused && ambient.paused);
-                await controller.open(); // Duplicate host refresh while hidden must not replay the paused line.
+                controller.settings.autoAdvance = true;
+                visibility(true); assert(!voice.paused && music.paused && ambient.paused);
+                await controller.open(); // Duplicate host refresh must not restart or advance the current line.
                 const count = played.length; await pause(650); equal(played.length, count); equal(controller.playback.position, position); equal(requests.length, 1);
-                visibility(false); await eventually(() => !voice.paused && !music.paused && !ambient.paused);
-                assert(controller.speech.audio === voice && controller.audio.channels.music.audio === music);
+                voice.onended(); await pause(1400); await controller.open();
+                equal(played.length, count); equal(controller.playback.position, position); assert(!controller.speech.audio);
+                controller.settings.autoAdvance = false;
+                visibility(false); await eventually(() => !music.paused && !ambient.paused);
+                assert(controller.audio.channels.music.audio === music);
                 equal(voice.currentTime, .15); equal(music.currentTime, 12.5); equal(ambient.currentTime, 7); equal(requests.length, 1);
+            } finally { controller.dispose(); }
+        });
+        await check('a current line still loading at minimization plays once when ready and prepares the rest without playing it', async () => {
+            const { controller, requests, played } = fixture('background-pending-current', true);
+            const endpoint = controller.speech.endpoint; let release;
+            controller.speech.endpoint = async (path, options) => {
+                if (path === 'synthesize') await new Promise(resolve => release = resolve);
+                return endpoint(path, options);
+            };
+            try {
+                visibility(false); controller.settings.autoAdvance = true;
+                context.chat[0].mes = 'PRIVATE\n/////\nNina: "Hello."\nNina: "Stay here."';
+                await controller.open(); await eventually(() => !!release && !!controller.speech.pending);
+                const position = controller.playback.position;
+                visibility(true); release();
+                await eventually(() => controller.speech.playback?.status === 'playing' && controller.speech.job?.status === 'complete');
+                equal(played.length, 1); equal(requests.length, 1);
+                const voice = controller.speech.audio; voice.onended();
+                await controller.open(); await pause(1400);
+                equal(controller.playback.position, position); equal(played.length, 1); assert(!controller.speech.audio);
+                controller.settings.autoAdvance = false;
+            } finally { release?.(); controller.dispose(); }
+        });
+        await check('minimizing an unvoiced narration beat does not skip ahead to a character voice', async () => {
+            const { controller, played } = fixture('background-silent-current', true);
+            try {
+                visibility(false);
+                context.chat[0].mes = 'PRIVATE\n/////\nYou listen.\nNina: "Hello."';
+                await controller.open(); await eventually(() => controller.speech.job?.status === 'complete');
+                const position = controller.playback.position; visibility(true);
+                await controller.open(); await pause(650);
+                equal(played.length, 0); equal(controller.playback.position, position);
+            } finally { controller.dispose(); }
+        });
+        await check('automatic voice playback off also suppresses a hidden response completion cue', async () => {
+            const { controller, played } = fixture('background-autoplay-disabled', true);
+            try {
+                controller.settings.tts.autoPlay = false;
+                context.chat[0].mes = 'PRIVATE\n/////\nNina: "Hello."';
+                await eventually(() => controller.speech.job?.status === 'complete');
+                await controller.open(); equal(played.length, 0); assert(controller.root.hidden);
             } finally { controller.dispose(); }
         });
     } finally {

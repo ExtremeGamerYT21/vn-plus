@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { VNController } from '../controller.js';
 import { DEFAULT_SETTINGS } from '../ui/settings.js';
-import { chatIdentity } from '../core/message-reader.js';
+import { chatIdentity, readMessage } from '../core/message-reader.js';
 import { CharacterRegistry } from '../core/character-registry.js';
 
 function fixture() {
@@ -32,13 +32,43 @@ test('automatic voices prepare the latest response with VN closed and automatic 
     await h.tick(); assert.equal(h.calls.length, 2);
 });
 
-test('a hidden page prepares quietly even when automatic opening is enabled and defers presentation', async () => {
+test('a hidden page defers presentation while preparing the completed response', async () => {
     const h = fixture(); h.controller.settings.automaticPlayback = true;
     Object.assign(h.controller.settings.tts, { enabled: true, autoGenerate: true });
     h.controller.pageHidden = () => true;
     await h.tick(); assert.deepEqual(h.calls, [['prepare', 0], 'generate']); assert.ok(h.controller.root.hidden);
     assert.deepEqual(h.controller.deferredScene, { identity: chatIdentity(h.context), index: 0 });
     await h.tick(); assert.equal(h.calls.length, 2);
+});
+
+test('hidden visibility suspends scene audio but lets a current or loading voice line finish', () => {
+    const h = fixture(), calls = [];
+    h.controller.pageHidden = () => true;
+    h.controller.audio = { setSuspended(value) { calls.push(['scene', value]); } };
+    h.controller.speech.setSuspended = value => calls.push(['voice', value]);
+    h.controller.speech.playback = { status: 'loading' };
+    assert.equal(h.controller.syncVisibility(), true);
+    assert.deepEqual(calls.splice(0), [['scene', true], ['voice', false]]);
+    h.controller.speech.playback = null;
+    h.controller.syncVisibility(); assert.deepEqual(calls.splice(0), [['scene', true], ['voice', true]]);
+    h.controller.pageHidden = () => false;
+    h.controller.syncVisibility(); assert.deepEqual(calls, [['scene', false], ['voice', false]]);
+});
+
+test('a new background response announces one eligible line once and honors automatic playback preferences', () => {
+    const h = fixture(), played = [];
+    h.controller.pageHidden = () => true; h.controller.settings.automaticPlayback = true;
+    Object.assign(h.controller.settings.tts, { enabled: true, autoPlay: true });
+    h.controller.environment = { id: 'test' };
+    Object.assign(h.controller.speech, { prepared: { sourceId: h.controller.speechSceneId(readMessage(h.context, 0)), signature: 'new-response',
+        segments: [{ id: 'excluded', beat: 0 }, { id: 'first', beat: 1 }, { id: 'second', beat: 2 }] }, excluded: new Set(['excluded']),
+        setSuspended(value) { played.push(['suspended', value]); }, playBeat(beat) { played.push(['play', beat]); } });
+    h.controller.playBackgroundLine(0); h.controller.playBackgroundLine(0);
+    assert.deepEqual(played, [['suspended', false], ['play', 1]]); assert.equal(h.controller.playback, undefined);
+    h.controller.speech.prepared.signature = 'another-response'; h.controller.settings.tts.autoPlay = false;
+    h.controller.playBackgroundLine(0); assert.equal(played.length, 2);
+    h.controller.settings.tts.autoPlay = true; h.controller.settings.automaticPlayback = false;
+    h.controller.playBackgroundLine(0); assert.equal(played.length, 2);
 });
 
 test('disabled automatic modes disabled extension and active generation cannot trigger work', async () => {
