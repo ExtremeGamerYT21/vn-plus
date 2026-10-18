@@ -29,6 +29,10 @@ If the current line's recording is still generating, voice-synchronized text and
 
 `name` is also accepted when `displayName` is absent. Name, text color, font and normal box styling apply even when narration is muted. Enabling the toggle without a voice ID keeps narration silent. The narrator never receives a bust. Use **Refresh assets** after editing properties files.
 
+Narrator paragraphs collect into narrator-only Fish batches across the scene, including paragraphs separated by character dialogue. Character lines collect separately in their own dialogue batches. The existing chapter-size and language limits apply independently to each group; **Split into short chapters** off removes the size split. Requests use fresh speaker/voice maps and are queued by their first scene beat. Narrator text and its voice reference never enter a character dialogue request. Ambiguous language hints inherit from their own narration/dialogue group, so narration cannot change the language of a short character reply. **Voices** labels completed batches **Narration** or **Dialogue**. The narrator toggle and existing character voice IDs still apply. Refresh the browser to load this parser change; the server bridge does not need an update.
+
+Timestamp alignment separates each batch back into its original paragraphs/lines using their beat IDs. VN playback interleaves those clips in story order. When batches span intervening beats, original and processed **scene WAV** downloads also join the aligned clips in story order, using their configured margins. These scene downloads wait for all required batches and usable/reviewed cuts. Original batch audio remains intact for timing review, and individual completed clips remain available. A batch spanning multiple positions has no single global scene offset. Ordinary batches that already follow story order retain their existing full-recording exports.
+
 **General → Hide player bust (first-person view)** hides the canonical player and their aliases. Set **Player identity** to the player character's name. Dialogue, player emotion and the player's own voice ID continue to work. Existing `showPlayerBust` preferences are preserved; checking the new label sets that value to false.
 
 ```json
@@ -87,7 +91,7 @@ Automated checks cover prompt construction, registry names, transcript alignment
 
 ## Whole-language voice batches
 
-Whole non-English utterances automatically start a separate Fish request. Consecutive voiced utterances in the same detected language share that request, including different characters, until the chapter-size limit. English resumes in a new request. Disabling **Split into short chapters** removes the size split; it still keeps languages separate. Requests stay in story order and use the existing parallel queue, cancellation, timestamp alignment and audio cache. No new server installation is required.
+Whole non-English utterances automatically start a separate Fish request. Within each narration/dialogue group, consecutive voiced utterances in the same detected language share that request, including different dialogue characters, until the chapter-size limit. English resumes in a new request. Disabling **Split into short chapters** removes the size split; it still keeps languages and narration/dialogue separate. The existing parallel queue, cancellation, timestamp alignment and audio cache preserve each clip's original story position. No new server installation is required.
 
 For example, these lines create three batches: **English / German + German / English**:
 

@@ -90,12 +90,13 @@ export class SpeechPanel {
             const button = this.button(`Download ${processed ? 'processed' : 'original'} scene WAV`, async () => {
                 download(wavBytes(await engine.sourceSamples(processed)), `vn-plus-${processed ? 'processed' : 'original'}.wav`, 'audio/wav');
             });
-            button.disabled = engine.job.chapters.some((chapter, index) => chapter.index !== index);
-            if (button.disabled) button.title = 'An earlier chapter is still missing. Individual completed clips remain available.';
+            const issue = engine.sceneExportIssue();
+            button.disabled = !!issue || engine.job.chapters.some((chapter, index) => chapter.index !== index);
+            if (button.disabled) button.title = issue || 'An earlier chapter is still missing. Individual completed clips remain available.';
             sourceActions.append(button);
         } this.recordings.append(sourceActions);
         for (const chapter of engine.job.chapters) {
-            const section = element('details'); section.open = true; section.append(element('summary', `Chapter ${chapter.index + 1} · ${speechLanguageName(chapter.language || chapter.clips[0]?.line?.language || 'en')} · ${chapter.duration.toFixed(2)} seconds`));
+            const section = element('details'); section.open = true; section.append(element('summary', `Chapter ${chapter.index + 1} · ${speechLanguageName(chapter.language || chapter.clips[0]?.line?.language || 'en')} · ${chapter.kind === 'narration' ? 'Narration' : 'Dialogue'} · ${chapter.duration.toFixed(2)} seconds`));
             section.append(this.button('Play original chapter for timing review', () => engine.playChapter(chapter.index)));
             if (chapter.processingError) section.append(element('p', chapter.processingError, 'vn-hint'));
             const notes = [...new Set([...(chapter.processed?.results.values() || [])].flatMap(result => result.notes))];

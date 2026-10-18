@@ -65,13 +65,14 @@ export function speechSegments(timeline, registry, sourceId, options = {}) {
             voice, text, ...(!narrator && endsWithEmDash(token.text) ? { cutOff: true } : {}) }, token, props, narrator,
             language: detected === 'und-Cyrl' && hint && hint !== 'en' ? hint : detected || hint }];
     });
-    let following = null, previous = null;
+    const followingByRole = new Map(), previousByRole = new Map();
     for (let index = entries.length - 1; index >= 0; index--) {
-        const entry = entries[index]; following = entry.language || following; entry.following = following;
+        const entry = entries[index], following = entry.language || followingByRole.get(entry.narrator);
+        followingByRole.set(entry.narrator, following); entry.following = following;
     }
     const segments = entries.map(({ line, token, props, narrator, language: detected, following }) => {
-        const language = detected || previous || following || 'en';
-        previous = language;
+        const language = detected || previousByRole.get(narrator) || following || 'en';
+        previousByRole.set(narrator, language);
         return { ...line, language, ...compileSpeechText(line.text, { direction: token.direction, emotion: token.emotion, fullNames: narrator ? [] : fullNames,
             language: language === 'en' ? props.ttsLanguage : language, vocalCues: narrator ? [] : vocalCues.get(line.beat) || [] }) };
     });
@@ -86,24 +87,35 @@ export function chapterRequests(segments, settings) {
     if (segments.length > 200) throw new Error('Select at most 200 spoken segments per generation.');
     if (new Set(segments.map(segment => segment.character)).size > 8) throw new Error('Select at most eight voiced characters.');
     const count = settings.splitChapters ? Math.max(1, Math.min(200, Math.floor(settings.chapterSize))) : segments.length;
-    const chapters = [];
-    for (let offset = 0; offset < segments.length;) {
-        const language = segments[offset].language || 'en';
-        let end = offset + 1;
-        while (end < segments.length && end - offset < count && (segments[end].language || 'en') === language) end++;
-        const lines = segments.slice(offset, end), speakers = [...new Set(lines.map(line => line.character))];
+    const groups = [], order = new Map(segments.map((line, index) => [line, index]));
+    // Collect each role across the scene; beat IDs restore the individual clips later.
+    for (const narration of [true, false]) {
+        const track = segments.filter(line => (line.character === 'narrator') === narration);
+        for (let offset = 0; offset < track.length;) {
+            const language = track[offset].language || 'en';
+            let end = offset + 1;
+            while (end < track.length && end - offset < count && (track[end].language || 'en') === language) end++;
+            groups.push({ kind: narration ? 'narration' : 'dialogue', language, lines: track.slice(offset, end) });
+            offset = end;
+        }
+    }
+    groups.sort((a, b) => order.get(a.lines[0]) - order.get(b.lines[0]));
+    return groups.map(({ kind, language, lines }, index) => {
+        const speakers = [...new Set(lines.map(line => line.character))];
         const reference_id = speakers.map(character => lines.find(line => line.character === character).voice);
         const text = lines.map(line => `<|speaker:${speakers.indexOf(line.character)}|>${line.synthesisText}`).join('\n');
         if (text.length > 20000) throw new Error('A chapter exceeds the 20,000-character local safeguard. Use smaller chapters.');
-        chapters.push({ index: chapters.length, language, lines, speakers, body: {
+        return { index, kind, language, lines, speakers, body: {
             text, reference_id, format: 'mp3', sample_rate: SAMPLE_RATE, mp3_bitrate: settings.bitrate,
             temperature: settings.temperature, top_p: settings.topP, chunk_length: settings.chunkLength,
             latency: settings.latency, normalize: settings.normalize, condition_on_previous_chunks: settings.conditionPrevious,
             prosody: { speed: settings.speed, normalize_loudness: true },
-        } });
-        offset = end;
-    }
-    return chapters;
+        } };
+    });
+}
+export function interleavedChapters(plan = []) {
+    const beats = plan.flatMap(chapter => (chapter.lines || []).map(line => line.beat));
+    return beats.some((beat, index) => index > 0 && beat < beats[index - 1]);
 }
 export function validateSpeechSettings(settings) {
     for (const [key, min, max] of [['chapterSize', 1, 200], ['temperature', 0, 1], ['topP', 0, 1], ['speed', .5, 2], ['chunkLength', 100, 300], ['timeout', 30, 600]]) {

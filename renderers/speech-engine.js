@@ -1,4 +1,4 @@
-import { speechSegments, chapterRequests, speechSettings, SAMPLE_RATE } from '../core/speech-segments.js';
+import { speechSegments, chapterRequests, speechSettings, interleavedChapters, SAMPLE_RATE } from '../core/speech-segments.js';
 import { collectFishStream } from '../core/fish-stream.js';
 import { alignChapter, applyMargins, approveCut } from '../core/speech-alignment.js';
 import { decodeChapter, joinPCM, wavBytes } from '../core/speech-pcm.js';
@@ -145,10 +145,10 @@ export class SpeechEngine {
                             const samples = job.chapters.reduce((sum, chapter) => sum + chapter.original.length, 0);
                             if ((samples + original.length) / SAMPLE_RATE > 600) throw new Error('Recording exceeds the ten-minute local safeguard. Completed chapters remain available.');
                             const words = stream.words.map(word => ({ ...word, chunk: `${index}:${word.chunk}` }));
-                            const chapter = { index, language: plan[index].language, original, words, offsetSamples: null, duration: original.length / SAMPLE_RATE, noise: null,
+                            const chapter = { index, kind: plan[index].kind, language: plan[index].language, original, words, offsetSamples: null, duration: original.length / SAMPLE_RATE, noise: null,
                                 clips: alignChapter(plan[index].lines, words, original.length / SAMPLE_RATE, settings), processed: null };
                             job.chapters.push(chapter); job.chapters.sort((a, b) => a.index - b.index);
-                            let offset = 0, contiguous = true;
+                            let offset = 0, contiguous = !interleavedChapters(plan);
                             job.chapters.forEach((value, position) => { contiguous &&= value.index === position; value.offsetSamples = contiguous ? offset : null; offset += value.original.length; });
                             this.trimCache(job);
                             try { await this.ensureProcessed(chapter, abort.signal); } catch (error) { if (error.name === 'AbortError') throw error; chapter.processingError = error.message; }
@@ -281,9 +281,27 @@ export class SpeechEngine {
     stop(reason = 'cancelled') { this.playEpoch++; this.pending = null; this.starting = false; this.resumeAudio = null; if (this.playback) this.playback.status = reason; this.playback = null; if (this.audio) { this.audio.onended = null; this.audio.onerror = null; } this.audio?.pause(); this.audio?.removeAttribute?.('src'); this.audio?.load?.(); this.audio = null; if (this.url) URL.revokeObjectURL(this.url); this.url = null; }
     cancel() { this.abort?.abort(); this.abort = null; this.running = null; this.stop(); }
     clearScene() { this.cancel(); this.prepared = null; this.job = null; this.excluded.clear(); this.notify('Prepare the selected final dialogue to use its character voices.'); }
+    sceneExportIssue() {
+        if (!this.job || !interleavedChapters(this.job.plan)) return '';
+        if (this.job.chapters.length !== this.job.plan.length) return 'Wait for all narration and dialogue batches before exporting the scene in story order.';
+        if (this.job.chapters.some(chapter => chapter.clips.some(clip => clip.review))) return 'Review the narration and dialogue cuts before exporting the scene in story order.';
+        return '';
+    }
     async sourceSamples(processed = false) {
         if (!this.job?.chapters.length) throw new Error('Generate at least one chapter first.');
         if (this.job.chapters.some((chapter, index) => chapter.index !== index)) throw new Error('An earlier chapter is still missing. Generate remaining chapters before exporting the scene.');
+        const issue = this.sceneExportIssue(); if (issue) throw new Error(issue);
+        if (interleavedChapters(this.job.plan)) {
+            const clips = this.job.chapters.flatMap(chapter => chapter.clips.map(clip => ({ chapter, clip }))).sort((a, b) => a.clip.line.beat - b.clip.line.beat);
+            const ordered = [];
+            for (const { chapter, clip } of clips) {
+                const samples = processed ? (await this.ensureProcessed(chapter)).results.get(clip.id)?.samples
+                    : chapter.original.slice(Math.round(clip.start * SAMPLE_RATE), Math.round(clip.end * SAMPLE_RATE));
+                if (!samples?.length) throw new Error('A scene voice clip is unavailable. Review or regenerate that batch.');
+                ordered.push({ original: samples });
+            }
+            return joinPCM(ordered);
+        }
         if (!processed) return joinPCM(this.job.chapters);
         const chapters = [];
         for (const chapter of this.job.chapters) {
