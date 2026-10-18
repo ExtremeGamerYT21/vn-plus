@@ -14,6 +14,8 @@ The source monitor waits for unchanged completed POV text across two checks, inc
 
 If the current line's recording is still generating, voice-synchronized text and Auto wait for it. The text follows actual word timestamps when available. Playback/generation failures release the text to the ordinary typewriter and local timing rules; uncertain cuts require review. A failed automatic attempt does not repeat on every reopen/navigation. Use **Generate selected dialogue / Generate remaining chapters** to retry explicitly. Completed recordings are reused within the bounded in-memory cache; a page refresh clears that audio cache.
 
+Bracketed performance tags such as `[laugh]`, `[cough]`, `[sigh]`, and multiword delivery instructions stay in the speech input but are hidden in the dialogue box, including during typewriter and word-synchronized reveal. Original message text and parsed speech/emotion information remain unchanged.
+
 ## Narrator and first-person view
 
 **Voice the narrator (off = muted)** uses this environment's `characters/narrator/properties.json`. The file is loaded even without an inventory entry. For example:

@@ -1,6 +1,7 @@
 import { EMOTION_FLAIR, shouldShakeText } from './emotion-flair.js';
 import { speechRevealCues } from '../core/speech-reveal.js';
 import { DialogueLayout } from './dialogue-layout.js';
+import { dialogueDisplayText } from '../core/dialogue-text.js';
 
 /** Small, safe emphasis renderer. Text is always inserted with text nodes. */
 export function appendEmphasis(container, text, letters = []) {
@@ -49,7 +50,7 @@ export class DialogueRenderer {
             if (effect === 'whisper') text.classList.add('vn-whisper');
             if (effect === 'shout') text.classList.add('vn-shout');
         }
-        text.replaceChildren(); this.letters = appendEmphasis(text, token.text || '');
+        text.replaceChildren(); this.letters = appendEmphasis(text, dialogueDisplayText(token.text));
         box.scrollTop = 0; this.layout.fit();
         const font = props.font || this.settings.dialogueFont;
         if (font) void this.resolver.font(font); // CSS family already chosen; no stale theme callback.
