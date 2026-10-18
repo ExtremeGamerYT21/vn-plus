@@ -1,4 +1,5 @@
 import { runLanguageVoiceChecks } from './browser-speech-language.js';
+import { runBackgroundPipelineChecks } from './browser-background-pipeline.js';
 
 export async function runLiveVoiceChecks({ check, assert, equal, eventually, context, mountChat, makeController }) {
     const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -159,4 +160,5 @@ export async function runLiveVoiceChecks({ check, assert, equal, eventually, con
         } finally { parallel.dispose(); }
     });
     await runLanguageVoiceChecks({ check, assert, equal, eventually, context, mountChat, makeController });
+    await runBackgroundPipelineChecks({ check, assert, equal, eventually, context, mountChat, makeController });
 }

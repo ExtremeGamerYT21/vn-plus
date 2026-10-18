@@ -10,6 +10,7 @@ export class SpeechPanel {
         this.engine = engine; this.callbacks = callbacks; this.node = element('details', '', 'vn-speech-settings'); this.node.open = expanded;
         this.node.append(element('summary', 'Fish Audio voices'));
         this.node.append(element('p', 'Reads voiceId from character properties. No voiceId means mute. Automatic generation prepares completed POV lines ahead; ✓ beside the text means the next voice line is ready. Narrator properties come from characters/narrator/properties.json in this environment. Internal thoughts stay silent.', 'vn-hint'));
+        this.node.append(element('p', 'Automatic voices also prepare while VN mode is closed or the SillyTavern tab is in the background. Enable General → Open completed responses automatically to open VN as soon as a completed POV arrives. Keep the tab loaded; a closed or suspended tab cannot run this pipeline.', 'vn-hint'));
         const keyRow = element('label', '', 'vn-setting'); keyRow.append(element('span', 'Fish API key'));
         this.keyInput = element('input'); this.keyInput.type = 'password'; this.keyInput.autocomplete = 'new-password'; this.keyInput.placeholder = 'Saved in SillyTavern’s secret store'; keyRow.append(this.keyInput); this.node.append(keyRow);
         const credentialActions = element('div', '', 'vn-settings-actions');

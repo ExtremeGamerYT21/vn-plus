@@ -27,6 +27,7 @@ import { sceneLighting } from './core/scene-context.js';
 import { BeatScheduler, applyCommandState } from './core/narrative-timing.js';
 import { VisualRenderer } from './renderers/visual-renderer.js';
 import { collectJournals } from './core/journal-collector.js';
+const unfinishedPOV = parsed => parsed.errors.some(error => error.message.startsWith('Incomplete') || error.message.startsWith('Unclosed'));
 
 export class VNController {
     constructor(host, base, inventory = {}) {
@@ -61,21 +62,42 @@ export class VNController {
         void this.loadEnvironmentStyle();
         void this.refreshContext();
         this.sourceTimer = setInterval(() => this.checkSource(), 500);
+        const checkVisibility = () => void this.checkSource();
+        document.addEventListener('visibilitychange', checkVisibility);
+        this.disposers.push(() => document.removeEventListener('visibilitychange', checkVisibility));
     }
-    sourceFingerprint(context = this.host.context()) {
-        const message = readMessage(context, this.selected);
-        return JSON.stringify([chatIdentity(context), this.followLatest ? latestAssistant(context) : null, this.selected, message?.swipe, message?.raw, contextEntries(context, this.selected)]);
+    sourceFingerprint(context = this.host.context(), index = this.selected) {
+        const message = readMessage(context, index);
+        return JSON.stringify([chatIdentity(context), this.root.hidden || this.followLatest ? latestAssistant(context) : null, index, message?.swipe, message?.raw, contextEntries(context, index)]);
     }
-    checkSource() {
-        if (this.disposed || this.root.hidden || this.busy || document.hidden) return;
-        const context = this.host.context(), fingerprint = this.sourceFingerprint(context);
+    async checkSource() {
+        if (this.disposed || this.busy || this.sourceChecking || !this.settings.enabled) return;
+        const closed = this.root.hidden;
+        if (closed && !this.settings.automaticPlayback && !(this.settings.tts.enabled && this.settings.tts.autoGenerate)) { this.settlingSource = null; return; }
+        const context = this.host.context();
+        const index = closed || this.followLatest || chatIdentity(context) !== this.chatId ? latestAssistant(context) : this.selected;
+        const fingerprint = this.sourceFingerprint(context, index);
         if (fingerprint === this.observedSource) { this.settlingSource = null; return; }
         // Let a silent transformer finish replacing its output before preparing paid audio.
         if (this.settlingSource !== fingerprint) { this.settlingSource = fingerprint; return; }
         // Some transformers replace mes without emitting a SillyTavern event.
         // Keep following the latest response, while preserving deliberate history playback.
-        const index = this.followLatest || chatIdentity(context) !== this.chatId ? latestAssistant(context) : this.selected;
-        void this.open(index).catch(error => this.log(`POV refresh: ${error.message}`));
+        const message = readMessage(context, index);
+        if (closed && (!message || message.status !== 'ready' || unfinishedPOV(parsePOV(message.pov)))) {
+            this.observedSource = fingerprint; this.settlingSource = null; return;
+        }
+        this.sourceChecking = true;
+        try {
+            if (!closed || this.settings.automaticPlayback) await this.open(index);
+            else {
+                await this.prepareSpeech(index);
+                this.observedSource = fingerprint; this.settlingSource = null;
+                this.speech.requestAutomatic();
+            }
+        } catch (error) {
+            this.observedSource = fingerprint; this.settlingSource = null;
+            if (!this.disposed) this.log(`POV refresh: ${error.message}`);
+        } finally { this.sourceChecking = false; }
     }
     updateVoiceStatus() {
         const badge = this.root.querySelector('.vn-voice-ready'); if (!badge) return;
@@ -269,8 +291,7 @@ export class VNController {
             this.speech.configurationChanged();
             if (this.playback && this.parsed && !this.busy && !this.root.hidden) {
                 const message = readMessage(this.host.context(), this.selected);
-                try { this.speech.prepare(this.speechSceneId(message), this.playback.timeline, this.registry); this.speech.requestAutomatic(); this.present(this.playback.restore()); }
-                catch (error) { this.speech.clearScene(); this.speech.notify(error.message); }
+                this.prepareSceneSpeech(message, this.playback.timeline, this.parsed); this.present(this.playback.restore());
             }
             this.updateVoiceStatus(); return;
         }
@@ -392,23 +413,26 @@ export class VNController {
         const sourceRevision = `${this.environment.id}:${identity}:${message.index}:${message.swipe}:${message.pov}`;
         const revision = JSON.stringify([sourceRevision, history, this.settings.castMemoryTurns]);
         if (this.sceneRevision === revision && this.playback) {
-            try { this.speech.prepare(this.speechSceneId(message), this.playback.timeline, this.registry); } catch (error) { this.speech.clearScene(); this.speech.notify(error.message); }
-            this.speech.requestAutomatic();
+            this.prepareSceneSpeech(message, this.playback.timeline, this.parsed);
             this.present(this.playback.restore()); return;
         }
         const historyPosition = this.sceneRevision && this.sceneSourceRevision === sourceRevision && this.playback ? this.playback.position : null;
         this.invalidate({ preserveWorld: this.canPreserveWorld() }); this.parsed = null; this.parserErrors = []; const generation = this.generation; this.wait('Preparing scene…');
         const parsed = parsePOV(message.pov);
         const names = contextNames(history);
+        const currentSource = () => {
+            const current = readMessage(this.host.context(), message.index);
+            return identity === chatIdentity(this.host.context()) && this.selected === message.index && current?.raw === message.raw && current?.swipe === message.swipe;
+        };
         await this.registry.prepare(names);
-        if (generation !== this.generation || this.busy || this.root.hidden) return;
+        if (generation !== this.generation || this.busy || this.root.hidden || !currentSource()) return;
         if (this.registry.discoveryError) { this.characterFolderStatus(this.registry.discoveryError); this.log(this.registry.discoveryError); }
         const registry = this.registry, environment = this.environment;
         const unknown = [...new Set(parsed.tokens.filter(token => token.type === 'dialogue').map(token => token.character))].filter(name => !registry.knows(name));
         if (this.settings.autoCreateCharacters && this.host.scaffoldCharacters && unknown.length) {
             try {
                 const result = await this.host.scaffoldCharacters({ environment: environment.path ? environment.id : null, names: unknown });
-                if (generation !== this.generation || registry !== this.registry || this.busy || this.root.hidden) return;
+                if (generation !== this.generation || registry !== this.registry || this.busy || this.root.hidden || !currentSource()) return;
                 for (const entry of result.characters) {
                     registry.acceptCharacter(entry);
                     environment.inventory.characters ??= Object.create(null); environment.inventory.characters[entry.id] ??= { expressions: [] };
@@ -416,14 +440,13 @@ export class VNController {
                 const count = result.characters.filter(entry => entry.created).length;
                 this.characterFolderStatus(count ? `Created ${count} character folder(s) in ${environment.name}. Add artwork to their sprites folders; voiceId is blank (mute).` : 'Existing character folders and colors preserved.');
             } catch (error) {
-                if (generation !== this.generation || registry !== this.registry || this.busy || this.root.hidden) return;
+                if (generation !== this.generation || registry !== this.registry || this.busy || this.root.hidden || !currentSource()) return;
                 this.characterFolderStatus(error.message, true); this.log(error.message);
             }
         }
         const seed = reduceContext(history, this.registry, this.settings, { beforeLast: true });
         const timeline = compileTimeline(parsed.tokens, this.registry, this.settings, seed), sourceKey = sceneKey(context, message), key = `${this.environment.id}:${sourceKey}`;
-        try { this.speech.prepare(this.speechSceneId(message), timeline, this.registry); } catch (error) { this.speech.clearScene(); this.speech.notify(error.message); }
-        this.speech.requestAutomatic();
+        this.prepareSceneSpeech(message, timeline, parsed);
         if (!this.seen.has(key)) { if (this.seen.size >= 32) this.seen.delete(this.seen.keys().next().value); this.seen.set(key, new Set()); }
         this.playback = new Playback(timeline, this.seen.get(key)); this.sceneRevision = revision; this.sceneSourceRevision = sourceRevision; this.parsed = parsed; this.parserErrors = [...parsed.errors, ...timeline.errors];
         this.root.querySelector('.vn-scene-label').textContent = `PLAYER PERSPECTIVE · RESPONSE ${message.index + 1} · SWIPE ${message.swipe + 1}`;
@@ -554,17 +577,25 @@ export class VNController {
         this.root.querySelector('#vnplus-reply').focus();
     }
     speechSceneId(message) { return `${this.environment.id}:${sceneKey(this.host.context(), message)}`; }
-    async prepareSpeech() {
+    prepareSceneSpeech(message, timeline, parsed) {
+        try {
+            if (unfinishedPOV(parsed || parsePOV(message.pov))) throw new Error('The selected POV contains unfinished dialogue or artifacts. Wait for a completed response.');
+            this.speech.prepare(this.speechSceneId(message), timeline, this.registry);
+            this.speech.requestAutomatic();
+        } catch (error) { this.speech.clearScene(); this.speech.notify(error.message); }
+    }
+    async prepareSpeech(index = this.selected) {
         if (this.busy) throw new Error('Wait for the finalized player perspective before preparing voices.');
-        const message = readMessage(this.host.context(), this.selected), registry = this.registry;
+        const context = this.host.context(), identity = chatIdentity(context), generation = this.generation;
+        const message = readMessage(context, index), registry = this.registry;
         if (!message || message.status !== 'ready') throw new Error('Select a completed assistant response with a POV section.');
         const parsed = parsePOV(message.pov);
-        if (parsed.errors.some(error => error.message.startsWith('Incomplete') || error.message.startsWith('Unclosed'))) throw new Error('The selected POV contains unfinished dialogue or artifacts. Wait for a completed response.');
-        const history = contextEntries(this.host.context(), message.index);
+        if (unfinishedPOV(parsed)) throw new Error('The selected POV contains unfinished dialogue or artifacts. Wait for a completed response.');
+        const history = contextEntries(context, message.index);
         await registry.prepare(contextNames(history));
         if (registry.discoveryError) { this.characterFolderStatus(registry.discoveryError); this.log(registry.discoveryError); }
-        const current = readMessage(this.host.context(), this.selected);
-        if (this.busy || registry !== this.registry || !current || current.pov !== message.pov || current.swipe !== message.swipe || current.index !== message.index) throw new Error('The selected scene changed. Prepare its dialogue again.');
+        const current = readMessage(this.host.context(), index);
+        if (this.disposed || this.busy || generation !== this.generation || identity !== chatIdentity(this.host.context()) || registry !== this.registry || !current || current.pov !== message.pov || current.swipe !== message.swipe || current.index !== message.index) throw new Error('The selected scene changed. Prepare its dialogue again.');
         const seed = reduceContext(history, registry, this.settings, { beforeLast: true });
         return this.speech.prepare(this.speechSceneId(message), compileTimeline(parsed.tokens, registry, this.settings, seed), registry);
     }
@@ -630,7 +661,12 @@ export class VNController {
         else if (!this.root.querySelector('.vn-reply').hidden && this.playback?.position < this.playback?.timeline.views.length) void this.action('close-reply');
         else this.close();
     }
-    close() { this.root.hidden = true; this.invalidate(); document.body.classList.remove('vnplus-immersive'); this.reveal.close(); if (this.previousFocus?.isConnected) this.previousFocus.focus(); }
+    close() {
+        this.root.hidden = true; this.invalidate();
+        // Exiting VN is deliberate. Auto-open waits for another source revision.
+        if (this.settings.automaticPlayback) { this.observedSource = this.sourceFingerprint(this.host.context(), latestAssistant(this.host.context())); this.settlingSource = null; }
+        document.body.classList.remove('vnplus-immersive'); this.reveal.close(); if (this.previousFocus?.isConnected) this.previousFocus.focus();
+    }
     updateMusicButton() {
         const button = this.root.querySelector('[data-action="mute-music"]');
         button.textContent = this.settings.musicMuted ? 'Unmute music' : 'Mute music'; button.setAttribute('aria-pressed', String(!!this.settings.musicMuted));
