@@ -16,6 +16,8 @@ If the current line's recording is still generating, voice-synchronized text and
 
 Bracketed performance tags such as `[laugh]`, `[cough]`, `[sigh]`, and multiword delivery instructions stay in the speech input but are hidden in the dialogue box, including during typewriter and word-synchronized reveal. Original message text and parsed speech/emotion information remain unchanged.
 
+[Emotion typography](dialogue-emotions.md) uses the same directions for angry jitter, scattered shouting, smaller sad or whispered text and affectionate glow. These styles preserve word timestamps and character settings; **Reduced motion** stops continuous jitter and **Emotion text effects** disables the visual styles.
+
 ## Narrator and first-person view
 
 **Voice the narrator (off = muted)** uses this environment's `characters/narrator/properties.json`. The file is loaded even without an inventory entry. For example:

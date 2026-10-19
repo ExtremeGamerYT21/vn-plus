@@ -1,8 +1,11 @@
+import { emotionKey, emotionProfile } from '../core/emotion-routing.js';
+
 // Presentation data retained from the supplied extension.
 export const INTENSE_EMOTIONS = ['rage', 'cryangry', 'mad', 'angry', 'furious', 'fight', 'terror', 'terrified', 'horrified', 'panic', 'panicked', 'ohshit', 'shock', 'shocked', 'yikes', 'manic', 'unhinged', 'screaming', 'sobbing'];
 export function shouldShakeText(emotion, settings) {
-    return !settings.reducedMotion && !!settings.textEffects &&
-        (settings.intenseEmotions || INTENSE_EMOTIONS).some(tag => String(tag).trim().toLowerCase() === String(emotion || '').trim().toLowerCase());
+    const key = emotionKey(emotion), anger = emotionProfile(key) === 'anger';
+    return !!key && !settings.reducedMotion && !!settings.textEffects &&
+        (settings.intenseEmotions || INTENSE_EMOTIONS).some(tag => emotionKey(tag) === key || anger && emotionProfile(tag) === 'anger');
 }
 export const EMOTION_FLAIR = {
     // ── Rage / anger tier ───────────────────────────────

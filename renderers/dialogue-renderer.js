@@ -1,15 +1,19 @@
-import { EMOTION_FLAIR, shouldShakeText } from './emotion-flair.js';
+import { dialogueEmotionStyle, letterVariations } from './dialogue-emotions.js';
 import { speechRevealCues } from '../core/speech-reveal.js';
 import { DialogueLayout } from './dialogue-layout.js';
 import { dialogueDisplayText } from '../core/dialogue-text.js';
 
 /** Small, safe emphasis renderer. Text is always inserted with text nodes. */
-export function appendEmphasis(container, text, letters = []) {
+export function appendEmphasis(container, text, letters = [], keepWords = false) {
     for (const part of text.split(/(\*\*[^*]+\*\*|\*[^*]+\*|_[^_]+_)/g)) {
         let parent = container, value = part;
         if (/^\*\*.*\*\*$/s.test(part)) { parent = document.createElement('strong'); value = part.slice(2, -2); container.append(parent); }
         else if (/^(\*.*\*|_.*_)$/s.test(part)) { parent = document.createElement('em'); value = part.slice(1, -1); container.append(parent); }
-        for (const char of value) { const span = document.createElement('span'); span.textContent = char; parent.append(span); letters.push(span); }
+        for (const word of value.split(/(\s+)/u)) {
+            let holder = parent;
+            if (keepWords && /\S/u.test(word)) { holder = document.createElement('span'); holder.className = 'vn-text-word'; parent.append(holder); }
+            for (const char of word) { const span = document.createElement('span'); span.className = /\s/u.test(char) ? 'vn-letter vn-space' : 'vn-letter'; span.textContent = char; holder.append(span); letters.push(span); }
+        }
     }
     return letters;
 }
@@ -39,18 +43,24 @@ export class DialogueRenderer {
         const texture = texturePath ? this.resolver.url(`characters/${texturePath}`) : null;
         box.style.backgroundImage = texture ? `url("${texture}")` : '';
         box.classList.toggle('vn-image-only', !!texture && (typeof props.boxImageOnly === 'boolean' ? props.boxImageOnly : this.settings.dialogueBoxImageOnly));
-        const flair = this.settings.textEffects ? EMOTION_FLAIR[token.emotion] || {} : {};
-        text.style.fontSize = `${this.settings.textScale * (flair.fontScale || 1) * (props.voiceScale || 1)}em`;
-        text.style.letterSpacing = `${this.settings.letterSpacing}px`;
+        const style = dialogueEmotionStyle(token, effect, this.settings), flair = style.flair;
+        text.style.fontSize = `${this.settings.textScale * style.fontScale * (props.voiceScale || 1)}em`;
+        text.style.letterSpacing = style.tracking ? `calc(${this.settings.letterSpacing}px + ${style.tracking}em)` : `${this.settings.letterSpacing}px`;
         text.style.fontFamily = this.resolver.fontFamily(props.font || this.settings.dialogueFont);
         text.className = 'vn-text';
         text.classList.toggle('vn-thought', !!token.thought);
-        if (!this.settings.reducedMotion && this.settings.textEffects) {
-            if (shouldShakeText(token.emotion, this.settings)) text.classList.add('vn-text-jitter');
-            if (effect === 'whisper') text.classList.add('vn-whisper');
-            if (effect === 'shout') text.classList.add('vn-shout');
+        for (const [name, enabled] of Object.entries({ 'vn-text-jitter': style.jitter, 'vn-text-scatter': style.scatter, 'vn-text-love': style.glow, 'vn-whisper': style.whisper, 'vn-shout': style.shout })) text.classList.toggle(name, enabled);
+        const visible = dialogueDisplayText(token.text);
+        text.replaceChildren(); this.letters = appendEmphasis(text, visible, [], style.jitter || style.scatter);
+        if (style.jitter || style.scatter) {
+            const variations = letterVariations(this.letters.map(letter => letter.textContent).join(''));
+            this.letters.forEach((letter, index) => {
+                if (/\s/u.test(letter.textContent)) return; // Spaces keep their normal width and wrapping.
+                const variation = variations[index];
+                if (style.scatter) for (const key of ['x', 'y', 'angle']) letter.style.setProperty(`--vn-letter-${key}`, variation[key]);
+                letter.style.setProperty('--vn-letter-duration', variation.duration); letter.style.setProperty('--vn-letter-delay', variation.delay);
+            });
         }
-        text.replaceChildren(); this.letters = appendEmphasis(text, dialogueDisplayText(token.text));
         box.scrollTop = 0; this.layout.fit();
         const font = props.font || this.settings.dialogueFont;
         if (font) void this.resolver.font(font); // CSS family already chosen; no stale theme callback.

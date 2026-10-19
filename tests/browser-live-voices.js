@@ -3,6 +3,7 @@ import { runBackgroundPipelineChecks } from './browser-background-pipeline.js';
 import { runNarratorVoiceChecks } from './browser-narrator-voices.js';
 import { runManualBackgroundChecks } from './browser-manual-backgrounds.js';
 import { runDialogueTagChecks } from './browser-dialogue-tags.js';
+import { runDialogueEmotionChecks } from './browser-dialogue-emotions.js';
 
 export async function runLiveVoiceChecks({ check, assert, equal, eventually, context, mountChat, makeController }) {
     const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -166,5 +167,6 @@ export async function runLiveVoiceChecks({ check, assert, equal, eventually, con
     await runBackgroundPipelineChecks({ check, assert, equal, eventually, context, mountChat, makeController });
     await runNarratorVoiceChecks({ check, assert, equal, eventually, context, mountChat, makeController });
     await runDialogueTagChecks({ check, assert, equal, eventually, context, mountChat, makeController });
+    await runDialogueEmotionChecks({ check, assert, equal, eventually, context, mountChat, makeController });
     await runManualBackgroundChecks({ check, assert, equal, eventually, context, mountChat, makeController });
 }
