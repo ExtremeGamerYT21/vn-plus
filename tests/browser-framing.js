@@ -25,11 +25,11 @@ export async function runFramingChecks(options) {
                 nina = controller.stage.nodes.get('nina'); shadow = controller.stage.nodes.get('noartframing'); ashley = controller.stage.nodes.get('ashley');
                 return nina?.dataset.sprite && ashley?.dataset.sprite && shadow?.classList.contains('vn-no-sprite') && controller.audio.channels.music.audio;
             });
-            shadowBefore = rect(shadow.querySelector('svg')); ninaBefore = rect(nina);
+            shadowBefore = rect(shadow.querySelector('.vn-fallback-figure')); ninaBefore = rect(nina);
             frame = controller.stage.sprites.records.get(nina).frame; music = controller.audio.channels.music.audio; plays = music.plays; position = controller.playback.position;
             toggle('full-body'); await eventually(() => nina.dataset.framing === 'full-body');
             near(rect(nina).bottom, innerHeight); near(rect(nina).height, ninaBefore.height);
-            const after = rect(shadow.querySelector('svg')); for (const key of Object.keys(shadowBefore)) near(after[key], shadowBefore[key]);
+            const after = rect(shadow.querySelector('.vn-fallback-figure')); for (const key of Object.keys(shadowBefore)) near(after[key], shadowBefore[key]);
             equal(shadow.dataset.framing, 'full-body');
             near(rect(ashley).bottom, innerHeight - controller.settings.rowRise * innerHeight / 100);
         });
@@ -50,9 +50,9 @@ export async function runFramingChecks(options) {
         await check('full-body artwork and fallback figures keep their feet anchored despite top alignment or custom stage clearance', async () => {
             controller.settings.stageAlignment = 'top'; controller.applyLayout();
             await eventually(() => shadow.style.top === 'auto'); near(rect(nina).bottom, innerHeight); near(rect(shadow).bottom, innerHeight);
-            const topShadow = rect(shadow.querySelector('svg'));
+            const topShadow = rect(shadow.querySelector('.vn-fallback-figure'));
             toggle('bust'); await eventually(() => nina.dataset.framing === 'bust');
-            const sameShadow = rect(shadow.querySelector('svg')); for (const key of Object.keys(topShadow)) near(sameShadow[key], topShadow[key]);
+            const sameShadow = rect(shadow.querySelector('.vn-fallback-figure')); for (const key of Object.keys(topShadow)) near(sameShadow[key], topShadow[key]);
             controller.settings.stageAlignment = 'bottom';
             controller.root.querySelector('.vn-stage').style.setProperty('--vn-stage-bottom', '130px'); toggle('full-body');
             await eventually(() => nina.dataset.framing === 'full-body'); near(rect(nina).bottom, innerHeight);

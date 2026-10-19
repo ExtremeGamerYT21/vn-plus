@@ -1,6 +1,6 @@
 # Full-body fallback figures
 
-Characters without usable artwork receive an original grayscale SVG figure with clothing, hair, hands, shoes, layered self-shading and a contact shadow. Adult and child figures use distinct body geometry and proportions. No image downloads, model calls or normal maps are needed. The narrator remains invisible.
+Characters without usable artwork receive a bundled, illustrated full-body shadow with clothing, hair, hands, shoes and soft self-shading. Six generated figures replace the angular SVG stand-ins. Each is programmatically darkened to charcoal, with an anonymous face and a transparent antialiased cutout. Adult and child variants use distinct artwork. No external image downloads, model calls or normal maps run during gameplay. The narrator remains invisible.
 
 | Descriptive label | Figure | Default relative size |
 | --- | --- | --- |
@@ -25,4 +25,6 @@ Only complete descriptive words in the speaker's name, display name or aliases a
 
 These size defaults apply only while artwork is unavailable. Loaded artwork retains its authored `bustScale`, defaulting to `1`. Stand-ins take part in the shared [cast zoom](character-framing.md), so similarly sized characters normalize together and mixed groups preserve their ratios. Hidden missing figures do not affect the zoom. Feet remain at the screen floor in both artwork framing modes; row depth, silence grace, dimming, retreat and pixel offsets still apply. The smaller placeholder footprint is preserved, now depicting the whole body rather than a cropped bust.
 
-Repeated beats reuse the existing SVG. Its shading uses gradients and layered shapes without an animation loop. Existing scene lighting and narration dimming still apply. The silhouette theme colour tints the clothes; environment CSS may override `--vn-figure-cloth`, `--vn-figure-cloth-light` and `--vn-figure-cloth-shadow`.
+Repeated beats reuse the same figure element and locally cached PNG. Shadows are baked into the artwork, with no animation loop. Existing scene lighting and narration dimming still apply. Environment CSS may set `--vn-fallback-brightness` (default `1`) to adjust shadow brightness. Name labels continue to use the environment theme.
+
+The six production assets live in [`assets/fallback-figures/`](../assets/fallback-figures/). They were created with the built-in image generator; the [prompt set](fallback-figure-prompts.json) records their art direction. The offline [`tools/shade-fallback-figures.py`](../tools/shade-fallback-figures.py) script applies the requested shadow treatment, cleans alpha residue and normalizes framing. It requires Pillow only when rebuilding assets; PNGs work directly in the extension.

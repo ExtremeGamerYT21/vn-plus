@@ -451,7 +451,7 @@ await check('reply, retry, exit and resume delegate to normal host controls', as
     await controller.action('retry'); equal(retries, 1);
     controller.close(); assert(controller.root.hidden); await controller.open(0); assert(!controller.root.hidden);
 });
-await check('missing artwork uses a bust silhouette, ST theme overrides apply, and only intense tags shake', async () => {
+await check('missing artwork uses a bundled shadow figure, ST theme overrides apply, and only intense tags shake', async () => {
     const previous = { characters: controller.settings.characters, themeColors: controller.settings.themeColors, font: controller.settings.dialogueFont,
         text: controller.settings.textColor, narration: controller.settings.narrationColor, motion: controller.settings.reducedMotion };
     const properties = { '--SmartThemeBodyColor': '#e0e8df', '--SmartThemeQuoteColor': '#83b68c', '--SmartThemeBlurTintColor': '#223128', '--SmartThemeBorderColor': '#536859', '--mainFontFamily': 'monospace' };
@@ -462,9 +462,9 @@ await check('missing artwork uses a bust silhouette, ST theme overrides apply, a
         controller.settings.textColor = ''; controller.settings.narrationColor = ''; controller.settings.reducedMotion = false;
         controller.settings.textEffects = true; controller.settings.typewriterEffect = false;
         context.chat[0].mes = 'PRIVATE\n/////\n#TEXT jitter\nUnknown: "Calm." [nervous]\nUnknown: "Intense!" [rage]\nYou hear footsteps.';
-        await controller.open(0); await eventually(() => controller.root.querySelector('.vn-no-sprite svg'));
+        await controller.open(0); await eventually(() => controller.root.querySelector('.vn-no-sprite .vn-fallback-figure'));
         const silhouette = controller.root.querySelector('.vn-no-sprite .vn-missing-bust');
-        assert(silhouette.querySelector('path')); assert(silhouette.querySelector('svg').getAttribute('aria-label').includes('Unknown'));
+        assert(silhouette.querySelector('.vn-fallback-figure').style.backgroundImage.includes('/fallback-figures/neutral.png')); assert(silhouette.querySelector('[role="img"]').getAttribute('aria-label').includes('Unknown'));
         assert(silhouette.getBoundingClientRect().height > 100);
         const text = controller.root.querySelector('.vn-text'); assert(!text.classList.contains('vn-text-jitter'));
         equal(getComputedStyle(text).color, 'rgb(224, 232, 223)'); equal(getComputedStyle(text).fontFamily, 'monospace');
