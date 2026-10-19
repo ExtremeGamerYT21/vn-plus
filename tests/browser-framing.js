@@ -4,6 +4,7 @@ import { runDialogueAttributionChecks } from './browser-dialogue-attribution.js'
 import { runDialogueSizeChecks } from './browser-dialogue-size.js';
 import { runCastRetreatChecks } from './browser-cast-retreat.js';
 import { runRelativeScaleChecks } from './browser-relative-scale.js';
+import { runSilhouetteChecks } from './browser-silhouettes.js';
 
 export async function runFramingChecks(options) {
     const { check, assert, equal, eventually, context, mountChat, makeController } = options;
@@ -29,7 +30,7 @@ export async function runFramingChecks(options) {
             toggle('full-body'); await eventually(() => nina.dataset.framing === 'full-body');
             near(rect(nina).bottom, innerHeight); near(rect(nina).height, ninaBefore.height);
             const after = rect(shadow.querySelector('svg')); for (const key of Object.keys(shadowBefore)) near(after[key], shadowBefore[key]);
-            equal(shadow.dataset.framing, 'bust');
+            equal(shadow.dataset.framing, 'full-body');
             near(rect(ashley).bottom, innerHeight - controller.settings.rowRise * innerHeight / 100);
         });
         await check('toolbar and settings framing selectors synchronize without restarting playback artwork or music', async () => {
@@ -46,9 +47,9 @@ export async function runFramingChecks(options) {
             near(rect(nina).x - before.x, 24); near(rect(nina).y - before.y, -18); near(rect(nina).height, before.height);
             Object.assign(controller.settings.characters.nina, { offsetX: 0, offsetY: 0 }); controller.applyLayout();
         });
-        await check('full-body artwork stays bottom anchored with top-aligned shadows and custom stage clearance', async () => {
+        await check('full-body artwork and fallback figures keep their feet anchored despite top alignment or custom stage clearance', async () => {
             controller.settings.stageAlignment = 'top'; controller.applyLayout();
-            await eventually(() => shadow.style.top !== 'auto'); near(rect(nina).bottom, innerHeight);
+            await eventually(() => shadow.style.top === 'auto'); near(rect(nina).bottom, innerHeight); near(rect(shadow).bottom, innerHeight);
             const topShadow = rect(shadow.querySelector('svg'));
             toggle('bust'); await eventually(() => nina.dataset.framing === 'bust');
             const sameShadow = rect(shadow.querySelector('svg')); for (const key of Object.keys(topShadow)) near(sameShadow[key], topShadow[key]);
@@ -74,12 +75,12 @@ export async function runFramingChecks(options) {
             await controller.action('next'); assert(!controller.root.classList.contains('vn-narrating'));
             controller.close(); assert(!controller.root.classList.contains('vn-narrating'));
         });
-        await check('failed artwork returns to bust-framed shadows while full-body mode remains selected', async () => {
+        await check('failed artwork returns to a full-body fallback figure while full-body mode remains selected', async () => {
             const sprite = controller.resolver.sprite; controller.resolver.sprite = async () => null;
             controller.sceneRevision = null; await controller.open(0);
-            await eventually(() => { const node = controller.stage.nodes.get('nina'); return node?.classList.contains('vn-no-sprite') && node.dataset.framing === 'bust'; });
-            const missing = controller.stage.nodes.get('nina'); equal(missing.dataset.framing, 'bust'); equal(controller.settings.spriteFraming, 'full-body');
-            near(rect(missing).bottom, innerHeight - Math.min(innerHeight * .28, 230));
+            await eventually(() => { const node = controller.stage.nodes.get('nina'); return node?.classList.contains('vn-no-sprite') && node.dataset.framing === 'full-body'; });
+            const missing = controller.stage.nodes.get('nina'); equal(missing.dataset.framing, 'full-body'); equal(controller.settings.spriteFraming, 'full-body');
+            near(rect(missing).bottom, innerHeight);
             controller.resolver.sprite = sprite;
         });
     } finally { controller.dispose(); }
@@ -89,4 +90,5 @@ export async function runFramingChecks(options) {
     await runDialogueSizeChecks(options);
     await runCastRetreatChecks(options);
     await runRelativeScaleChecks(options);
+    await runSilhouetteChecks(options);
 }

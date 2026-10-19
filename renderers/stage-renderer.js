@@ -1,6 +1,7 @@
 import { stagePosition, characterBustScale, castZoom } from '../core/stage-layout.js';
 import { SpriteAnimator } from './sprite-animator.js';
 import { createSilhouette } from './silhouette.js';
+import { silhouetteProfile } from '../core/silhouette-profile.js';
 import { sceneLighting } from '../core/scene-context.js';
 import { sceneLight } from '../core/scene-light.js';
 import { SceneLightRenderer } from './scene-light-renderer.js';
@@ -21,7 +22,7 @@ export class StageRenderer {
         if (this.sprites.reduced) this.finishDeparture(id);
     }
     place(node, position) {
-        const fullBody = this.settings.spriteFraming === 'full-body' && !node.classList.contains('vn-no-sprite');
+        const fullBody = this.settings.spriteFraming === 'full-body' || node.classList.contains('vn-no-sprite');
         const top = !fullBody && this.settings.stageAlignment === 'top';
         node.dataset.framing = fullBody ? 'full-body' : 'bust';
         node.style.bottom = top ? 'auto' : fullBody ? `calc(${position.lift}vh - var(--vn-stage-bottom))` : `${position.lift}vh`;
@@ -70,7 +71,10 @@ export class StageRenderer {
         if (!state.background) { background.style.backgroundImage = ''; this.backgroundUrl = null; this.publishContext(state, false); }
         const characters = Object.values(state.characters).filter(character => characterPresent(character) && !this.registry.isNarrator(character.id) && !this.registry.isNarrator(character.name)
             && (this.settings.showPlayerBust || !this.registry.isPlayer(character.id)));
-        const scales = new Map(characters.map(character => [character.id, characterBustScale(this.registry.get(character.id).bustScale)]));
+        const properties = new Map(characters.map(character => [character.id, this.registry.get(character.id)]));
+        const profiles = new Map(characters.map(character => [character.id, silhouetteProfile(character.name, properties.get(character.id))]));
+        const scaleFor = (character, node) => !node || node.classList.contains('vn-no-sprite') ? profiles.get(character.id).scale : characterBustScale(properties.get(character.id).bustScale);
+        const scales = new Map(characters.map(character => [character.id, scaleFor(character, this.nodes.get(character.id))]));
         const zoom = cast => stage.style.setProperty('--vn-cast-zoom', castZoom(cast.map(character => scales.get(character.id))));
         zoom(characters.filter(character => {
             const node = this.nodes.get(character.id);
@@ -80,8 +84,8 @@ export class StageRenderer {
         for (const [id, node] of this.nodes) if (!visibleIds.has(id)) this.depart(id, node);
         if (this.sprites.reduced) for (const id of this.departures.keys()) this.finishDeparture(id);
         const count = Math.max(maxSlots, ...characters.map(char => char.slot + 1));
-        await Promise.all([backgroundRequest, ...characters.map(async character => {
-            const props = this.registry.get(character.id);
+        const figures = Promise.all(characters.map(async character => {
+            const props = properties.get(character.id), profile = profiles.get(character.id);
             let node = this.nodes.get(character.id);
             const outgoing = this.departures.get(character.id);
             if (outgoing) {
@@ -90,9 +94,14 @@ export class StageRenderer {
             }
             if (!node) {
                 node = document.createElement('div'); node.className = 'vn-character vn-no-sprite'; node.dataset.character = character.id;
-                const fallback = createSilhouette(character.name);
-                node.append(fallback); stage.append(node); this.nodes.set(character.id, node);
+                stage.append(node); this.nodes.set(character.id, node);
             }
+            const fallback = node.querySelector('.vn-missing-bust');
+            if (fallback?.dataset.silhouette !== profile.type || node.dataset.name !== character.name) {
+                const replacement = createSilhouette(character.name, profile);
+                if (fallback) fallback.replaceWith(replacement); else node.append(replacement);
+            }
+            node.dataset.silhouette = profile.type;
             node.dataset.name = character.name;
             node.classList.toggle('vn-speaking', character.id === state.speaker);
             const position = stagePosition(character.slot, count, this.settings);
@@ -111,12 +120,17 @@ export class StageRenderer {
             node.style.zIndex = String(position.z);
             node.classList.toggle('vn-hide-missing', this.settings.missingAsset === 'hide');
             await this.sprites.render(node, character.id, character.expression, this.registry.expressionCandidates(character.id, character.expression), props);
-            // Image availability can change during loading. Shadows keep the bust baseline.
-            if (current()) this.place(node, position);
-        })]);
+            if (current()) {
+                // Inferred body sizes apply only to stand-ins. Authored artwork keeps its properties.
+                scales.set(character.id, scaleFor(character, node));
+                node.style.setProperty('--vn-scale', this.settings.bustScale * scales.get(character.id) * position.scale);
+                this.place(node, position);
+            }
+        })).then(() => {
+            if (current()) zoom(characters.filter(character => this.settings.missingAsset !== 'hide' || !this.nodes.get(character.id)?.classList.contains('vn-no-sprite')));
+        });
+        await Promise.all([backgroundRequest, figures]);
         if (current()) {
-            // Hidden missing-art characters must not influence the visible cast's zoom.
-            if (this.settings.missingAsset === 'hide') zoom(characters.filter(character => !this.nodes.get(character.id)?.classList.contains('vn-no-sprite')));
             this.lightRenderer.refresh();
         }
     }

@@ -4,7 +4,7 @@ Use the VN toolbar's **Busts / Full body** selector, or **Extensions → Visual 
 
 **Full body** anchors the bottom of each loaded image at the screen bottom, with the usual row depth lift. The drawing can extend behind the dialogue box and controls. Artwork retains its configured height and scale, so a full-length sprite no longer starts above the top of the stage simply because its feet were anchored at the raised bust baseline. Its bottom means the image canvas edge, including transparent padding. Breathing, expression blending and blinking continue to use the same image and renderer.
 
-Missing-art shadow placeholders retain their bust height and baseline. They also keep the existing top/bottom alignment preference. Full-body artwork always anchors from the bottom, including when shadows are top-aligned. If an image fails to load, its shadow returns to bust framing. Switching modes repositions existing nodes without restarting music, voices or the current paragraph.
+Missing-art [fallback figures](fallback-figures.md) now show a complete shaded body down to the shoes. Their feet stay anchored at the viewport floor in either framing mode, with the usual row lift. Top alignment continues to apply to authored bust artwork. If an image fails to load, the full-body stand-in returns. Switching modes repositions existing nodes without restarting music, voices or the current paragraph.
 
 ## Character properties
 
@@ -21,11 +21,11 @@ Missing-art shadow placeholders retain their bust height and baseline. They also
 
 Positive X moves right; negative X moves left. Positive Y moves down; negative Y moves up. The example shifts the character 20 pixels right and 30 pixels up. Offsets remain pixels even when the character is scaled or placed in a smaller back row. Registry overrides keyed by the character folder ID can supply the same fields. Use **Refresh assets** after editing properties files.
 
-`bustScale` defines a character's size relative to the other visible characters, in both framing modes. The cast shares an automatic zoom: two characters both set to `2` appear at normal size together, as do two both set to `0.5`. Mixing a `2` character with a `0.5` character makes the larger one four times the smaller one's scale, before row depth. The shared zoom uses the geometric mean of the visible cast's scales, keeping these ratios intact; a missing or invalid scale means `1`. The **Global bust scale** and **Bust height** controls still adjust the overall framing.
+`bustScale` defines a character's size relative to the other visible characters, in both framing modes. The cast shares an automatic zoom: two characters both set to `2` appear at normal size together, as do two both set to `0.5`. Mixing a `2` character with a `0.5` character makes the larger one four times the smaller one's scale, before row depth. The shared zoom uses the geometric mean of the visible cast's scales, keeping these ratios intact. Authored artwork defaults to `1`; stand-ins use their [body profile defaults](fallback-figures.md) unless a valid `bustScale` is supplied. The **Global bust scale** and **Bust height** controls still adjust the overall framing.
 
 The zoom eases over 650 ms when the visible cast changes, respecting reduced motion. Characters staying through their silence grace still count until they leave. Hidden player busts, the narrator, absent characters and missing-art placeholders set to **Hide** do not affect the zoom. Visible shadows participate like ordinary busts. Changing the current speaker or expression does not change the zoom. Background camera zoom, media playback and pixel offsets remain independent.
 
-Environment CSS that changes stage clearance can use `.vn-stage { --vn-stage-bottom: 180px; }`. The default is `min(28vh,230px)`; full-body placement uses the same variable, so the image remains anchored correctly as the viewport changes. `:scope[data-sprite-framing="full-body"]` targets the selected mode. Each character's `data-framing` reports its effective framing; a shadow remains `bust`.
+Environment CSS that changes stage clearance can use `.vn-stage { --vn-stage-bottom: 180px; }`. The default is `min(28vh,230px)`; full-body placement uses the same variable, so the image remains anchored correctly as the viewport changes. `:scope[data-sprite-framing="full-body"]` targets the selected mode. Each character's `data-framing` reports its effective framing; stand-ins report `full-body`.
 
 ## Narration lighting
 
