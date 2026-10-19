@@ -19,7 +19,6 @@ export function bindControls(root, callbacks) {
         if (root.hidden || event.isComposing) return;
         const editable = event.target.closest?.('input,textarea,select,[contenteditable="true"]');
         if (event.key === 'Escape') { event.preventDefault(); callbacks.escape(); return; }
-        if (editable) return;
         if (event.key === 'Tab') {
             const visibleLayer = [...root.querySelectorAll('.vn-artifact,.vn-panel,.vn-reply')].find(node => !node.hidden) || root;
             const targets = [...visibleLayer.querySelectorAll('button,input,textarea,select,summary,[tabindex="0"]')].filter(node => !node.disabled && node.getClientRects().length);
@@ -28,6 +27,7 @@ export function bindControls(root, callbacks) {
             else if (!event.shiftKey && (document.activeElement === last || !root.contains(document.activeElement))) { event.preventDefault(); first?.focus(); }
             return;
         }
+        if (editable) return;
         if (event.target.closest?.('button') && [' ', 'Enter'].includes(event.key)) return;
         if ([' ', 'Enter', 'ArrowRight'].includes(event.key)) { event.preventDefault(); callbacks.action('next'); }
         if (event.key === 'ArrowLeft') { event.preventDefault(); callbacks.action('back'); }

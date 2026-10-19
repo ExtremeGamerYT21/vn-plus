@@ -1,5 +1,6 @@
 import { wavBytes } from '../core/speech-pcm.js';
 import { speechLanguageName } from '../core/speech-language.js';
+import { createVolumeSlider, syncVolumeSlider } from './volume-control.js';
 
 const element = (tag, text, className) => { const node = document.createElement(tag); if (text) node.textContent = text; if (className) node.className = className; return node; };
 function download(bytes, name, type) {
@@ -29,7 +30,7 @@ export class SpeechPanel {
             ['temperature', 'Temperature', 'number', 0, 1], ['topP', 'Top P', 'number', 0, 1], ['speed', 'Voice speed', 'number', .5, 2],
             ['chunkLength', 'Fish chunk length', 'number', 100, 300], ['latency', 'Latency', ['normal', 'balanced', 'low']], ['bitrate', 'MP3 bitrate (kbps)', [64, 128, 192]],
             ['normalize', 'Normalize text', 'checkbox'], ['conditionPrevious', 'Voice consistency within each chapter', 'checkbox'],
-            ['timeout', 'Request timeout (seconds)', 'number', 30, 600], ['volume', 'Voice playback volume', 'number', 0, 1],
+            ['timeout', 'Request timeout (seconds)', 'number', 30, 600], ['volume', 'Voice playback volume', 'volume'], ['muted', 'Mute voice playback', 'checkbox'],
         ]) this.field(options, definition);
         options.append(element('p', 'Up to 5 chapters can generate together; default 3 leaves room for other Fish API use. Takes effect on the next generation when the response has multiple chapters. Restart SillyTavern after a bridge update; older bridges use one batch at a time. Rate-limit rejections back off before retrying, with no paid-model fallback.', 'vn-hint'));
         options.append(element('p', 'Whole non-English lines generate separately from English. Consecutive lines in the same detected language share a batch, within the chapter-size limit, even with chapter splitting off. Short ambiguous replies use nearby speech or the character’s ttsLanguage property. Mixed English lines keep their pronunciation rules.', 'vn-hint'));
@@ -58,6 +59,10 @@ export class SpeechPanel {
         }); return button;
     }
     field(container, [key, label, type, min, max]) {
+        if (type === 'volume') {
+            const row = createVolumeSlider(label, () => this.engine.settings.tts[key], value => { this.engine.settings.tts[key] = value; this.callbacks.change(key); }, 'speechSetting', key);
+            container.append(row); this.fields.set(key, { input: row.querySelector('input'), type }); return;
+        }
         const row = element('label', '', 'vn-setting'); row.append(element('span', label));
         const input = element(Array.isArray(type) ? 'select' : 'input'); input.dataset.speechSetting = key;
         if (Array.isArray(type)) for (const value of type) {
@@ -70,11 +75,15 @@ export class SpeechPanel {
             this.engine.settings.tts[key] = value; this.callbacks.change(key);
         }); row.append(input); container.append(row); this.fields.set(key, { input, type });
     }
+    refreshVolumes() {
+        syncVolumeSlider(this.fields.get('volume').input, this.engine.settings.tts.volume);
+        this.fields.get('muted').input.checked = !!this.engine.settings.tts.muted;
+    }
     refresh() {
         const engine = this.engine; this.status.textContent = engine.status;
         this.generateButton.disabled = !!engine.running;
         this.generateButton.textContent = engine.job?.chapters.length && engine.job.chapters.length < engine.job.plan.length ? 'Generate remaining chapters' : 'Generate selected dialogue';
-        for (const [key, { input, type }] of this.fields) { if (type === 'checkbox') input.checked = !!engine.settings.tts[key]; else input.value = engine.settings.tts[key]; }
+        for (const [key, { input, type }] of this.fields) { if (type === 'volume') syncVolumeSlider(input, engine.settings.tts[key]); else if (type === 'checkbox') input.checked = !!engine.settings.tts[key]; else input.value = engine.settings.tts[key]; }
         const signature = JSON.stringify([engine.prepared?.signature, [...engine.excluded]]);
         if (signature !== this.segmentSignature) {
             this.segmentSignature = signature; this.segments.replaceChildren();

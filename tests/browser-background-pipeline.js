@@ -179,19 +179,20 @@ export async function runBackgroundPipelineChecks({ check, assert, equal, eventu
                 equal(requests, ['<|speaker:0|>New.']); assert(controller.root.hidden);
             } finally { release?.(); controller.dispose(); }
         });
-        await check('a hidden open VN preserves its stage while preparing corrected text and displays it only after return', async () => {
+        await check('a hidden open VN keeps its POV loading state while preparing corrected text and displays it only after return', async () => {
             const { controller, requests, played } = fixture('background-open-incomplete', true);
             try {
                 visibility(false);
                 context.chat[0].mes = 'PRIVATE\n/////\nNina: "Hello."\nNina: "Unfinished';
-                await controller.open(); equal(requests.length, 0); assert(controller.speech.status.includes('unfinished'));
-                const originalPosition = controller.playback.position, originalRevision = controller.sceneSourceRevision;
+                await controller.open(); equal(requests.length, 0); equal(controller.root.querySelector('.vn-status').dataset.phase, 'pov');
+                assert(!controller.root.querySelector('.vn-status').hidden); assert(!controller.playback);
+                const originalPosition = controller.playback?.position, originalRevision = controller.sceneSourceRevision;
                 visibility(true);
                 context.chat[0].mes = 'PRIVATE\n/////\nYou listen.\nNina: "Hello."';
                 await eventually(() => controller.speech.job?.status === 'complete');
                 await eventually(() => played.length === 1);
                 equal(requests.length, 1); assert(!controller.root.hidden);
-                equal(controller.playback.position, originalPosition); equal(controller.sceneSourceRevision, originalRevision);
+                equal(controller.playback?.position, originalPosition); equal(controller.sceneSourceRevision, originalRevision);
                 visibility(false); await eventually(() => controller.sceneSourceRevision !== originalRevision);
                 equal(requests.length, 1); equal(controller.playback.position, 0);
             } finally { controller.dispose(); }

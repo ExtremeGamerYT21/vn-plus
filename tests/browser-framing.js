@@ -5,6 +5,7 @@ import { runDialogueSizeChecks } from './browser-dialogue-size.js';
 import { runCastRetreatChecks } from './browser-cast-retreat.js';
 import { runRelativeScaleChecks } from './browser-relative-scale.js';
 import { runSilhouetteChecks } from './browser-silhouettes.js';
+import { runQualityOfLifeChecks } from './browser-quality-of-life.js';
 
 export async function runFramingChecks(options) {
     const { check, assert, equal, eventually, context, mountChat, makeController } = options;
@@ -91,4 +92,5 @@ export async function runFramingChecks(options) {
     await runCastRetreatChecks(options);
     await runRelativeScaleChecks(options);
     await runSilhouetteChecks(options);
+    await runQualityOfLifeChecks(options);
 }

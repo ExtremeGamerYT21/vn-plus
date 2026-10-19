@@ -181,7 +181,7 @@ export class SpeechEngine {
         }
     }
     processingKey(chapter) {
-        const { parallelBatches, ...settings } = speechSettings(this.settings.tts);
+        const { parallelBatches, volume, muted, ...settings } = speechSettings(this.settings.tts);
         return JSON.stringify([settings, chapter.clips.map(clip => [clip.id, clip.start, clip.end, clip.review]), chapter.noise]);
     }
     async ensureProcessed(chapter, signal) {
@@ -230,10 +230,16 @@ export class SpeechEngine {
         } catch (error) { if (epoch === this.playEpoch) { this.stop('failed'); this.notify(error.message); this.onEnded?.(); } }
         finally { if (epoch === this.playEpoch) this.starting = false; }
     }
+    setVolume(value) {
+        this.settings.tts.volume = Math.max(0, Math.min(1, Number(value) || 0));
+        if (this.audio) this.audio.volume = this.settings.tts.volume;
+    }
+    setMuted(value) { this.settings.tts.muted = !!value; if (this.audio) this.audio.muted = this.settings.tts.muted; }
     async beginAudio(samples, playback = null) {
         if (playback) playback.duration = samples.length / SAMPLE_RATE;
         this.url = URL.createObjectURL(new Blob([wavBytes(samples)], { type: 'audio/wav' }));
         this.audio = this.audioFactory(); this.audio.src = this.url; this.audio.volume = Math.max(0, Math.min(1, this.settings.tts.volume));
+        this.audio.muted = !!this.settings.tts.muted;
         const audio = this.audio;
         if (playback) playback.audio = audio;
         this.audio.onended = () => { if (this.audio !== audio) return; this.stop('ended'); this.onEnded?.(); };

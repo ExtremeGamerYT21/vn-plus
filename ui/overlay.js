@@ -26,5 +26,7 @@ export function createOverlay() {
     framing.setAttribute('aria-label', 'VN artwork framing'); framing.title = 'Anchor full-body artwork at the screen bottom; shadow placeholders keep their bust framing';
     for (const { value, label } of SPRITE_FRAMING_OPTIONS) { const option = document.createElement('option'); option.value = value; option.textContent = label; framing.append(option); }
     root.querySelector('[data-layout-picker]').after(framing);
+    const audio = document.createElement('button'); audio.type = 'button'; audio.dataset.action = 'audio'; audio.textContent = 'Audio'; audio.title = 'Adjust voice, music, ambience and sound effects'; audio.setAttribute('aria-haspopup', 'dialog');
+    root.querySelector('[data-action="mute-music"]').before(audio);
     document.body.append(root); return root;
 }

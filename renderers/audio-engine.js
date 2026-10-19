@@ -4,7 +4,7 @@ export class AudioEngine {
     constructor(resolver, settings, report = () => {}, audioFactory = () => new Audio()) {
         this.resolver = resolver; this.settings = settings; this.report = report; this.audioFactory = audioFactory;
         this.channels = { music: {}, ambient: {} }; this.sources = new Set(); this.musicSources = new Set(); this.timers = new Map(); this.unlocked = false; this.epoch = 0; this.sfxEpoch = 0;
-        this.suspended = false; this.resumeSources = new Set();
+        this.suspended = false; this.resumeSources = new Set(); this.fades = new Map();
     }
     async unlock() {
         this.unlocked = true;
@@ -29,11 +29,27 @@ export class AudioEngine {
         const current = new Set(Object.values(this.channels).map(channel => channel.audio).filter(Boolean));
         for (const audio of [...this.sources]) if (audio.loop && !current.has(audio)) this.stop(audio);
         for (const channel of Object.values(this.channels)) if (channel.audio) {
-            clearInterval(this.timers.get(channel.audio)); this.timers.delete(channel.audio);
+            clearInterval(this.timers.get(channel.audio)); this.timers.delete(channel.audio); this.fades.delete(channel.audio);
             channel.audio.volume = clamp(channel.volume);
         }
     }
-    stop(audio) { if (!audio) return; clearInterval(this.timers.get(audio)); this.timers.delete(audio); this.resumeSources.delete(audio); audio.pause(); audio.removeAttribute?.('src'); audio.load?.(); this.sources.delete(audio); this.musicSources.delete(audio); }
+    stop(audio) { if (!audio) return; clearInterval(this.timers.get(audio)); this.timers.delete(audio); this.fades.delete(audio); this.resumeSources.delete(audio); audio.pause(); audio.removeAttribute?.('src'); audio.load?.(); this.sources.delete(audio); this.musicSources.delete(audio); }
+    setVolume(kind, value) {
+        if (!['music', 'ambient', 'sfx'].includes(kind)) return;
+        const channel = this.channels[kind], previous = channel?.volume ?? clamp(this.settings[`${kind}Volume`]), volume = clamp(value);
+        this.settings[`${kind}Volume`] = volume; if (channel) channel.volume = volume;
+        for (const audio of this.sources) {
+            if (kind === 'sfx' ? audio.loop : !audio.loop || this.musicSources.has(audio) !== (kind === 'music')) continue;
+            const fade = this.fades.get(audio);
+            if (fade) {
+                fade.initial = previous > 0 ? clamp(fade.initial * volume / previous) : 0;
+                fade.target = fade.remove ? 0 : volume;
+                const fraction = Math.min(1, (performance.now() - fade.start) / fade.duration);
+                audio.volume = clamp(fade.initial + (fade.target - fade.initial) * fraction);
+            } else audio.volume = volume;
+        }
+        this.onChange?.();
+    }
     setMusicMuted(muted) {
         this.settings.musicMuted = !!muted;
         // Also silence fading tracks; volume ramps continue normally underneath.
@@ -41,13 +57,13 @@ export class AudioEngine {
         this.onChange?.();
     }
     fade(audio, target, duration, remove = false) {
-        clearInterval(this.timers.get(audio)); this.timers.delete(audio);
+        clearInterval(this.timers.get(audio)); this.timers.delete(audio); this.fades.delete(audio);
         if (!duration) { audio.volume = target; if (remove) this.stop(audio); return; }
-        const start = performance.now(), initial = audio.volume;
+        const fade = { start: performance.now(), initial: audio.volume, target, duration, remove }; this.fades.set(audio, fade);
         const timer = setInterval(() => {
-            const fraction = Math.min(1, (performance.now() - start) / duration);
-            audio.volume = clamp(initial + (target - initial) * fraction);
-            if (fraction === 1) { clearInterval(timer); this.timers.delete(audio); if (remove) this.stop(audio); }
+            const fraction = Math.min(1, (performance.now() - fade.start) / fade.duration);
+            audio.volume = clamp(fade.initial + (fade.target - fade.initial) * fraction);
+            if (fraction === 1) { clearInterval(timer); this.timers.delete(audio); this.fades.delete(audio); if (fade.remove) this.stop(audio); }
         }, 25);
         this.timers.set(audio, timer);
     }

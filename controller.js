@@ -31,6 +31,9 @@ import { SourceMonitor } from './core/source-monitor.js';
 import { AutoPresentation } from './core/auto-presentation.js';
 import { ManualBackground } from './core/manual-background.js';
 import { backgroundPicker } from './ui/background-picker.js';
+import { AudioMixer } from './ui/audio-mixer.js';
+import { LoadingScreen } from './ui/loading-screen.js';
+import { syncVolumeSlider } from './ui/volume-control.js';
 const unfinishedPOV = parsed => parsed.errors.some(error => error.message.startsWith('Incomplete') || error.message.startsWith('Unclosed'));
 
 export class VNController {
@@ -42,12 +45,13 @@ export class VNController {
         this.environment = this.environments.find(entry => entry.id === this.settings.environment) || this.environments.find(entry => entry.id === inventory.defaultEnvironment) || this.environments[0];
         activateContentProfile(this.settings, this.environment.id);
         this.resolver = this.createContentResolver(this.environment); this.registry = this.createRegistry(this.resolver, this.environment);
-        this.root = createOverlay(); this.stage = new StageRenderer(this.root, this.resolver, this.registry, this.settings);
+        this.root = createOverlay(); this.loading = new LoadingScreen(this.root); this.stage = new StageRenderer(this.root, this.resolver, this.registry, this.settings);
         this.environmentStyle = new EnvironmentStyle(this.root);
         this.dialogue = new DialogueRenderer(this.root, this.resolver, this.settings); this.audio = new AudioEngine(this.resolver, this.settings, message => this.log(message));
         this.speech = new SpeechEngine(host, this.settings); this.speech.onEnded = () => this.scheduleAuto();
         this.speech.onPlaybackChange = () => this.syncAudioVisibility();
-        const speechCallbacks = { prepare: () => this.prepareSpeech(), change: key => this.settingsChanged(key === 'parallelBatches' ? 'speechParallel' : 'speech') };
+        const speechCallbacks = { prepare: () => this.prepareSpeech(), change: key => this.settingsChanged(['volume', 'muted'].includes(key) ? 'speechVolume' : key === 'parallelBatches' ? 'speechParallel' : 'speech') };
+        this.audioMixer = new AudioMixer(this.settings, key => this.settingsChanged(key));
         this.speechSettingsPanel = new SpeechPanel(this.speech, speechCallbacks);
         this.voicePanel = new SpeechPanel(this.speech, speechCallbacks, { expanded: true }); applyTheme(this.root, this.settings);
         this.effects = new EffectsRenderer(this.root, this.settings); this.html = new HTMLRenderer(this.root, this.settings, (token, alive) => this.artifactSession(token, alive), (id, signal) => this.readArtifact(id, signal));
@@ -186,7 +190,7 @@ export class VNController {
         this.autoPresentation.start(context); this.sawHostGenerating = this.host.isGenerating?.() === true;
         this.sharedState.cancel(); this.sharedState.update({ generating: true, updating: false });
         this.busy = true; this.parsed = null; this.speech.clearScene(); this.reveal.close(); this.invalidate({ preserveWorld: this.canPreserveWorld() }); this.mount();
-        if (!this.root.hidden) this.wait('Waiting for a completed player perspective…');
+        if (!this.root.hidden) this.wait('Waiting for a completed player perspective…', 'generating');
     }
     updateVoiceStatus() {
         const badge = this.root.querySelector('.vn-voice-ready'); if (!badge) return;
@@ -380,6 +384,11 @@ export class VNController {
         this.observer.observe(document.body, { childList: true, characterData: true, subtree: true });
     }
     settingsChanged(key) {
+        if (['musicVolume', 'ambientVolume', 'sfxVolume', 'speechVolume'].includes(key)) {
+            if (key === 'speechVolume') { this.speech.setVolume(this.settings.tts.volume); this.speech.setMuted(this.settings.tts.muted); }
+            else this.audio.setVolume(key.replace('Volume', ''), this.settings[key]);
+            this.updateVolumeControls(); this.host.save(this.settings); this.publishPlaybackActivity(); return;
+        }
         if (key.startsWith('sceneLight')) this.scheduleContextRefresh();
         if (['characters', 'showPlayerBust', 'playerName', 'playerAliases', 'displayMode', 'castMemoryTurns'].includes(key)) this.scheduleContextRefresh();
         if (key === 'environment') { void this.selectEnvironment(this.settings.environment); return; }
@@ -488,10 +497,10 @@ export class VNController {
         this.transcriptArtifact = false; this.standaloneArtifact = false;
         this.playbackState.pending = false; this.publishPlaybackActivity();
     }
-    wait(message) {
-        this.root.querySelector('.vn-status').textContent = message; this.root.querySelector('.vn-status').hidden = false;
+    wait(message, phase = 'pov') {
+        this.root.classList.toggle('vn-reduced-motion', this.settings.reducedMotion); this.loading.show(message, phase);
         this.root.querySelector('.vn-dialogue').hidden = true; this.root.querySelector('.vn-position').textContent = '';
-        for (const action of ['next', 'back']) this.root.querySelector(`[data-action="${action}"]`).disabled = true;
+        for (const action of ['next', 'back', 'auto', 'reply']) this.root.querySelector(`[data-action="${action}"]`).disabled = true;
     }
     async open(index) {
         if (!this.settings.enabled) return;
@@ -508,9 +517,9 @@ export class VNController {
         this.followLatest = this.selected === latestAssistant(context);
         this.observedSource = this.sourceFingerprint(context);
         this.settlingSource = null;
-        if (this.busy) { this.publishPlaybackActivity(); this.wait('Waiting for a completed player perspective…'); return; }
+        if (this.busy) { this.publishPlaybackActivity(); this.wait('Waiting for a completed player perspective…', 'generating'); return; }
         const message = readMessage(context, this.selected);
-        if (!message || message.status !== 'ready') { this.speech.clearScene(); this.invalidate(); this.sceneRevision = null; this.playback = null; this.parsed = null; this.parserErrors = []; this.wait('Player perspective is unavailable. A completed POV section after ///// is required.'); return; }
+        if (!message || message.status !== 'ready') { this.speech.clearScene(); this.invalidate(); this.sceneRevision = null; this.playback = null; this.parsed = null; this.parserErrors = []; this.wait(message ? 'Waiting for your workflow to finish the player perspective…' : 'No assistant response is available yet.', message ? 'pov' : 'empty'); return; }
         if (this.speech.prepared && this.speech.prepared.sourceId !== this.speechSceneId(message)) this.speech.clearScene();
         const history = contextEntries(context, message.index);
         const sourceRevision = `${this.environment.id}:${identity}:${message.index}:${message.swipe}:${message.pov}`;
@@ -520,14 +529,16 @@ export class VNController {
             this.present(this.playback.restore()); return;
         }
         const historyPosition = this.sceneRevision && this.sceneSourceRevision === sourceRevision && this.playback ? this.playback.position : null;
-        this.invalidate({ preserveWorld: this.canPreserveWorld() }); this.parsed = null; this.parserErrors = []; const generation = this.generation; this.wait('Preparing scene…');
+        this.invalidate({ preserveWorld: this.canPreserveWorld() }); this.parsed = null; this.parserErrors = []; const generation = this.generation; this.wait('Preparing scene…', 'preparing');
         const parsed = parsePOV(message.pov);
+        if (unfinishedPOV(parsed)) { this.wait('Waiting for the player perspective to finish…', 'pov'); return; }
         const names = contextNames(history);
         const currentSource = () => {
             const current = readMessage(this.host.context(), message.index);
             return identity === chatIdentity(this.host.context()) && this.selected === message.index && current?.raw === message.raw && current?.swipe === message.swipe;
         };
-        await this.registry.prepare(names);
+        try { await this.registry.prepare(names); }
+        catch (error) { if (generation === this.generation && !this.root.hidden && currentSource()) { this.log(`Scene preparation: ${error.message}`); this.wait('The scene could not be loaded. Try checking again.', 'error'); } return; }
         if (generation !== this.generation || this.busy || this.root.hidden || !currentSource()) return;
         if (this.registry.discoveryError) { this.characterFolderStatus(this.registry.discoveryError); this.log(this.registry.discoveryError); }
         const registry = this.registry, environment = this.environment;
@@ -553,7 +564,7 @@ export class VNController {
         if (!this.seen.has(key)) { if (this.seen.size >= 32) this.seen.delete(this.seen.keys().next().value); this.seen.set(key, new Set()); }
         this.playback = new Playback(timeline, this.seen.get(key)); this.sceneRevision = revision; this.sceneSourceRevision = sourceRevision; this.parsed = parsed; this.parserErrors = [...parsed.errors, ...timeline.errors];
         this.root.querySelector('.vn-scene-label').textContent = `PLAYER PERSPECTIVE · RESPONSE ${message.index + 1} · SWIPE ${message.swipe + 1}`;
-        if (!timeline.views.length) { this.wait('No completed dialogue, narration, or artifact is available in this POV.'); return; }
+        if (!timeline.views.length) { this.wait('No completed dialogue, narration, or artifact is available in this POV.', 'empty'); return; }
         const resume = this.environmentResume; this.environmentResume = null;
         this.present(resume?.key === sourceKey ? this.playback.resume(resume.position) : historyPosition !== null ? this.playback.resume(historyPosition) : this.playback.forward());
     }
@@ -566,7 +577,8 @@ export class VNController {
         if (this.syncVisibility()) { this.deferredScene = { identity: chatIdentity(this.host.context()), index: this.selected }; return; }
         this.timing.cancel(); this.html.close(); this.dialogue.cancel(); this.effects.clear(); this.audio.cancelOneShots();
         this.standaloneArtifact = false;
-        this.root.querySelector('.vn-status').hidden = true; this.root.querySelector('.vn-reply').hidden = true;
+        this.loading.hide(); this.root.querySelector('.vn-reply').hidden = true;
+        for (const action of ['auto', 'reply']) this.root.querySelector(`[data-action="${action}"]`).disabled = false;
         const { state, token } = result.beat;
         this.root.classList.toggle('vn-narrating', !result.done && (token.type === 'narration' || token.type === 'dialogue' && this.registry.isNarrator(token.character)));
         this.runtimeState = structuredClone(state);
@@ -752,6 +764,13 @@ export class VNController {
         if (!this.settings.enabled) return;
         try {
             if (action === 'background') { this.openBackgroundPicker(); return; }
+            if (action === 'check-pov') { if (this.busy) this.sourceMonitor.wake(); else await this.open(this.followLatest ? latestAssistant(this.host.context()) : this.selected); return; }
+            if (action === 'audio') {
+                this.dialogue.skip(); this.audioMixer.refresh();
+                const panel = this.root.querySelector('.vn-panel'); panel.querySelector('.vn-panel-title').textContent = 'Audio';
+                panel.querySelector('.vn-panel-content').replaceChildren(this.audioMixer.node); panel.hidden = false;
+                this.audioMixer.node.querySelector('input').focus(); return;
+            }
             if (action === 'mute-music') {
                 this.audio.setMusicMuted(!this.settings.musicMuted); this.host.save(this.settings); this.updateMusicButton();
                 const input = this.settingsPanel?.querySelector('[data-setting="musicMuted"]'); if (input) input.checked = this.settings.musicMuted;
@@ -768,7 +787,7 @@ export class VNController {
             if (action === 'close-panel') { this.root.querySelector('.vn-panel').hidden = true; this.root.querySelector('.vn-dialogue').focus(); this.scheduleAuto(); return; }
             if (action === 'close-artifact') { this.html.close(); if (this.standaloneArtifact) { this.standaloneArtifact = false; this.scheduleAuto(); } else if (this.transcriptArtifact) { this.transcriptArtifact = false; this.panel('transcript'); } else if (this.playback && !this.busy) this.present(this.playback.forward()); return; }
             if (action === 'close-reply') { this.root.querySelector('.vn-reply').hidden = true; const result = this.playback?.restore(); if (result?.done) this.present(this.playback.back()); else this.present(result); return; }
-            if (this.busy) return;
+            if (this.busy || !this.root.querySelector('.vn-status').hidden) return;
             if (action === 'diary') {
                 if (this.root.hidden) await this.open(this.selected);
                 if (!this.playback?.restore().beat) return;
@@ -793,7 +812,7 @@ export class VNController {
         else this.close();
     }
     close() {
-        this.root.hidden = true; this.deferredScene = null; this.invalidate();
+        this.root.hidden = true; this.loading.hide(); this.deferredScene = null; this.invalidate();
         this.autoPresentation.suppress(this.host.context());
         // Exiting VN is deliberate. Only a fresh response may open it again.
         if (this.settings.automaticPlayback) { this.observedSource = this.sourceFingerprint(this.host.context(), latestAssistant(this.host.context())); this.settlingSource = null; }
@@ -803,6 +822,14 @@ export class VNController {
         const button = this.root.querySelector('[data-action="mute-music"]');
         button.textContent = this.settings.musicMuted ? 'Unmute music' : 'Mute music'; button.setAttribute('aria-pressed', String(!!this.settings.musicMuted));
         button.title = 'Toggle music without stopping the track. Ambience and sound effects are independent.';
+        this.updateVolumeControls();
+    }
+    updateVolumeControls() {
+        this.audioMixer.refresh(); this.speechSettingsPanel.refreshVolumes(); this.voicePanel.refreshVolumes();
+        const mute = this.settingsPanel?.querySelector('[data-setting="musicMuted"]'); if (mute) mute.checked = !!this.settings.musicMuted;
+        for (const key of ['musicVolume', 'ambientVolume', 'sfxVolume']) {
+            const input = this.settingsPanel?.querySelector(`[data-setting="${key}"]`); if (input) syncVolumeSlider(input, this.settings[key]);
+        }
     }
     updateLayoutControls() {
         for (const input of [this.root.querySelector('[data-layout-picker]'), this.settingsPanel?.querySelector('[data-setting="layout"]')]) if (input) input.value = this.settings.layout;

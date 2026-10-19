@@ -1,0 +1,7 @@
+# Audio mixer and POV loading
+
+Open **Audio** in the VN toolbar for live voice, music, ambience and SFX sliders. Each displays a percentage and saves immediately. The extension settings use the same sliders, including voice volume under Fish Audio. Adjustments preserve playback position, generated recordings and running voice requests. Playback volume and mute do not invalidate audio finishing caches. The keyboard arrows operate a focused slider without advancing the story.
+
+Voice and music have independent mute switches. Muting preserves the chosen slider value and playback clock; it does not disable voice preparation. Narrator voicing remains a separate setting. Music mute in the toolbar, mixer and extension settings stays synchronized. Sliders also update fading music and ambience, so an older fade cannot restore a previous volume.
+
+When VN opens before POV text is ready, a themed loading screen distinguishes response generation, POV transformation and scene preparation. Missing or unfinished POV text stays hidden until complete. The existing source monitor continues checking for transformer updates, including silent replacements, and replaces the screen automatically. **Check again** checks the current response without rerunning the model or voice generation. Empty chats and scene preparation errors show actionable states instead of an endless spinner. Exit, background and audio controls remain available; story navigation stays disabled while waiting. Reduced-motion preferences disable the spinner animation.

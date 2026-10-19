@@ -7,6 +7,7 @@ import { createThemeSettings } from './theme-settings.js';
 import { SPEECH_DEFAULTS, speechSettings } from '../core/speech-segments.js';
 import { LIGHT_DEFAULTS } from '../core/scene-light.js';
 import { autoAdvancePause, AUTO_ADVANCE_DEFAULT } from '../core/narrative-timing.js';
+import { createVolumeSlider } from './volume-control.js';
 
 export const DEFAULT_SETTINGS = {
     ...LIGHT_DEFAULTS,
@@ -49,6 +50,7 @@ export function loadSettings(context) {
     }
     settings.themeVersion = 1; delete settings.typewriterJitter;
     settings.tts = speechSettings(settings.tts);
+    for (const key of ['musicVolume', 'ambientVolume', 'sfxVolume']) settings[key] = Number.isFinite(settings[key]) ? Math.max(0, Math.min(1, settings[key])) : DEFAULT_SETTINGS[key];
     settings.themeColors = settings.themeColors && typeof settings.themeColors === 'object' && !Array.isArray(settings.themeColors) ? settings.themeColors : {};
     settings.intenseEmotions = Array.isArray(settings.intenseEmotions) ? settings.intenseEmotions.filter(tag => typeof tag === 'string') : [...INTENSE_EMOTIONS];
     initializeContentProfiles(settings);
@@ -61,7 +63,7 @@ const FIELDS = {
     Timing: [['autoAdvance', 'Auto: follow narrative timing', 'checkbox'], ['autoAdvancePause', 'Autoplay pause after completion', 'range', 0, 2], ['dialogueSecondsPerCharacter', 'Silent dialogue (seconds per character)', 'number', .01, 1], ['narrationWordsPerMinute', 'Narration reading speed (words/minute)', 'number', 60, 1000], ...['hurried', 'scared', 'lazy', 'bored', 'normal'].map(tag => [`${tag}ReactionSound`, `${tag}: optional reaction SFX name`, 'text'])],
     Presentation: [['typewriterEffect', 'Typewriter', 'checkbox'], ['typewriterSpeed', 'Typewriter delay (ms)', 'number', 0, 200], ['reducedMotion', 'Reduced motion', 'checkbox'], ['textEffects', 'Emotion text effects', 'checkbox'], ['intenseEmotions', 'Emotion tags that shake (comma separated)', 'aliases'], ['screenEffects', 'Screen effects', 'checkbox'], ['dialogueFont', 'Font name or CSS family stack', 'text'], ['textColor', 'Dialogue color override (empty inherits theme)', 'text'], ['narrationColor', 'Narration color override (empty inherits theme)', 'text'], ['textScale', 'Text scale', 'number', .6, 2], ['letterSpacing', 'Letter spacing (px)', 'number', -1, 5], ['dialogueBoxWidth', 'Dialogue width (% viewport)', 'number', 25, 94], ['dialogueBoxHeight', 'Dialogue box height (px)', 'number', 100, 450], ['overlayOpacity', 'Dialogue opacity', 'number', .1, 1], ['dialogueBoxTexture', 'Texture path under characters/', 'text'], ['dialogueBoxImageOnly', 'Textbox image only (no fill or frame)', 'checkbox'], ['showBoxChrome', 'Dialogue border and accent', 'checkbox'], ['showBoxBackground', 'Dialogue panel background', 'checkbox']],
     Characters: [['bustScale', 'Global bust scale', 'number', .2, 2], ['bustHeight', 'Bust height (% viewport)', 'number', 20, 100], ['stageSpacing', 'Stage spacing', 'number', .4, 1.2], ['rowSpacing', 'Row inward spacing (% viewport)', 'number', 3, 14], ['rowRise', 'Row depth rise (% viewport)', 'number', 1, 10], ['rowDepthScale', 'Scale per depth step', 'number', .8, 1], ['stageAlignment', 'Stage alignment', ['bottom', 'top']], ['inactiveBrightness', 'Inactive brightness', 'number', .2, 1], ['missingAsset', 'Missing sprite', ['placeholder', 'hide']], ['spriteBreathing', 'Breathing deformation', 'checkbox'], ['breathingAmount', 'Breathing amount (%)', 'number', 0, 5], ['breathingDuration', 'Breathing cycle (ms)', 'number', 1000, 20000], ['expressionTransition', 'Expression blend (ms)', 'number', 0, 2000], ['spriteBlinking', 'Blinking with alternative image', 'checkbox'], ['blinkIntervalMin', 'Blink interval minimum (ms)', 'number', 500, 30000], ['blinkIntervalMax', 'Blink interval maximum (ms)', 'number', 500, 60000], ['blinkDuration', 'Closed-eye duration (ms)', 'number', 60, 350]],
-    Audio: [['musicMuted', 'Mute music (ambience/SFX stay audible)', 'checkbox'], ['musicVolume', 'Music volume', 'number', 0, 1], ['ambientVolume', 'Ambient volume', 'number', 0, 1], ['sfxVolume', 'SFX volume', 'number', 0, 1], ['crossfadeDuration', 'Crossfade (ms)', 'number', 0, 10000], ['characterSounds', 'Emotion / character sounds', 'checkbox']],
+    Audio: [['musicMuted', 'Mute music (ambience/SFX stay audible)', 'checkbox'], ['musicVolume', 'Music volume', 'volume', 0, 1], ['ambientVolume', 'Ambient volume', 'volume', 0, 1], ['sfxVolume', 'SFX volume', 'volume', 0, 1], ['crossfadeDuration', 'Crossfade (ms)', 'number', 0, 10000], ['characterSounds', 'Emotion / character sounds', 'checkbox']],
     'Artifacts & debugging': [['interactiveArtifacts', 'Allow isolated interactive HTML artifacts', 'checkbox'], ['debug', 'Debug logging', 'checkbox']],
 };
 
@@ -81,6 +83,9 @@ export function createSettings(settings, callbacks) {
         const details = document.createElement('details'), summary = document.createElement('summary'); summary.textContent = group; details.append(summary); details.open = group === 'General';
         const definitions = group === 'General' ? [['environment', 'Content environment', callbacks.environments || []], ...fields] : fields;
         for (const [key, label, type, min, max] of definitions) {
+            if (type === 'volume') {
+                details.append(createVolumeSlider(label, () => settings[key], value => { settings[key] = value; callbacks.change(key); }, 'setting', key)); continue;
+            }
             const row = document.createElement('label'); row.className = 'vn-setting';
             const caption = document.createElement('span'); caption.textContent = label;
             const input = document.createElement(Array.isArray(type) ? 'select' : 'input'); input.dataset.setting = key;
