@@ -7,7 +7,7 @@ const settings = () => structuredClone(DEFAULT_SETTINGS);
 const style = (emotion, text = 'Hello.', config = settings(), effect = 'normal') => dialogueEmotionStyle({ type: 'dialogue', text, emotion }, effect, config);
 
 test('anger adjectives shake independently of sprite fallback, without shaking mild or unrelated emotions', () => {
-    for (const emotion of ['anger', 'angry', 'furious', 'irate', 'VERY ANGRY']) assert.ok(style(emotion).jitter, emotion);
+    for (const emotion of ['anger', 'angry', 'angrily', 'furious', 'irate', 'VERY ANGRY']) assert.ok(style(emotion).jitter, emotion);
     for (const emotion of ['joy', 'nervous', 'annoyed', 'sadness', 'neutral', 'not angry']) assert.equal(style(emotion).jitter, false, emotion);
     const config = settings(); config.intenseEmotions = []; assert.equal(style('angry', '', config).jitter, false);
     config.intenseEmotions = ['custom_fury']; assert.ok(style('custom fury', '', config).jitter);

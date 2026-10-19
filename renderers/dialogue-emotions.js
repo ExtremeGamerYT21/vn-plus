@@ -23,7 +23,7 @@ export function dialogueEmotionStyle(token, effect, settings) {
     const primary = profiles[0], flair = token.type === 'dialogue' ? EMOTION_FLAIR[emotionKey(token.emotion)] || EMOTION_FLAIR[legacy[primary]] || {} : {};
     const sad = profiles.includes('sadness') || profiles.includes('grief');
     const fontScale = shout ? 1.35 : whisper ? .76 : sad ? (profiles.includes('grief') ? .74 : .8) : flair.fontScale || 1;
-    return { fontScale, tracking: shout ? .075 : 0, jitter: cues.some(cue => shouldShakeText(cue, settings)), scatter: shout,
+    return { fontScale, tracking: shout ? .075 : 0, jitter: cues.some(cue => shouldShakeText(adverbs[cue] || cue, settings)), scatter: shout,
         glow: profiles.includes('love'), whisper, shout, flair };
 }
 
