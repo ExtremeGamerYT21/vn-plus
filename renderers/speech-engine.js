@@ -59,7 +59,7 @@ export class SpeechEngine {
     prepare(sourceId, timeline, registry) {
         const segments = speechSegments(timeline, registry, sourceId, this.settings.tts), signature = JSON.stringify([sourceId, segments]);
         if (signature !== this.prepared?.signature) { this.cancel(); this.excluded.clear(); this.job = null; }
-        this.prepared = { sourceId, segments, signature };
+        this.prepared = { sourceId, segments, signature, timeline };
         this.selectCachedJob(); this.notify(`${segments.length} segments have voice IDs. ${this.settings.tts.narratorEnabled ? 'Narrator voicing is enabled.' : 'Narrator is muted.'} Thoughts stay silent.`); return segments;
     }
     requestAutomatic() {
@@ -242,6 +242,7 @@ export class SpeechEngine {
         await audio.play();
         if (this.suspended && this.audio === audio) { this.resumeAudio = audio; audio.pause(); }
         if (playback && this.audio === audio) playback.status = 'playing';
+        this.onPlaybackChange?.();
     }
     setSuspended(value) {
         if (!!this.suspended === !!value) return; this.suspended = !!value;
@@ -252,6 +253,7 @@ export class SpeechEngine {
                 if (this.audio !== audio) return;
                 if (this.suspended) { this.resumeAudio = audio; audio.pause(); }
                 else if (this.playback) this.playback.status = 'playing';
+                this.onPlaybackChange?.();
             }).catch(() => { if (this.audio === audio) { this.stop('failed'); this.notify('Voice playback failed.'); this.onEnded?.(); } });
         }
     }
@@ -278,7 +280,7 @@ export class SpeechEngine {
         this.stop(); return null;
     }
     get speaking() { return !!this.starting || !!this.audio && !this.audio.paused; }
-    stop(reason = 'cancelled') { this.playEpoch++; this.pending = null; this.starting = false; this.resumeAudio = null; if (this.playback) this.playback.status = reason; this.playback = null; if (this.audio) { this.audio.onended = null; this.audio.onerror = null; } this.audio?.pause(); this.audio?.removeAttribute?.('src'); this.audio?.load?.(); this.audio = null; if (this.url) URL.revokeObjectURL(this.url); this.url = null; }
+    stop(reason = 'cancelled') { this.playEpoch++; this.pending = null; this.starting = false; this.resumeAudio = null; if (this.playback) this.playback.status = reason; this.playback = null; if (this.audio) { this.audio.onended = null; this.audio.onerror = null; } this.audio?.pause(); this.audio?.removeAttribute?.('src'); this.audio?.load?.(); this.audio = null; if (this.url) URL.revokeObjectURL(this.url); this.url = null; this.onPlaybackChange?.(); }
     cancel() { this.abort?.abort(); this.abort = null; this.running = null; this.stop(); }
     clearScene() { this.cancel(); this.prepared = null; this.job = null; this.excluded.clear(); this.notify('Prepare the selected final dialogue to use its character voices.'); }
     sceneExportIssue() {

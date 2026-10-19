@@ -44,6 +44,20 @@ test('late loop loads stay silent while hidden and discarded loops cannot resume
     } finally { engine.close(); }
 });
 
+test('background voice cues can finish loop fades without restarting music or ignoring mute', async () => {
+    const engine = audioFixture(); engine.settings.crossfadeDuration = 60000;
+    try {
+        await engine.sync({ music: { name: 'old', rate: 1 } });
+        const old = engine.channels.music.audio;
+        await engine.sync({ music: { name: 'new', rate: 1 }, ambient: { name: 'rain', rate: 1 } });
+        const music = engine.channels.music.audio; music.currentTime = 12; engine.setMusicMuted(true);
+        engine.finishLoopFades();
+        assert.equal(engine.sources.has(old), false); assert.ok(old.paused);
+        assert.equal(music.volume, engine.settings.musicVolume); assert.equal(music.currentTime, 12); assert.ok(music.muted);
+        assert.equal(engine.channels.ambient.audio.volume, engine.settings.ambientVolume); assert.equal(engine.timers.size, 0);
+    } finally { engine.close(); }
+});
+
 test('background one-shots are dropped including effects whose asset load was already pending', async () => {
     let release, made = 0; const engine = audioFixture({ audio: async () => new Promise(resolve => release = resolve) });
     engine.audioFactory = () => { made++; return new FakeAudio(); };

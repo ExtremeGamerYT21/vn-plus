@@ -46,3 +46,25 @@ test('a stopped page cannot accumulate heartbeat notifications and acknowledging
     for (let i = 0; i < 120; i++) tick(); assert.deepEqual(messages, ['check']);
     self.onmessage(); tick(); assert.deepEqual(messages, ['check', 'check']);
 });
+
+test('an event burst still confirms a stable source if the worker stops reporting, without a repeating page timer', () => {
+    const calls = [], pending = new Map(); let id = 0;
+    const worker = { postMessage() {}, terminate() {} };
+    const monitor = new SourceMonitor(confirm => calls.push(confirm), { workerFactory: () => worker,
+        set() { assert.fail('A healthy worker should not start a page interval'); },
+        defer(callback) { pending.set(++id, callback); return id; }, cancel(key) { pending.delete(key); } });
+    try {
+        monitor.wake(); monitor.wake(); assert.equal(pending.size, 1); assert.deepEqual(calls, [false, false]);
+        [...pending.values()][0](); assert.deepEqual(calls, [false, false, true]); assert.equal(pending.size, 0);
+        monitor.wake(); worker.onmessage(); assert.equal(pending.size, 0); assert.equal(calls.at(-1), true);
+        monitor.wake(); monitor.dispose(); assert.equal(pending.size, 0);
+    } finally { monitor.dispose(); }
+});
+
+test('page resume reconnects a stopped worker and preserves event confirmation fallback', () => {
+    let made = 0, terminated = 0; const pending = [];
+    const monitor = new SourceMonitor(() => {}, { workerFactory: () => { made++; return { terminate() { terminated++; }, postMessage() {} }; },
+        defer(callback) { pending.push(callback); return pending.length; }, cancel() {} });
+    monitor.resume(); assert.equal(made, 2); assert.equal(terminated, 1); assert.equal(pending.length, 1);
+    monitor.dispose(); monitor.resume(); assert.equal(made, 2); assert.equal(terminated, 2);
+});

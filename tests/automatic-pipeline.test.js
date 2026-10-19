@@ -4,10 +4,13 @@ import { VNController } from '../controller.js';
 import { DEFAULT_SETTINGS } from '../ui/settings.js';
 import { chatIdentity, readMessage } from '../core/message-reader.js';
 import { CharacterRegistry } from '../core/character-registry.js';
+import { AutoPresentation } from '../core/auto-presentation.js';
 
 function fixture() {
     const context = { chatId: 'automatic', characterId: 0, chat: [{ mes: 'PRIVATE\n/////\nNina: "Hello."' }] };
     const controller = Object.create(VNController.prototype), calls = [];
+    const ready = context.chat[0].mes; context.chat[0].mes = 'PRIVATE';
+    controller.autoPresentation = new AutoPresentation(context); context.chat[0].mes = ready;
     Object.assign(controller, { host: { context: () => context }, settings: structuredClone(DEFAULT_SETTINGS),
         root: { hidden: true }, selected: 0, followLatest: true, chatId: chatIdentity(context), generation: 0,
         speech: { requestAutomatic() { calls.push('generate'); } }, log(message) { calls.push(['log', message]); },
@@ -55,20 +58,51 @@ test('hidden visibility suspends scene audio but lets a current or loading voice
     h.controller.syncVisibility(); assert.deepEqual(calls, [['scene', false], ['voice', false]]);
 });
 
-test('a new background response announces one eligible line once and honors automatic playback preferences', () => {
+test('hidden scene loops accompany actual speech and pause again when its single line ends', () => {
+    const h = fixture(), calls = []; h.controller.pageHidden = () => true;
+    h.controller.audio = { finishLoopFades() { calls.push('finish'); }, setSuspended(value) { calls.push(value); } };
+    h.controller.speech.playback = { status: 'playing' }; h.controller.speech.audio = { paused: false };
+    h.controller.syncAudioVisibility(); assert.deepEqual(calls.splice(0), ['finish', false]);
+    h.controller.speech.playback = null; h.controller.syncAudioVisibility(); assert.deepEqual(calls, [true]);
+});
+
+test('a missed completion event recovers from ST actual generation state and queues preparation', async () => {
+    const h = fixture(); Object.assign(h.controller.settings.tts, { enabled: true, autoGenerate: true });
+    h.controller.busy = true; h.controller.sawHostGenerating = true; h.controller.host.isGenerating = () => false;
+    h.controller.scheduleContextRefresh = () => {}; h.controller.mount = () => {};
+    await h.tick(); assert.deepEqual(h.calls, [['prepare', 0], 'generate']); assert.equal(h.controller.busy, false);
+});
+
+test('a generation-start listener does not recover early before ST has set its busy flag', async () => {
+    const h = fixture(); h.controller.settings.automaticPlayback = true; h.controller.busy = true;
+    h.controller.host.isGenerating = () => false; await h.tick(); assert.deepEqual(h.calls, []); assert.ok(h.controller.busy);
+});
+
+test('closed VN prepares edits, swipes and deleted history without presenting them', async () => {
+    const h = fixture(); h.controller.settings.automaticPlayback = true;
+    Object.assign(h.controller.settings.tts, { enabled: true, autoGenerate: true });
+    h.controller.autoPresentation.suppress(h.context);
+    h.context.chat[0].swipe_id = 1; h.context.chat[0].mes = 'PRIVATE\n/////\nNina: "Old swipe."';
+    await h.tick(); assert.deepEqual(h.calls, [['prepare', 0], 'generate']); assert.ok(h.controller.root.hidden);
+    h.context.chat[0].mes += '\nEdited narration.'; await h.tick(); assert.ok(h.controller.root.hidden);
+    assert.equal(h.calls.filter(call => call[0] === 'open').length, 0);
+});
+
+test('a new background response announces one eligible line once and honors automatic playback preferences', async () => {
     const h = fixture(), played = [];
     h.controller.pageHidden = () => true; h.controller.settings.automaticPlayback = true;
     Object.assign(h.controller.settings.tts, { enabled: true, autoPlay: true });
     h.controller.environment = { id: 'test' };
+    h.controller.audio = { finishLoopFades() {} };
     Object.assign(h.controller.speech, { prepared: { sourceId: h.controller.speechSceneId(readMessage(h.context, 0)), signature: 'new-response',
         segments: [{ id: 'excluded', beat: 0 }, { id: 'first', beat: 1 }, { id: 'second', beat: 2 }] }, excluded: new Set(['excluded']),
         setSuspended(value) { played.push(['suspended', value]); }, playBeat(beat) { played.push(['play', beat]); } });
-    h.controller.playBackgroundLine(0); h.controller.playBackgroundLine(0);
+    await h.controller.playBackgroundLine(0); await h.controller.playBackgroundLine(0);
     assert.deepEqual(played, [['suspended', false], ['play', 1]]); assert.equal(h.controller.playback, undefined);
     h.controller.speech.prepared.signature = 'another-response'; h.controller.settings.tts.autoPlay = false;
-    h.controller.playBackgroundLine(0); assert.equal(played.length, 2);
+    await h.controller.playBackgroundLine(0); assert.equal(played.length, 2);
     h.controller.settings.tts.autoPlay = true; h.controller.settings.automaticPlayback = false;
-    h.controller.playBackgroundLine(0); assert.equal(played.length, 2);
+    await h.controller.playBackgroundLine(0); assert.equal(played.length, 2);
 });
 
 test('disabled automatic modes disabled extension and active generation cannot trigger work', async () => {

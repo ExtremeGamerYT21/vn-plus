@@ -25,6 +25,14 @@ export class AudioEngine {
         else { const sources = [...this.resumeSources]; this.resumeSources.clear(); for (const audio of sources) if (this.sources.has(audio)) void this.play(audio); }
         this.onChange?.();
     }
+    finishLoopFades() {
+        const current = new Set(Object.values(this.channels).map(channel => channel.audio).filter(Boolean));
+        for (const audio of [...this.sources]) if (audio.loop && !current.has(audio)) this.stop(audio);
+        for (const channel of Object.values(this.channels)) if (channel.audio) {
+            clearInterval(this.timers.get(channel.audio)); this.timers.delete(channel.audio);
+            channel.audio.volume = clamp(channel.volume);
+        }
+    }
     stop(audio) { if (!audio) return; clearInterval(this.timers.get(audio)); this.timers.delete(audio); this.resumeSources.delete(audio); audio.pause(); audio.removeAttribute?.('src'); audio.load?.(); this.sources.delete(audio); this.musicSources.delete(audio); }
     setMusicMuted(muted) {
         this.settings.musicMuted = !!muted;

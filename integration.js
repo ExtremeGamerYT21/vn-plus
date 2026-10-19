@@ -1,9 +1,10 @@
 import { MessageExtraStore } from './core/message-extra.js';
 
 /** Adapter checked against installed SillyTavern 1.19.0 source. */
-export function createHost(getContext, { localContent = true } = {}) {
+export function createHost(getContext, { localContent = true, generationActive = null } = {}) {
     const host = {
         context: getContext,
+        isGenerating() { const read = generationActive || getContext().isGenerating; return typeof read === 'function' ? !!read() : null; },
         captureMessageExtra(index) { return this.extra.capture(index); },
         async saveChat() { await getContext().saveChat?.(); },
         retireSharedVariables(keys) {

@@ -7,6 +7,9 @@ export async function runBackgroundPipelineChecks({ check, assert, equal, eventu
     function fixture(id, automaticPlayback) {
         hidden = true;
         context.chatId = id; context.chat = [{ mes: 'Canonical only.' }]; mountChat();
+        const listeners = new Map();
+        context.eventSource = { on(name, callback) { const set = listeners.get(name) || new Set(); set.add(callback); listeners.set(name, set); }, removeListener(name, callback) { listeners.get(name)?.delete(callback); } };
+        const emit = (name, ...args) => { for (const callback of [...(listeners.get(context.eventTypes[name]) || [])]) callback(...args); };
         const controller = makeController(), requests = [], played = [];
         const decode = controller.speech.decode, process = controller.speech.process;
         Object.assign(controller.settings, { autoCreateCharacters: false, automaticPlayback, autoAdvance: false, typewriterEffect: false });
@@ -24,9 +27,10 @@ export async function runBackgroundPipelineChecks({ check, assert, equal, eventu
         controller.speech.process = async chapter => chapter.clips.filter(clip => !clip.review).map(clip => ({ id: clip.id, samples: new Float32Array(4410), notes: [] }));
         const audioFactory = () => ({ paused: true, currentTime: 0, loop: false, async play() { this.paused = false; played.push(this); }, pause() { this.paused = true; }, removeAttribute() {}, load() {} });
         controller.speech.audioFactory = audioFactory; controller.audio.audioFactory = audioFactory;
-        return { controller, requests, played, decode, process };
+        return { controller, requests, played, decode, process, emit };
     }
     const hiddenDescriptor = Object.getOwnPropertyDescriptor(document, 'hidden');
+    const eventSource = context.eventSource;
     // Exercise the browser's actual source pipeline while visibility reports hidden.
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
     try {
@@ -45,7 +49,7 @@ export async function runBackgroundPipelineChecks({ check, assert, equal, eventu
                 controller.speech.audio.onended(); await pause(650); equal(played.length, 1);
             } finally { controller.dispose(); }
         });
-        await check('Flowchart-style message rerenders wake source discovery without an ST update event or page timer', async () => {
+        await check('Flowchart rerenders confirm and generate even when source worker notifications have stopped', async () => {
             const { controller, requests } = fixture('background-mutation-trigger', true);
             const worker = controller.sourceMonitor.worker, tick = worker.onmessage;
             worker.onmessage = () => worker.postMessage('received'); // Hold confirmations to isolate the DOM trigger.
@@ -55,9 +59,50 @@ export async function runBackgroundPipelineChecks({ check, assert, equal, eventu
                 document.querySelector('#chat .mes_block').append(message);
                 await eventually(() => controller.settlingSource === controller.sourceFingerprint(context, 0));
                 equal(requests.length, 0, 'A DOM notification bypassed the stability check');
-                worker.onmessage = tick;
                 await eventually(() => controller.speech.job?.status === 'complete');
                 equal(requests.length, 1); assert(controller.root.hidden);
+            } finally { worker.onmessage = tick; controller.dispose(); }
+        });
+        await check('a missed ST completion event cannot leave hidden preparation blocked as generating', async () => {
+            const { controller, requests, played, emit } = fixture('background-missed-completion', true); let generating = true;
+            controller.host.isGenerating = () => generating;
+            try {
+                emit('GENERATION_STARTED', 'normal', {}, false);
+                context.chat[0].mes = 'PRIVATE\n/////\nNina: "Hello."';
+                await pause(700); equal(requests.length, 0); assert(controller.busy);
+                generating = false; // No GENERATION_ENDED event; the source worker must recover it.
+                await eventually(() => requests.length === 1 && controller.speech.job?.status === 'complete' && played.length === 1);
+                assert(!controller.busy && controller.root.hidden && document.hidden);
+            } finally { controller.dispose(); }
+        });
+        await check('browsing swipes and deleting messages only prepares voices, while an appended response may open VN', async () => {
+            const { controller, requests, emit } = fixture('background-history-navigation', true);
+            try {
+                visibility(false);
+                context.chat[0].mes = 'PRIVATE\n/////\nNina: "Old swipe."'; context.chat[0].swipe_id = 1;
+                emit('MESSAGE_SWIPED', 0);
+                await eventually(() => controller.speech.job?.status === 'complete'); equal(requests.length, 1); assert(controller.root.hidden);
+                context.chat.push({ mes: 'PRIVATE\n/////\nNina: "Delete me."' }); controller.autoPresentation.reset(context);
+                context.chat.pop(); emit('MESSAGE_DELETED');
+                await pause(1100); assert(controller.root.hidden);
+                visibility(true); context.chat[0].mes += '\nAn edited sentence.'; emit('MESSAGE_EDITED', 0);
+                await eventually(() => controller.speech.job?.status === 'complete'); visibility(false);
+                await pause(700); assert(controller.root.hidden, 'A deferred edit reopened VN');
+                context.chat.push({ mes: 'PRIVATE\n/////\nNina: "A fresh reply."' }); emit('MESSAGE_RECEIVED', 1);
+                await eventually(() => !controller.root.hidden && controller.selected === 1 && !!controller.playback);
+            } finally { controller.dispose(); }
+        });
+        await check('a hidden new-response cue loads scene music and ambience, then pauses both after one voice', async () => {
+            const { controller, requests, played } = fixture('background-cue-music', true);
+            try {
+                controller.audio.unlocked = true; controller.resolver.audio = async (kind, name) => `${kind}/${name}.mp3`;
+                context.chat[0].mes = 'PRIVATE\n/////\n#MUSIC song\n#AMBIENT rain\nNina: "Hello."\nNina: "Wait here."';
+                await eventually(() => controller.speech.playback?.status === 'playing' && !!controller.audio.channels.ambient.audio);
+                const voice = controller.speech.audio, music = controller.audio.channels.music.audio, ambient = controller.audio.channels.ambient.audio;
+                assert(!voice.paused && !music.paused && !ambient.paused); assert(music.volume > 0 && ambient.volume > 0);
+                equal(music.src, 'music/song.mp3'); assert(controller.root.hidden && !controller.playback);
+                equal(requests.length, 1); const count = played.length; voice.onended();
+                assert(music.paused && ambient.paused); await pause(1100); equal(played.length, count);
             } finally { controller.dispose(); }
         });
         await check('background synthesis completes actual audio decoding and worker finishing before the tab returns', async () => {
@@ -102,11 +147,11 @@ export async function runBackgroundPipelineChecks({ check, assert, equal, eventu
                 await pause(1100); equal(requests.length, 1);
                 controller.close(); await pause(1100); assert(controller.root.hidden, 'Explicit exit reopened unchanged output');
                 visibility(true);
-                context.chat[0].mes = 'PRIVATE\n/////\nYou listen.\nNina: "Ready."';
+                context.chat.push({ mes: 'PRIVATE\n/////\nYou listen.\nNina: "Ready."' });
                 await eventually(() => requests.length === 2 && controller.speech.job?.status === 'complete');
                 await eventually(() => played.length === 2); assert(controller.root.hidden);
                 visibility(false); await eventually(() => !controller.root.hidden && controller.root.querySelector('.vn-voice-ready').dataset.state === 'ready');
-                equal(requests.length, 2); equal(context.chat[0].mes, 'PRIVATE\n/////\nYou listen.\nNina: "Ready."');
+                equal(requests.length, 2); equal(context.chat[1].mes, 'PRIVATE\n/////\nYou listen.\nNina: "Ready."');
             } finally { controller.dispose(); }
         });
         await check('background voices prepare quietly with VN closed and opening it reuses the completed recording', async () => {
@@ -151,7 +196,7 @@ export async function runBackgroundPipelineChecks({ check, assert, equal, eventu
                 equal(requests.length, 1); equal(controller.playback.position, 0);
             } finally { controller.dispose(); }
         });
-        await check('minimizing lets the current voice finish once without advancing while music and ambience pause', async () => {
+        await check('minimizing keeps music with the current voice and pauses scene loops when that one line ends', async () => {
             const { controller, requests, played } = fixture('background-pause-current', true);
             try {
                 visibility(false); controller.audio.unlocked = true;
@@ -162,10 +207,10 @@ export async function runBackgroundPipelineChecks({ check, assert, equal, eventu
                 voice.currentTime = .15; music.currentTime = 12.5; ambient.currentTime = 7;
                 const position = controller.playback.position;
                 controller.settings.autoAdvance = true;
-                visibility(true); assert(!voice.paused && music.paused && ambient.paused);
+                visibility(true); assert(!voice.paused && !music.paused && !ambient.paused);
                 await controller.open(); // Duplicate host refresh must not restart or advance the current line.
                 const count = played.length; await pause(650); equal(played.length, count); equal(controller.playback.position, position); equal(requests.length, 1);
-                voice.onended(); await pause(1400); await controller.open();
+                voice.onended(); assert(music.paused && ambient.paused); await pause(1400); await controller.open();
                 equal(played.length, count); equal(controller.playback.position, position); assert(!controller.speech.audio);
                 controller.settings.autoAdvance = false;
                 visibility(false); await eventually(() => !music.paused && !ambient.paused);
@@ -215,6 +260,7 @@ export async function runBackgroundPipelineChecks({ check, assert, equal, eventu
             } finally { controller.dispose(); }
         });
     } finally {
+        context.eventSource = eventSource;
         if (hiddenDescriptor) Object.defineProperty(document, 'hidden', hiddenDescriptor); else delete document.hidden;
     }
 }

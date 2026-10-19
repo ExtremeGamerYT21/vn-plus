@@ -28,6 +28,7 @@ import { BeatScheduler, applyCommandState } from './core/narrative-timing.js';
 import { VisualRenderer } from './renderers/visual-renderer.js';
 import { collectJournals } from './core/journal-collector.js';
 import { SourceMonitor } from './core/source-monitor.js';
+import { AutoPresentation } from './core/auto-presentation.js';
 import { ManualBackground } from './core/manual-background.js';
 import { backgroundPicker } from './ui/background-picker.js';
 const unfinishedPOV = parsed => parsed.errors.some(error => error.message.startsWith('Incomplete') || error.message.startsWith('Unclosed'));
@@ -45,6 +46,7 @@ export class VNController {
         this.environmentStyle = new EnvironmentStyle(this.root);
         this.dialogue = new DialogueRenderer(this.root, this.resolver, this.settings); this.audio = new AudioEngine(this.resolver, this.settings, message => this.log(message));
         this.speech = new SpeechEngine(host, this.settings); this.speech.onEnded = () => this.scheduleAuto();
+        this.speech.onPlaybackChange = () => this.syncAudioVisibility();
         const speechCallbacks = { prepare: () => this.prepareSpeech(), change: key => this.settingsChanged(key === 'parallelBatches' ? 'speechParallel' : 'speech') };
         this.speechSettingsPanel = new SpeechPanel(this.speech, speechCallbacks);
         this.voicePanel = new SpeechPanel(this.speech, speechCallbacks, { expanded: true }); applyTheme(this.root, this.settings);
@@ -53,6 +55,7 @@ export class VNController {
         this.visuals = new VisualRenderer(this.root, this.settings, (token, alive) => this.visualSession(token, alive), (id, signal) => this.readArtifact(id, signal));
         this.reveal = new OmniscientToggle(host.context, () => this.busy || !this.settings.enabled);
         this.selected = latestAssistant(host.context()); this.chatId = chatIdentity(host.context());
+        this.autoPresentation = new AutoPresentation(host.context());
         this.generation = 0; this.busy = false; this.seen = new Map(); this.disposers = []; this.messages = [];
         this.disposers.push(this.speech.onChange(() => this.updateVoiceStatus()));
         this.playbackState = new ChatStatePublisher(host, value => this.root.dispatchEvent(new CustomEvent('vnplus:playback-changed', { bubbles: true, detail: value })), 'vn_plus_playback');
@@ -70,19 +73,31 @@ export class VNController {
         const checkVisibility = () => this.visibilityChanged();
         document.addEventListener('visibilitychange', checkVisibility);
         this.disposers.push(() => document.removeEventListener('visibilitychange', checkVisibility));
+        const resume = () => { if (this.pageHidden()) this.sourceMonitor.resume(); this.visibilityChanged(); };
+        window.addEventListener('pageshow', resume); document.addEventListener('resume', resume);
+        this.disposers.push(() => { window.removeEventListener('pageshow', resume); document.removeEventListener('resume', resume); });
+        const unlock = () => { void this.audio.unlock(); };
+        document.addEventListener('pointerdown', unlock, { once: true }); document.addEventListener('keydown', unlock, { once: true });
+        this.disposers.push(() => { document.removeEventListener('pointerdown', unlock); document.removeEventListener('keydown', unlock); });
     }
     pageHidden() { return typeof document !== 'undefined' && document.hidden; }
+    syncAudioVisibility() {
+        const hidden = this.pageHidden(), speaking = this.speech.playback?.status === 'playing' && !this.speech.audio?.paused;
+        if (hidden && speaking) this.audio.finishLoopFades();
+        this.audio.setSuspended(hidden && !speaking);
+    }
     syncVisibility() {
-        const hidden = this.pageHidden(); this.audio.setSuspended(hidden);
-        // A current line may finish (including one waiting for synthesis). Scene audio stays quiet.
+        const hidden = this.pageHidden(); this.syncAudioVisibility();
+        // A current line may finish, with scene loops, but never advance the hidden story.
         this.speech.setSuspended(hidden && !this.speech.playback); return hidden;
     }
     visibilityChanged() {
         const hidden = this.syncVisibility(); this.timing.wake();
+        if (!hidden) this.sourceMonitor.resume();
         const deferred = this.deferredScene;
         if (!hidden && deferred) {
             this.deferredScene = null;
-            if (!this.disposed && !this.busy && this.settings.enabled && deferred.identity === chatIdentity(this.host.context()) && (!this.root.hidden || this.settings.automaticPlayback)) {
+            if (!this.disposed && !this.busy && this.settings.enabled && deferred.identity === chatIdentity(this.host.context()) && (!this.root.hidden || this.settings.automaticPlayback && this.autoPresentation.eligible(this.host.context(), latestAssistant(this.host.context())))) {
                 const index = this.root.hidden || this.followLatest ? latestAssistant(this.host.context()) : deferred.index;
                 void this.open(index).catch(error => this.log(`POV refresh: ${error.message}`)); return;
             }
@@ -91,16 +106,17 @@ export class VNController {
     }
     async prepareQuiet(index) {
         const context = this.host.context(), message = readMessage(context, index), fingerprint = this.sourceFingerprint(context, index);
-        if (fingerprint !== this.observedSource || this.root.hidden || !this.playback) this.deferredScene = { identity: chatIdentity(context), index };
+        this.autoPresentation.observe(context);
+        if ((!this.root.hidden || this.settings.automaticPlayback && this.autoPresentation.eligible(context, index)) && (fingerprint !== this.observedSource || !this.playback)) this.deferredScene = { identity: chatIdentity(context), index };
         if (this.busy || !message || message.status !== 'ready' || unfinishedPOV(parsePOV(message.pov))) return;
         if (this.settings.tts.enabled && this.settings.tts.autoGenerate) {
-            try { await this.prepareSpeech(index); this.speech.requestAutomatic(); this.playBackgroundLine(index); }
+            try { await this.prepareSpeech(index); this.speech.requestAutomatic(); await this.playBackgroundLine(index); }
             catch (error) { if (!this.disposed) { this.speech.notify(error.message); this.log(`Voice preparation: ${error.message}`); } }
         }
         this.observedSource = fingerprint; this.settlingSource = null;
     }
-    playBackgroundLine(index) {
-        if (!this.pageHidden() || this.disposed || this.busy || !this.settings.enabled || !this.settings.tts.enabled || !this.settings.tts.autoPlay || this.root.hidden && !this.settings.automaticPlayback) return;
+    async playBackgroundLine(index) {
+        if (!this.pageHidden() || this.disposed || this.busy || !this.settings.enabled || !this.settings.tts.enabled || !this.settings.tts.autoPlay || this.root.hidden && (!this.settings.automaticPlayback || !this.autoPresentation.eligible(this.host.context(), index))) return;
         const message = readMessage(this.host.context(), index), prepared = this.speech.prepared;
         if (!message || !prepared || prepared.sourceId !== this.speechSceneId(message)) return;
         const revision = `${this.environment.id}:${chatIdentity(this.host.context())}:${message.index}:${message.swipe}:${message.pov}`;
@@ -110,6 +126,12 @@ export class VNController {
         const line = prepared.segments.find(segment => !this.speech.excluded.has(segment.id));
         if (!line) return;
         this.backgroundVoiceSignature = prepared.signature;
+        const generation = this.generation, state = prepared.timeline?.beats[line.beat]?.state;
+        if (state) await this.audio.sync(state);
+        const current = readMessage(this.host.context(), index);
+        if (!this.pageHidden() || this.disposed || this.busy || generation !== this.generation || prepared !== this.speech.prepared || !current || prepared.sourceId !== this.speechSceneId(current)
+            || !this.settings.tts.autoPlay || this.root.hidden && (!this.settings.automaticPlayback || !this.autoPresentation.eligible(this.host.context(), index))) return;
+        this.audio.finishLoopFades();
         this.speech.setSuspended(false); this.speech.playBeat(line.beat);
         // This is a completion cue for a newly prepared response, not a playback/navigation loop.
     }
@@ -118,10 +140,11 @@ export class VNController {
         return JSON.stringify([chatIdentity(context), this.root.hidden || this.followLatest ? latestAssistant(context) : null, index, message?.swipe, message?.raw, contextEntries(context, index)]);
     }
     async checkSource(confirm = true) {
-        if (this.disposed || this.busy || this.sourceChecking || !this.settings.enabled) return;
+        if (this.disposed || this.sourceChecking || !this.settings.enabled) return;
+        const context = this.host.context(); this.autoPresentation.observe(context);
+        if (this.reconcileGeneration(context)) return;
         const closed = this.root.hidden;
         if (closed && !this.settings.automaticPlayback && !(this.settings.tts.enabled && this.settings.tts.autoGenerate)) { this.settlingSource = null; return; }
-        const context = this.host.context();
         const index = closed || this.followLatest || chatIdentity(context) !== this.chatId ? latestAssistant(context) : this.selected;
         const fingerprint = this.sourceFingerprint(context, index);
         if (fingerprint === this.observedSource) { this.settlingSource = null; return; }
@@ -137,16 +160,33 @@ export class VNController {
         this.sourceChecking = true;
         try {
             if (this.pageHidden()) await this.prepareQuiet(index);
-            else if (!closed || this.settings.automaticPlayback) await this.open(index);
-            else {
+            else if (!closed || this.settings.automaticPlayback && this.autoPresentation.eligible(context, index)) await this.open(index);
+            else if (this.settings.tts.enabled && this.settings.tts.autoGenerate) {
                 await this.prepareSpeech(index);
                 this.observedSource = fingerprint; this.settlingSource = null;
                 this.speech.requestAutomatic();
-            }
+            } else { this.observedSource = fingerprint; this.settlingSource = null; }
         } catch (error) {
             this.observedSource = fingerprint; this.settlingSource = null;
             if (!this.disposed) this.log(`POV refresh: ${error.message}`);
         } finally { this.sourceChecking = false; }
+    }
+    reconcileGeneration(context) {
+        const active = this.host.isGenerating?.();
+        if (active === true) {
+            if (!this.busy) this.beginGeneration(context);
+            this.sawHostGenerating = true;
+        } else if (active === false && this.busy && this.sawHostGenerating) {
+            this.busy = false; this.sawHostGenerating = false; this.pendingIndex = null;
+            this.autoPresentation.finish(context); this.scheduleContextRefresh(); this.mount();
+        }
+        return this.busy;
+    }
+    beginGeneration(context = this.host.context()) {
+        this.autoPresentation.start(context); this.sawHostGenerating = this.host.isGenerating?.() === true;
+        this.sharedState.cancel(); this.sharedState.update({ generating: true, updating: false });
+        this.busy = true; this.parsed = null; this.speech.clearScene(); this.reveal.close(); this.invalidate({ preserveWorld: this.canPreserveWorld() }); this.mount();
+        if (!this.root.hidden) this.wait('Waiting for a completed player perspective…');
     }
     updateVoiceStatus() {
         const badge = this.root.querySelector('.vn-voice-ready'); if (!badge) return;
@@ -275,26 +315,28 @@ export class VNController {
         }));
         subscribe('GENERATION_STARTED', (type, options, dryRun) => {
             if (dryRun || ['quiet', 'impersonate'].includes(type)) return;
-            this.sharedState.cancel(); this.sharedState.update({ generating: true, updating: false });
-            this.busy = true; this.parsed = null; this.speech.clearScene(); this.reveal.close(); this.invalidate({ preserveWorld: this.canPreserveWorld() }); this.mount();
-            if (!this.root.hidden) this.wait('Waiting for a completed player perspective…');
+            this.beginGeneration();
         });
         const completed = () => {
+            if (this.host.isGenerating?.() === true) { this.sawHostGenerating = true; return; }
+            this.autoPresentation.finish(this.host.context()); this.sawHostGenerating = false;
             this.busy = false; this.scheduleContextRefresh(); this.publishPlaybackActivity(); this.mount();
-            if (!this.root.hidden || this.settings.automaticPlayback) {
+            if (!this.root.hidden) {
                 const index = this.pendingIndex ?? this.selected; this.pendingIndex = null;
                 void this.open(index >= 0 ? index : latestAssistant(this.host.context()));
-            }
+            } else this.pendingIndex = null;
         };
         subscribe('GENERATION_ENDED', completed); subscribe('GENERATION_STOPPED', completed);
         subscribe('MESSAGE_RECEIVED', index => {
             const message = readMessage(this.host.context(), Number(index)); if (!message) return;
+            this.autoPresentation.observe(this.host.context());
             if (this.speech.prepared && this.speech.prepared.sourceId !== this.speechSceneId(message)) this.speech.clearScene();
             this.pendingIndex = Number(index);
-            if (!this.busy) { this.selected = Number(index); this.pendingIndex = null; if (!this.root.hidden || this.settings.automaticPlayback) void this.open(this.selected); }
+            if (!this.busy) { this.selected = Number(index); this.pendingIndex = null; if (!this.root.hidden) void this.open(this.selected); }
             this.mount();
         });
         for (const event of ['MESSAGE_SWIPED', 'MESSAGE_UPDATED', 'MESSAGE_EDITED', 'MESSAGE_SWIPE_DELETED', 'CHARACTER_MESSAGE_RENDERED']) subscribe(event, index => {
+            if (['MESSAGE_SWIPED', 'MESSAGE_EDITED', 'MESSAGE_SWIPE_DELETED'].includes(event)) { this.autoPresentation.suppress(this.host.context()); this.deferredScene = null; }
             this.reveal.close(); this.mount();
             const message = readMessage(this.host.context(), Number(index));
             if (Number(index) === this.selected && this.speech.prepared && (!message || this.speech.prepared.sourceId !== this.speechSceneId(message))) this.speech.clearScene();
@@ -302,11 +344,13 @@ export class VNController {
             else if (Number(index) < this.selected && !this.root.hidden && !this.busy) void this.open(this.selected);
         });
         subscribe('MESSAGE_DELETED', () => {
+            this.autoPresentation.suppress(this.host.context()); this.deferredScene = null;
             this.speech.clearScene();
             this.reveal.close(); this.invalidate(); this.playback = null; this.parsed = null; this.sceneRevision = null;
             this.selected = latestAssistant(this.host.context()); this.mount(); if (!this.root.hidden) void this.open(this.selected);
         });
         for (const event of ['CHAT_CHANGED', 'CHAT_LOADED']) subscribe(event, () => {
+            this.autoPresentation.reset(this.host.context()); this.deferredScene = null;
             const identity = chatIdentity(this.host.context());
             if (identity === this.chatId && event === 'CHAT_LOADED') {
                 if (!this.playbackState.binding?.current()) this.playbackState.bind(this.environment);
@@ -319,7 +363,7 @@ export class VNController {
             this.playbackState.bind(this.environment); this.publishPlaybackActivity();
             if (!this.root.hidden) void this.open(this.selected);
         });
-        subscribe('MORE_MESSAGES_LOADED', () => { this.mount(); if (!this.root.hidden && !this.busy) void this.open(this.selected); }); subscribe('APP_READY', () => this.mount());
+        subscribe('MORE_MESSAGES_LOADED', () => { this.autoPresentation.suppress(this.host.context()); this.mount(); if (!this.root.hidden && !this.busy) void this.open(this.selected); }); subscribe('APP_READY', () => this.mount());
         this.observer = new MutationObserver(records => {
             // Flowchart edits mes and rerenders the message without emitting MESSAGE_UPDATED.
             // Mutation observers run independently of rendering frames and page polling timers.
@@ -750,7 +794,8 @@ export class VNController {
     }
     close() {
         this.root.hidden = true; this.deferredScene = null; this.invalidate();
-        // Exiting VN is deliberate. Auto-open waits for another source revision.
+        this.autoPresentation.suppress(this.host.context());
+        // Exiting VN is deliberate. Only a fresh response may open it again.
         if (this.settings.automaticPlayback) { this.observedSource = this.sourceFingerprint(this.host.context(), latestAssistant(this.host.context())); this.settlingSource = null; }
         document.body.classList.remove('vnplus-immersive'); this.reveal.close(); if (this.previousFocus?.isConnected) this.previousFocus.focus();
     }
