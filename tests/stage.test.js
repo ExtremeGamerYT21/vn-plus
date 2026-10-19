@@ -1,9 +1,32 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { stagePosition } from '../core/stage-layout.js';
+import { stagePosition, characterBustScale, castZoom } from '../core/stage-layout.js';
 import { breathingConfig, createBreathingMesh, deformBreathingMesh } from '../renderers/sprite-mesh.js';
 import { AssetResolver } from '../core/asset-resolver.js';
 import { DEFAULT_SETTINGS, loadSettings } from '../ui/settings.js';
+
+test('cast zoom makes equally large or equally small characters normal sized together', () => {
+    for (const sizes of [[2, 2], [.5, .5], [3], [.25]]) {
+        const zoom = castZoom(sizes);
+        for (const size of sizes) assert.ok(Math.abs(size * zoom - 1) < 1e-12);
+    }
+    assert.equal(castZoom([]), 1);
+});
+
+test('introducing a small character zooms the large cast up while preserving every size ratio', () => {
+    const zoom = castZoom([2, 2, .5]);
+    assert.ok(2 * zoom > 1); assert.ok(.5 * zoom < 1);
+    assert.equal(2 * zoom / (.5 * zoom), 4);
+    assert.ok(Math.abs(castZoom([20, 20, 5]) * 10 - zoom) < 1e-12);
+    assert.equal(castZoom([2, .5]), 1);
+    assert.equal(castZoom([2, 2]), .5);
+});
+
+test('character size parsing defaults missing or invalid scales without accepting nonpositive sizes', () => {
+    for (const value of [undefined, null, '', 'bad', 0, -1, NaN, Infinity]) assert.equal(characterBustScale(value), 1);
+    assert.equal(characterBustScale('0.75'), .75);
+    assert.equal(castZoom([undefined, -1, 0]), 1);
+});
 
 test('grouped rows alternate sides and recede upwards/inwards with modest scaling', () => {
     const positions = Array.from({ length: 6 }, (_, slot) => stagePosition(slot, 6, DEFAULT_SETTINGS));

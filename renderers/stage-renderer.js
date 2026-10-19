@@ -1,4 +1,4 @@
-import { stagePosition } from '../core/stage-layout.js';
+import { stagePosition, characterBustScale, castZoom } from '../core/stage-layout.js';
 import { SpriteAnimator } from './sprite-animator.js';
 import { createSilhouette } from './silhouette.js';
 import { sceneLighting } from '../core/scene-context.js';
@@ -70,6 +70,12 @@ export class StageRenderer {
         if (!state.background) { background.style.backgroundImage = ''; this.backgroundUrl = null; this.publishContext(state, false); }
         const characters = Object.values(state.characters).filter(character => characterPresent(character) && !this.registry.isNarrator(character.id) && !this.registry.isNarrator(character.name)
             && (this.settings.showPlayerBust || !this.registry.isPlayer(character.id)));
+        const scales = new Map(characters.map(character => [character.id, characterBustScale(this.registry.get(character.id).bustScale)]));
+        const zoom = cast => stage.style.setProperty('--vn-cast-zoom', castZoom(cast.map(character => scales.get(character.id))));
+        zoom(characters.filter(character => {
+            const node = this.nodes.get(character.id);
+            return this.settings.missingAsset !== 'hide' || !node?.classList.contains('vn-no-sprite') || this.sprites.records.get(node)?.loading !== false;
+        }));
         const visibleIds = new Set(characters.map(character => character.id));
         for (const [id, node] of this.nodes) if (!visibleIds.has(id)) this.depart(id, node);
         if (this.sprites.reduced) for (const id of this.departures.keys()) this.finishDeparture(id);
@@ -99,7 +105,7 @@ export class StageRenderer {
             node.dataset.side = position.side; node.dataset.depth = position.depth;
             node.style.left = `${position.x + (position.side === 'left' ? -1 : 1) * quiet.retreat}%`; node.style.width = `${position.width}vw`;
             this.place(node, position);
-            node.style.setProperty('--vn-scale', this.settings.bustScale * (Number(props.bustScale) || 1) * position.scale);
+            node.style.setProperty('--vn-scale', this.settings.bustScale * scales.get(character.id) * position.scale);
             node.style.setProperty('--vn-offset-x', `${Number(props.offsetX) || 0}px`);
             node.style.setProperty('--vn-offset-y', `${Number(props.offsetY) || 0}px`);
             node.style.zIndex = String(position.z);
@@ -108,7 +114,11 @@ export class StageRenderer {
             // Image availability can change during loading. Shadows keep the bust baseline.
             if (current()) this.place(node, position);
         })]);
-        if (current()) this.lightRenderer.refresh();
+        if (current()) {
+            // Hidden missing-art characters must not influence the visible cast's zoom.
+            if (this.settings.missingAsset === 'hide') zoom(characters.filter(character => !this.nodes.get(character.id)?.classList.contains('vn-no-sprite')));
+            this.lightRenderer.refresh();
+        }
     }
     cancelPending() { this.generation++; this.sprites.cancelPending(); }
     clear() {
@@ -117,6 +127,7 @@ export class StageRenderer {
         for (const id of this.departures.keys()) this.finishDeparture(id);
         this.sprites.clear();
         this.nodes.forEach(node => node.remove()); this.nodes.clear();
+        this.root.querySelector('.vn-stage').style.removeProperty('--vn-cast-zoom');
         const background = this.root.querySelector('.vn-background'); background.style.backgroundImage = ''; background.dataset.asset = ''; this.backgroundUrl = null;
         this.root.querySelector('.vn-tint').style.background = ''; this.root.classList.remove('vn-black', 'vn-narrating');
         this.publishContext({}, false);

@@ -19,7 +19,11 @@ Missing-art shadow placeholders retain their bust height and baseline. They also
 }
 ```
 
-Positive X moves right; negative X moves left. Positive Y moves down; negative Y moves up. The example shifts the character 20 pixels right and 30 pixels up. Offsets remain pixels even when the character is scaled or placed in a smaller back row. `bustScale` multiplies the global scale and works in both framing modes. Registry overrides keyed by the character folder ID can supply the same fields. Use **Refresh assets** after editing properties files.
+Positive X moves right; negative X moves left. Positive Y moves down; negative Y moves up. The example shifts the character 20 pixels right and 30 pixels up. Offsets remain pixels even when the character is scaled or placed in a smaller back row. Registry overrides keyed by the character folder ID can supply the same fields. Use **Refresh assets** after editing properties files.
+
+`bustScale` defines a character's size relative to the other visible characters, in both framing modes. The cast shares an automatic zoom: two characters both set to `2` appear at normal size together, as do two both set to `0.5`. Mixing a `2` character with a `0.5` character makes the larger one four times the smaller one's scale, before row depth. The shared zoom uses the geometric mean of the visible cast's scales, keeping these ratios intact; a missing or invalid scale means `1`. The **Global bust scale** and **Bust height** controls still adjust the overall framing.
+
+The zoom eases over 650 ms when the visible cast changes, respecting reduced motion. Characters staying through their silence grace still count until they leave. Hidden player busts, the narrator, absent characters and missing-art placeholders set to **Hide** do not affect the zoom. Visible shadows participate like ordinary busts. Changing the current speaker or expression does not change the zoom. Background camera zoom, media playback and pixel offsets remain independent.
 
 Environment CSS that changes stage clearance can use `.vn-stage { --vn-stage-bottom: 180px; }`. The default is `min(28vh,230px)`; full-body placement uses the same variable, so the image remains anchored correctly as the viewport changes. `:scope[data-sprite-framing="full-body"]` targets the selected mode. Each character's `data-framing` reports its effective framing; a shadow remains `bust`.
 

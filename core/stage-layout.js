@@ -11,6 +11,16 @@ export const SPRITE_FRAMING_OPTIONS = [
 export const normalizeSpriteFraming = value => value === 'full-body' ? 'full-body' : 'bust';
 export function normalizeStageLayout(value) { return ['separate', 'spread', 'compact'].includes(value) ? 'separate' : 'rows'; }
 
+export function characterBustScale(value) {
+    const scale = Number(value);
+    return Number.isFinite(scale) && scale > 0 ? scale : 1;
+}
+
+/** A shared zoom normalizes multiplicative sizes without changing their ratios. */
+export function castZoom(scales) {
+    return scales.length ? Math.exp(-scales.reduce((sum, scale) => sum + Math.log(characterBustScale(scale)), 0) / scales.length) : 1;
+}
+
 /** Stable slots alternate left/right; inner rows recede upwards and shrink. */
 export function stagePosition(slot, count, settings) {
     count = Math.max(1, count);

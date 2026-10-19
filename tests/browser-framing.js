@@ -3,6 +3,7 @@ import { runMediaHistoryChecks } from './browser-media-history.js';
 import { runDialogueAttributionChecks } from './browser-dialogue-attribution.js';
 import { runDialogueSizeChecks } from './browser-dialogue-size.js';
 import { runCastRetreatChecks } from './browser-cast-retreat.js';
+import { runRelativeScaleChecks } from './browser-relative-scale.js';
 
 export async function runFramingChecks(options) {
     const { check, assert, equal, eventually, context, mountChat, makeController } = options;
@@ -87,4 +88,5 @@ export async function runFramingChecks(options) {
     await runDialogueAttributionChecks(options);
     await runDialogueSizeChecks(options);
     await runCastRetreatChecks(options);
+    await runRelativeScaleChecks(options);
 }
