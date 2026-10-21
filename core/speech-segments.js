@@ -2,6 +2,7 @@ import { compileSpeechText } from './speech-text.js';
 import { endsWithEmDash } from './dialogue-text.js';
 import { detectSpeechLanguage, speechLanguageCode } from './speech-language.js';
 import { narratedVocalCues } from './speech-actions.js';
+import { youngifySettings } from './speech-youngify.js';
 
 export const SAMPLE_RATE = 44100;
 export const SPEECH_DEFAULTS = {
@@ -68,8 +69,11 @@ export function speechSegments(timeline, registry, sourceId, options = {}) {
         const text = spokenText(token.text);
         if (!text) return [];
         const detected = detectSpeechLanguage(text), hint = speechLanguageCode(props.ttsLanguage);
+        let youngify;
+        try { youngify = youngifySettings(props.ttsYoungify); }
+        catch (error) { throw new Error(`${props.displayName || token.character}: ${error.message}`); }
         return [{ line: { id: `${sourceId}:${index}`, beat: index, character, name: props.displayName || token.character || 'Narration',
-            voice, text, ...(voiceCharacter ? { voiceCharacter } : {}), ...(!narrator && endsWithEmDash(token.text) ? { cutOff: true } : {}) }, token, props, narrator,
+            voice, text, ...(youngify ? { youngify } : {}), ...(voiceCharacter ? { voiceCharacter } : {}), ...(!narrator && endsWithEmDash(token.text) ? { cutOff: true } : {}) }, token, props, narrator,
             language: detected === 'und-Cyrl' && hint && hint !== 'en' ? hint : detected || hint }];
     });
     const followingByRole = new Map(), previousByRole = new Map();

@@ -2,6 +2,7 @@ import { once } from 'node:events';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { registerCharacterFolders } from './character-folders.mjs';
+import { registerPraat } from './praat.mjs';
 
 export const info = { id: 'vn-plus-tts', name: 'VN+ server bridge', description: 'Local character folders and timestamped Fish synthesis with per-user secrets.' };
 export const SECRET_KEY = 'api_key_vn_plus_fish';
@@ -78,5 +79,6 @@ export function registerBridge(router, secrets, fetcher = fetch) {
 export async function init(router) {
     const secrets = await import(pathToFileURL(path.resolve(process.cwd(), 'src/endpoints/secrets.js')).href);
     registerBridge(router, secrets);
+    registerPraat(router);
     registerCharacterFolders(router, fileURLToPath(new URL('../', import.meta.url)));
 }

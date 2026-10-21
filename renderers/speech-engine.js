@@ -3,6 +3,7 @@ import { collectFishStream } from '../core/fish-stream.js';
 import { alignChapter, applyMargins, approveCut } from '../core/speech-alignment.js';
 import { decodeChapter, joinPCM, wavBytes } from '../core/speech-pcm.js';
 import { finishClip, noiseProfile } from '../core/speech-processing.js';
+import { youngifyClip } from './praat-voice.js';
 
 function waitForRetry(milliseconds, signal) {
     return new Promise((resolve, reject) => {
@@ -30,6 +31,8 @@ async function processChapter(chapter, settings, signal) {
 export class SpeechEngine {
     constructor(host, settings, dependencies = {}) {
         this.host = host; this.settings = settings; this.decode = dependencies.decode || decodeChapter; this.process = dependencies.process || processChapter; this.wait = dependencies.wait || waitForRetry;
+        this.youngify = dependencies.youngify || ((samples, options, signal) => youngifyClip(this.endpoint.bind(this), samples, options, signal));
+        this.effectQueue = []; this.activeEffects = 0;
         this.audioFactory = dependencies.audioFactory || (() => new Audio()); this.cache = new Map(); this.listeners = new Set(); this.excluded = new Set(); this.playEpoch = 0;
         this.autoAttempts = new Set(); this.status = 'Prepare spoken dialogue, then generate voices when you choose.';
     }
@@ -40,7 +43,8 @@ export class SpeechEngine {
         const response = await request(`/api/plugins/vn-plus-tts/${path}`, options);
         if (!response.ok) {
             let detail; try { detail = await response.json(); } catch { /* missing plugin */ }
-            const error = new Error(detail?.error || (response.status === 404 ? 'Fish bridge is unavailable. Install the bundled server bridge and restart SillyTavern.' : `Speech bridge request failed (HTTP ${response.status}).`));
+            const missing = path.startsWith('praat/') ? 'Praat bridge is unavailable. Update the VN+ server bridge and restart SillyTavern.' : 'Fish bridge is unavailable. Install the bundled server bridge and restart SillyTavern.';
+            const error = new Error(detail?.error || (response.status === 404 ? missing : `Speech bridge request failed (HTTP ${response.status}).`));
             error.status = response.status;
             const retry = response.headers?.get('retry-after');
             error.retryAfter = retry && /^\d+(?:\.\d+)?$/.test(retry) ? Number(retry) * 1000 : retry ? Date.parse(retry) - Date.now() : 0;
@@ -55,9 +59,15 @@ export class SpeechEngine {
         return status;
     }
     async saveKey(value) { await this.endpoint('secret', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value }) }); this.notify('Fish key saved in SillyTavern’s secret store.'); }
+    async praatStatus() {
+        const status = await (await this.endpoint('praat/status')).json();
+        this.notify(`Local Praat is ready (Parselmouth ${status.version}). Use ttsYoungify in character properties.`); return status;
+    }
     async removeKey() { await this.endpoint('secret', { method: 'DELETE' }); this.notify('Saved Fish key removed.'); }
     prepare(sourceId, timeline, registry) {
-        const segments = speechSegments(timeline, registry, sourceId, this.settings.tts), signature = JSON.stringify([sourceId, segments]);
+        const segments = speechSegments(timeline, registry, sourceId, this.settings.tts);
+        // Local voice effects do not change the provider recording or trigger a paid regeneration.
+        const signature = JSON.stringify([sourceId, segments.map(({ youngify, ...line }) => line)]);
         if (signature !== this.prepared?.signature) { this.cancel(); this.excluded.clear(); this.job = null; }
         this.prepared = { sourceId, segments, signature, timeline };
         this.selectCachedJob(); this.notify(`${segments.length} segments have voice IDs. ${this.settings.tts.narratorEnabled ? 'Narrator voicing is enabled.' : 'Narrator is muted.'} Thoughts stay silent.`); return segments;
@@ -65,7 +75,7 @@ export class SpeechEngine {
     requestAutomatic() {
         if (!this.settings.tts.enabled || !this.settings.tts.autoGenerate || !this.prepared?.segments.length) return;
         try {
-            const key = this.key(this.plan());
+            const key = JSON.stringify([this.key(this.plan()), this.prepared.segments.map(line => line.youngify)]);
             if (this.autoAttempts.has(key)) return;
             this.autoAttempts.add(key);
             if (this.autoAttempts.size > 32) this.autoAttempts.delete(this.autoAttempts.values().next().value);
@@ -78,8 +88,10 @@ export class SpeechEngine {
         const line = this.prepared?.segments.find(segment => (next ? segment.beat > beat : segment.beat === beat) && !this.excluded.has(segment.id));
         if (!line) return null;
         const found = this.clip(line.id);
-        const state = found?.clip.review ? 'review' : found?.chapter.processingError ? 'failed'
-            : found && (found.chapter.processed?.results.has(line.id) || !this.settings.tts.processing) ? 'ready'
+        const processingKey = found && this.processingKey(found.chapter);
+        const state = found?.clip.review ? 'review' : found?.chapter.processingError && found.chapter.processingErrorKey === processingKey ? 'failed'
+            : found && (found.chapter.processed?.key === processingKey && found.chapter.processed.results.has(line.id)
+                || !this.settings.tts.processing && !this.lineEffects(found.clip)) ? 'ready'
             : this.job?.status === 'failed' || this.job?.status === 'cancelled' ? 'failed'
             : this.job?.status === 'generating' || found ? 'generating' : 'pending';
         return { state, line };
@@ -87,9 +99,10 @@ export class SpeechEngine {
     resumePending() {
         const pending = this.pending; if (!pending) return;
         const found = this.clip(pending.id);
-        if (found && !found.clip.review && !found.chapter.processingError) {
+        const failed = found?.chapter.processingError && found.chapter.processingErrorKey === this.processingKey(found.chapter);
+        if (found && !found.clip.review && !failed) {
             this.pending = null; void this.play(pending.id, true, pending.playback);
-        } else if (found?.clip.review || found?.chapter.processingError || ['failed', 'cancelled', 'complete'].includes(this.job?.status)) {
+        } else if (found?.clip.review || failed || ['failed', 'cancelled', 'complete'].includes(this.job?.status)) {
             this.stop('failed'); this.onEnded?.();
         }
     }
@@ -107,7 +120,19 @@ export class SpeechEngine {
         let job = this.cache.get(key);
         if (!job) { job = { key, sourceId: this.prepared.sourceId, plan, chapters: [], status: 'ready' }; this.cache.set(key, job); this.trimCache(job); }
         this.job = job;
-        if (job.chapters.length === plan.length) { job.run = null; job.status = 'complete'; this.notify('Using the completed voice recording; no new Fish request.'); return job; }
+        if (job.chapters.length === plan.length) {
+            const abort = new AbortController(); this.abort = abort; job.run = abort;
+            const reuse = async () => {
+                try {
+                    await Promise.all(job.chapters.map(chapter => this.ensureProcessed(chapter, abort.signal).catch(error => {
+                        if (error.name === 'AbortError') throw error;
+                    })));
+                    if (!abort.signal.aborted && job.run === abort) { job.status = 'complete'; this.notify('Using the completed voice recording; no new Fish request.'); }
+                } finally { if (this.abort === abort) { this.abort = null; this.running = null; } }
+                return job;
+            };
+            this.running = reuse(); return this.running;
+        }
         const abort = new AbortController(); this.abort = abort; job.run = abort; job.status = 'generating';
         const publish = message => { if (this.job === job && job.run === abort) this.notify(message); };
         const run = async () => {
@@ -182,15 +207,43 @@ export class SpeechEngine {
     }
     processingKey(chapter) {
         const { parallelBatches, volume, muted, ...settings } = speechSettings(this.settings.tts);
-        return JSON.stringify([settings, chapter.clips.map(clip => [clip.id, clip.start, clip.end, clip.review]), chapter.noise]);
+        return JSON.stringify([settings, chapter.clips.map(clip => [clip.id, clip.start, clip.end, clip.review, this.lineEffects(clip)]), chapter.noise]);
+    }
+    lineEffects(clip) { return (this.prepared?.segments.find(line => line.id === clip.id) || clip.line)?.youngify || null; }
+    async processVoice(samples, options, signal) {
+        await new Promise((resolve, reject) => {
+            const entry = { start: () => { signal?.removeEventListener('abort', abort); this.activeEffects++; resolve(); } };
+            const abort = () => { const index = this.effectQueue.indexOf(entry); if (index >= 0) this.effectQueue.splice(index, 1); reject(new DOMException('Cancelled', 'AbortError')); };
+            if (signal?.aborted) { abort(); return; }
+            if (this.activeEffects < 2) entry.start(); else { signal?.addEventListener('abort', abort, { once: true }); this.effectQueue.push(entry); }
+        });
+        try {
+            if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
+            return await this.youngify(samples, options, signal);
+        } finally { this.activeEffects--; this.effectQueue.shift()?.start(); }
     }
     async ensureProcessed(chapter, signal) {
         const key = this.processingKey(chapter); if (chapter.processed?.key === key) return chapter.processed;
         if (chapter.processing?.key === key) return chapter.processing.promise;
         const settings = speechSettings(this.settings.tts);
-        const promise = this.process(chapter, settings, signal).then(results => {
+        const effects = new Map(chapter.clips.map(clip => [clip.id, this.lineEffects(clip)]));
+        const promise = this.process(chapter, settings, signal).then(async results => {
+            const adjusted = await Promise.all(results.map(async result => {
+                const options = effects.get(result.id); if (!options) return result;
+                const changed = await this.processVoice(result.samples, options, signal);
+                if (changed.samples.length !== result.samples.length) throw new Error('Praat changed clip duration. Original audio remains available.');
+                // Pitch/formant processing may raise peaks. Retain the configured safety ceiling.
+                let peak = 0; for (const value of changed.samples) { if (!Number.isFinite(value)) throw new Error('Praat returned invalid audio.'); peak = Math.max(peak, Math.abs(value)); }
+                const ceiling = 10 ** (Math.max(-12, Math.min(0, settings.ceiling)) / 20), gain = peak > ceiling ? ceiling / peak : 1;
+                const samples = changed.samples.map(value => value * gain);
+                return { ...result, samples, notes: [...(result.notes || []), ...(changed.notes || [])] };
+            }));
+            if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
             if (key !== this.processingKey(chapter)) throw new Error('Finishing settings changed. Play again to use the new settings.');
-            chapter.processed = { key, results: new Map(results.map(result => [result.id, result])) }; chapter.processingError = null; return chapter.processed;
+            chapter.processed = { key, results: new Map(adjusted.map(result => [result.id, result])) }; chapter.processingError = null; chapter.processingErrorKey = null; return chapter.processed;
+        }).catch(error => {
+            if (error.name !== 'AbortError' && key === this.processingKey(chapter)) { chapter.processingError = error.message; chapter.processingErrorKey = key; }
+            throw error;
         }).finally(() => { if (chapter.processing?.key === key) chapter.processing = null; });
         chapter.processing = { key, promise }; return promise;
     }

@@ -68,6 +68,43 @@ Use the SillyTavern application folder containing `config.yaml` and `src/`, not 
 
 Open **Extensions → Visual Novel+ → Fish Audio voices**, check the bridge, save the key, and enable voices. Save/remove controls manage only VN+’s Fish key. The form clears the typed key after submission and never retrieves the stored value.
 
+## Younger character voices with local Praat
+
+Set `ttsYoungify` in the character's `properties.json` (or its registry override). It is off when omitted:
+
+```json
+{
+  "displayName": "Jason",
+  "voiceId": "YOUR_FISH_VOICE_ID",
+  "ttsYoungify": true
+}
+```
+
+`true` uses **+4 semitones**, **1.15 formant ratio**, and unchanged pitch range. For finer control, replace `true` with:
+
+```json
+{
+  "enabled": true,
+  "pitchSemitones": 4,
+  "formantRatio": 1.15,
+  "pitchRange": 1
+}
+```
+
+`pitchSemitones` accepts 0–12; `formantRatio` accepts 1–1.4 (1 preserves resonance); `pitchRange` accepts 0.5–2 (1 preserves variation). Set `ttsYoungify` to `false`, or `enabled` to `false`, to disable it. Start with small changes and compare **Play original / Play processed**. This adjusts perceived pitch/resonance; results depend on the source recording.
+
+The effect uses the real [Praat pitch/formant transformation](https://praat.org/manual/Sound__Change_gender___.html) through [Parselmouth](https://pypi.org/project/praat-parselmouth/), an optional GPLv3+ dependency. From the installed extension directory, install its isolated Python environment once:
+
+```text
+node tools/install-praat.js /path/to/SillyTavern
+```
+
+Python 3.10 or newer must be available. An optional second argument selects the Python executable. The environment lives in `SillyTavern/plugins/vn-plus-praat/.venv`, outside the extension checkout, so Git updates preserve it. Server administrators can instead set `VNPLUS_PRAAT_PYTHON` to an existing Python executable with `praat-parselmouth==0.4.7` and NumPy installed. Browser requests cannot choose executables or file paths. Install the server bridge as above, and **restart SillyTavern after this server update**. **Fish Audio voices → Check Praat** verifies the dependency.
+
+Use **Refresh assets / Prepare selected dialogue** after editing properties. Already generated Fish recordings are reused; only the local processed clips are rebuilt when `ttsYoungify` changes. The adjustment belongs to the speaking character, including when that character borrows the narrator's voice. Narrator properties affect actual narration only. Other characters in the same Fish batch retain their own settings. It applies to normal playback and processed exports even if general audio finishing is off; original playback/exports always retain the source audio.
+
+Praat runs locally after clip alignment, with at most two transformations at once and no additional Fish request. Duration and sample count stay unchanged so transcript timing remains usable. Peak protection is reapplied after transformation. Clips without stable voiced pitch, silence, and clips shorter than 100 ms stay unchanged with a processing note. Clips longer than 120 seconds require shorter chapters/cuts. Missing Praat or a failed transformation is reported in **Voices**; original audio remains available and affected processed audio is unavailable until setup/settings are corrected. Actual timbre should be checked by listening; automatic tests check pitch, timing, transport, cache reuse and errors.
+
 ## Prepare and generate
 
 1. Open the assistant response/swipe you want in VN.

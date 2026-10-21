@@ -16,7 +16,8 @@ export class SpeechPanel {
         this.keyInput = element('input'); this.keyInput.type = 'password'; this.keyInput.autocomplete = 'new-password'; this.keyInput.placeholder = 'Saved in SillyTavern’s secret store'; keyRow.append(this.keyInput); this.node.append(keyRow);
         const credentialActions = element('div', '', 'vn-settings-actions');
         credentialActions.append(this.button('Save API key', async () => { const value = this.keyInput.value; this.keyInput.value = ''; await engine.saveKey(value); }),
-            this.button('Remove API key', () => engine.removeKey()), this.button('Check bridge', () => engine.bridgeStatus())); this.node.append(credentialActions);
+            this.button('Remove API key', () => engine.removeKey()), this.button('Check bridge', () => engine.bridgeStatus()),
+            this.button('Check Praat', () => engine.praatStatus())); this.node.append(credentialActions);
         const options = element('details'); options.append(element('summary', 'Voice generation and playback'));
         this.fields = new Map();
         for (const definition of [
@@ -43,6 +44,7 @@ export class SpeechPanel {
             ['soften', 'Soften highs near 5 kHz (dB)', 'number', 0, 8], ['ceiling', 'Peak ceiling (dBFS)', 'number', -12, 0], ['edgeFade', 'Edge fade (ms)', 'number', 0, 30],
         ]) this.field(finishing, definition);
         finishing.append(element('p', 'Finishing always starts from original audio. Denoising is skipped if no trustworthy noise-only interval exists. Margins retain existing audio without inserting silence.', 'vn-hint')); this.node.append(finishing);
+        finishing.append(element('p', 'Optional younger voice: set "ttsYoungify": true in a character’s properties.json. Requires the local Praat installation; Check Praat verifies it. Adjust pitchSemitones (default 4), formantRatio (1.15), and pitchRange (1) with a ttsYoungify options object. Applies per character, including narrator-voice fallback, without changing speed or requesting Fish again. Original audio remains available.', 'vn-hint'));
         const actions = element('div', '', 'vn-settings-actions');
         this.generateButton = this.button('Generate selected dialogue', async () => { await callbacks.prepare(); await engine.generate(); });
         actions.append(this.button('Prepare selected dialogue', () => callbacks.prepare()), this.generateButton,
@@ -84,13 +86,13 @@ export class SpeechPanel {
         this.generateButton.disabled = !!engine.running;
         this.generateButton.textContent = engine.job?.chapters.length && engine.job.chapters.length < engine.job.plan.length ? 'Generate remaining chapters' : 'Generate selected dialogue';
         for (const [key, { input, type }] of this.fields) { if (type === 'volume') syncVolumeSlider(input, engine.settings.tts[key]); else if (type === 'checkbox') input.checked = !!engine.settings.tts[key]; else input.value = engine.settings.tts[key]; }
-        const signature = JSON.stringify([engine.prepared?.signature, [...engine.excluded]]);
+        const signature = JSON.stringify([engine.prepared?.signature, engine.prepared?.segments.map(line => line.youngify), [...engine.excluded]]);
         if (signature !== this.segmentSignature) {
             this.segmentSignature = signature; this.segments.replaceChildren();
             for (const segment of engine.prepared?.segments || []) {
                 const label = element('label', '', 'vn-speech-segment'), input = element('input'); input.type = 'checkbox'; input.checked = !engine.excluded.has(segment.id);
                 input.addEventListener('change', () => engine.include(segment.id, input.checked)); label.append(input, element('span', `${segment.name}: ${segment.text}`));
-                const voice = element('small', `Voice: ${segment.voice} · ${speechLanguageName(segment.language || 'en')}`, 'vn-hint'); label.append(voice); this.segments.append(label);
+                const voice = element('small', `Voice: ${segment.voice} · ${speechLanguageName(segment.language || 'en')}${segment.youngify ? ` · Praat +${segment.youngify.pitchSemitones} semitones` : ''}`, 'vn-hint'); label.append(voice); this.segments.append(label);
             }
         }
         this.recordings.replaceChildren(); if (!engine.job?.chapters.length) return;
