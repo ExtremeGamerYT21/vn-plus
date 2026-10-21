@@ -81,7 +81,7 @@ test('ambiguous pronouns unknown actors quotations negations and hypothetical ac
     assert.equal(fixture('You sigh.\nHenry: "Hello."').lines[0].synthesisText, 'Hello.');
 });
 
-test('scene boundaries artifacts thoughts mute characters and narrator rules remain effective', () => {
+test('scene boundaries artifacts thoughts narrator fallback and narrator rules remain effective', () => {
     for (const barrier of ['#SCENE RESET', '#BACKGROUND elsewhere', '#EXIT Henry', '#FADE BLACK', '<div>Henry coughs.</div>']) {
         assert.equal(fixture(`Henry coughs.\n${barrier}\nHenry: "Hello."`).lines[0].synthesisText, 'Hello.', barrier);
     }
@@ -91,7 +91,8 @@ test('scene boundaries artifacts thoughts mute characters and narrator rules rem
     const input = fixture('Henry coughs.\nHenry: "Hello."', { narratorEnabled: true });
     assert.deepEqual(input.lines.map(line => [line.character, line.synthesisText]), [['narrator', 'Henry coughs.'], ['henry', '[coughing] Hello.']]);
     input.settings.characters.henry.voiceId = '';
-    assert.equal(speechSegments(input.timeline, input.registry, 'muted', input.settings.tts).filter(line => line.character === 'henry').length, 0);
+    const [fallback] = speechSegments(input.timeline, input.registry, 'fallback', input.settings.tts).filter(line => line.character === 'henry');
+    assert.equal(fallback.voice, 'voice-narrator'); assert.equal(fallback.synthesisText, '[coughing] Hello.');
     assert.equal(fixture('Henry coughs.').lines.length, 0);
 });
 

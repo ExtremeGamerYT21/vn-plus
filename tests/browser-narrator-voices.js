@@ -46,5 +46,21 @@ export async function runNarratorVoiceChecks({ check, assert, equal, eventually,
             await controller.speech.generate(); equal(requests.length, 3); assert(controller.speech.job === cached);
             equal(context.chat[0].mes, source);
         });
+        await check('characters without personal voices use the narrator reference while keeping their dialogue names and silent narration', async () => {
+            controller.settings.tts.narratorEnabled = false;
+            controller.settings.characters.nina.voiceId = '';
+            const source = 'PRIVATE\n/////\nThe hall is quiet.\nNina: "Hello."\nAshley: "Ready?"\nVisitor: "Come here."\nVisitor: "(Keep quiet.)"';
+            context.chat[0].mes = source; mountChat(); await controller.open(0);
+            await eventually(() => controller.speech.job?.status === 'complete');
+            const lines = controller.speech.prepared.segments, request = requests.at(-1);
+            equal(lines.map(line => line.character), ['nina', 'ashley', 'visitor']);
+            equal(lines.map(line => line.voice), ['story-test', 'ashley-test', 'story-test']);
+            equal(request.body.reference_id, ['story-test', 'ashley-test']); assert(!/hall|Keep quiet/.test(request.body.text));
+            equal(controller.root.querySelector('.vn-speaker').textContent, 'Storyteller'); await controller.action('next');
+            equal(controller.root.querySelector('.vn-speaker').textContent, 'Nina'); assert(!controller.stage.nodes.has('narrator'));
+            equal(context.chat[0].mes, source);
+            controller.settings.tts.autoGenerate = false; controller.settings.characters.narrator.voiceId = '';
+            await controller.prepareSpeech(); equal(controller.speech.prepared.segments.map(line => line.character), ['ashley']);
+        });
     } finally { controller.dispose(); }
 }

@@ -58,12 +58,18 @@ export function speechSegments(timeline, registry, sourceId, options = {}) {
         let voice;
         try { voice = fishVoiceId(props.voiceId); }
         catch { throw new Error(`Invalid voiceId for ${props.displayName || token.character}.`); }
+        let voiceCharacter;
+        if (!voice && !narrator) {
+            try { voice = fishVoiceId(registry.get('narrator').voiceId); }
+            catch { throw new Error('Invalid voiceId for the narrator fallback.'); }
+            if (voice) voiceCharacter = 'narrator';
+        }
         if (!voice) return [];
         const text = spokenText(token.text);
         if (!text) return [];
         const detected = detectSpeechLanguage(text), hint = speechLanguageCode(props.ttsLanguage);
         return [{ line: { id: `${sourceId}:${index}`, beat: index, character, name: props.displayName || token.character || 'Narration',
-            voice, text, ...(!narrator && endsWithEmDash(token.text) ? { cutOff: true } : {}) }, token, props, narrator,
+            voice, text, ...(voiceCharacter ? { voiceCharacter } : {}), ...(!narrator && endsWithEmDash(token.text) ? { cutOff: true } : {}) }, token, props, narrator,
             language: detected === 'und-Cyrl' && hint && hint !== 'en' ? hint : detected || hint }];
     });
     const followingByRole = new Map(), previousByRole = new Map();
@@ -84,9 +90,10 @@ export function speechSegments(timeline, registry, sourceId, options = {}) {
 export function chapterRequests(segments, settings) {
     validateSpeechSettings(settings);
     if (!['s2.1-pro-free', 's2.1-pro'].includes(settings.model)) throw new Error('Select a supported Fish model explicitly.');
-    if (!segments.length) throw new Error('No enabled speaker has a character voiceId. Add voiceId in character properties.');
+    if (!segments.length) throw new Error('No voice is available. Add voiceId in character properties or characters/narrator/properties.json.');
     if (segments.length > 200) throw new Error('Select at most 200 spoken segments per generation.');
-    if (new Set(segments.map(segment => segment.character)).size > 8) throw new Error('Select at most eight voiced characters.');
+    const voiceCharacter = line => line.voiceCharacter || line.character;
+    if (new Set(segments.map(voiceCharacter)).size > 8) throw new Error('Select at most eight voiced characters.');
     const count = settings.splitChapters ? Math.max(1, Math.min(200, Math.floor(settings.chapterSize))) : segments.length;
     const groups = [], order = new Map(segments.map((line, index) => [line, index]));
     // Collect each role across the scene; beat IDs restore the individual clips later.
@@ -102,9 +109,9 @@ export function chapterRequests(segments, settings) {
     }
     groups.sort((a, b) => order.get(a.lines[0]) - order.get(b.lines[0]));
     return groups.map(({ kind, language, lines }, index) => {
-        const speakers = [...new Set(lines.map(line => line.character))];
-        const reference_id = speakers.map(character => lines.find(line => line.character === character).voice);
-        const text = lines.map(line => `<|speaker:${speakers.indexOf(line.character)}|>${line.synthesisText}`).join('\n');
+        const speakers = [...new Set(lines.map(voiceCharacter))];
+        const reference_id = speakers.map(character => lines.find(line => voiceCharacter(line) === character).voice);
+        const text = lines.map(line => `<|speaker:${speakers.indexOf(voiceCharacter(line))}|>${line.synthesisText}`).join('\n');
         if (text.length > 20000) throw new Error('A chapter exceeds the 20,000-character local safeguard. Use smaller chapters.');
         return { index, kind, language, lines, speakers, body: {
             text, reference_id, format: 'mp3', sample_rate: SAMPLE_RATE, mp3_bitrate: settings.bitrate,

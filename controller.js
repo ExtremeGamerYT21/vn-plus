@@ -552,7 +552,7 @@ export class VNController {
                     environment.inventory.characters ??= Object.create(null); environment.inventory.characters[entry.id] ??= { expressions: [] };
                 }
                 const count = result.characters.filter(entry => entry.created).length;
-                this.characterFolderStatus(count ? `Created ${count} character folder(s) in ${environment.name}. Add artwork to their sprites folders; voiceId is blank (mute).` : 'Existing character folders and colors preserved.');
+                this.characterFolderStatus(count ? `Created ${count} character folder(s) in ${environment.name}. Add artwork to their sprites folders; voiceId is blank (uses the narrator voice when configured).` : 'Existing character folders and colors preserved.');
             } catch (error) {
                 if (generation !== this.generation || registry !== this.registry || this.busy || this.root.hidden || !currentSource()) return;
                 this.characterFolderStatus(error.message, true); this.log(error.message);

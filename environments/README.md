@@ -44,7 +44,7 @@ environments/<selected-environment>/characters/new_person/
   sprites/
 ```
 
-The generated JSON contains `displayName`, an empty `aliases` array, `defaultExpression: "default"`, matching random `color` and `textColor`, an empty `voiceId`, and the default breathing center. Its color is saved once and reused on later visits/restarts. Empty `voiceId` keeps the new character mute; the missing-art silhouette appears until you add artwork. Edit the properties to choose a different color or voice.
+The generated JSON contains `displayName`, an empty `aliases` array, `defaultExpression: "default"`, matching random `color` and `textColor`, an empty `voiceId`, and the default breathing center. Its color is saved once and reused on later visits/restarts. Empty `voiceId` uses the narrator voice when configured (otherwise the character stays silent); the missing-art silhouette appears until you add artwork. Edit the properties to choose a different color or voice.
 
 The creator adds the properties to `assets.local.json` automatically, preserving other local entries and leaving `assets.json` unchanged. New character directories are ignored by Git, including inside the built-in environments; already tracked files retain their existing tracking. Existing properties and artwork are preserved byte-for-byte. Add `sprites/default.webp`, `happy.webp`, `happy_blink.webp`, etc. later; run `npm run inventory` and **Refresh assets** after adding artwork so optional blink variants are indexed. Maintainers intentionally publishing new character files must explicitly force-add them.
 
