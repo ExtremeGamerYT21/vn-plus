@@ -1,5 +1,7 @@
 import { voiceEffectsFixture } from './voice-effects-fixture.js';
 import { SpeechPanel } from '../ui/speech-panel.js';
+import { createHost } from '../integration.js';
+import { youngifyClip } from '../renderers/praat-voice.js';
 
 export async function runVoiceEffectChecks({ check, assert, equal, eventually }) {
     const h = voiceEffectsFixture();
@@ -24,4 +26,19 @@ export async function runVoiceEffectChecks({ check, assert, equal, eventually })
             equal(h.requests, 0);
         });
     } finally { panel.dispose(); h.engine.dispose(); }
+    await check('in-game request adapter permits Praat processing with SillyTavern CSRF headers', async () => {
+        const originalFetch = window.fetch, actual = voiceEffectsFixture(), calls = [];
+        actual.engine.host = createHost(() => ({ getRequestHeaders: () => ({ 'X-CSRF-Token': 'ST_TEST' }) }));
+        actual.engine.youngify = (samples, settings, signal) => youngifyClip(actual.engine.endpoint.bind(actual.engine), samples, settings, signal);
+        window.fetch = async (url, options) => {
+            calls.push(url); equal(url, '/api/plugins/vn-plus-tts/praat/youngify'); equal(options.headers['X-CSRF-Token'], 'ST_TEST');
+            const input = JSON.parse(options.body), bytes = Uint8Array.from(atob(input.pcm), value => value.charCodeAt(0));
+            const samples = new Float32Array(bytes.buffer); return new Response(samples.map(value => value * 2).buffer, { headers: { 'X-VN-Praat-Note': 'Praat: adjusted through ST adapter.' } });
+        };
+        try {
+            await actual.engine.reprocessCachedEffects();
+            equal(actual.engine.voiceEffectStatus('effect-cache:0').state, 'applied');
+            assert(Math.abs((await actual.engine.clipSamples('effect-cache:0'))[0] - .2) < 1e-6); equal(calls.length, 1);
+        } finally { actual.engine.dispose(); window.fetch = originalFetch; }
+    });
 }

@@ -13,7 +13,7 @@ export function createHost(getContext, { localContent = true, generationActive =
             if (changed) context.saveMetadataDebounced?.();
         },
         request(url, options = {}) {
-            if (!/^\/api\/plugins\/vn-plus-tts\/(status|secret|synthesize|characters(?:\/resolve)?)$/.test(url)) throw new Error('Invalid VN+ server route.');
+            if (!/^\/api\/plugins\/vn-plus-tts\/(status|secret|synthesize|praat\/(?:status|youngify)|characters(?:\/resolve)?)$/.test(url)) throw new Error('Invalid VN+ server route.');
             return fetch(url, { ...options, headers: { ...(getContext().getRequestHeaders?.() || { 'Content-Type': 'application/json' }), ...options.headers } });
         },
         ...(localContent ? { async resolveCharacters(input) {
