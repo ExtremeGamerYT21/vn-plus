@@ -89,8 +89,19 @@ export function speechSegments(timeline, registry, sourceId, options = {}) {
     });
     const views = new Map(timeline.views.map((beat, index) => [beat, index]));
     for (let index = 1; index < segments.length; index++) if (segments[index - 1].cutOff && views.get(segments[index].beat) === views.get(segments[index - 1].beat) + 1) segments[index].followsCutOff = true;
+    let previousDialogue;
+    for (const line of segments) {
+        if (line.character === 'narrator') continue;
+        if (previousDialogue && line.character === previousDialogue.character && line.voice === previousDialogue.voice && line.language === previousDialogue.language) {
+            const between = timeline.beats.slice(previousDialogue.beat + 1, line.beat);
+            if (between.length && between.every(({ token }) => !token.thought && (token.type === 'narration' || token.type === 'dialogue' && registry.isNarrator(token.character)))) line.continuationOf = previousDialogue.id;
+        }
+        previousDialogue = line;
+    }
     return segments;
 }
+const continuesDialogue = (previous, line) => !!line.continuationOf && line.character !== 'narrator' && line.continuationOf === previous.id
+    && line.character === previous.character && line.voice === previous.voice && (line.language || 'en') === (previous.language || 'en');
 export function chapterRequests(segments, settings) {
     validateSpeechSettings(settings);
     if (!['s2.1-pro-free', 's2.1-pro'].includes(settings.model)) throw new Error('Select a supported Fish model explicitly.');
@@ -106,7 +117,8 @@ export function chapterRequests(segments, settings) {
         for (let offset = 0; offset < track.length;) {
             const language = track[offset].language || 'en';
             let end = offset + 1;
-            while (end < track.length && end - offset < count && (track[end].language || 'en') === language) end++;
+            // A narration-interrupted utterance stays intact across the chapter-size target.
+            while (end < track.length && (track[end].language || 'en') === language && (end - offset < count || continuesDialogue(track[end - 1], track[end]))) end++;
             groups.push({ kind: narration ? 'narration' : 'dialogue', language, lines: track.slice(offset, end) });
             offset = end;
         }
@@ -115,7 +127,12 @@ export function chapterRequests(segments, settings) {
     return groups.map(({ kind, language, lines }, index) => {
         const speakers = [...new Set(lines.map(voiceCharacter))];
         const reference_id = speakers.map(character => lines.find(line => voiceCharacter(line) === character).voice);
-        const text = lines.map(line => `<|speaker:${speakers.indexOf(voiceCharacter(line))}|>${line.synthesisText}`).join('\n');
+        const utterances = [];
+        for (const [position, line] of lines.entries()) {
+            if (position && continuesDialogue(lines[position - 1], line)) utterances[utterances.length - 1] += ` ${line.synthesisText}`;
+            else utterances.push(`<|speaker:${speakers.indexOf(voiceCharacter(line))}|>${line.synthesisText}`);
+        }
+        const text = utterances.join('\n');
         if (text.length > 20000) throw new Error('A chapter exceeds the 20,000-character local safeguard. Use smaller chapters.');
         return { index, kind, language, lines, speakers, body: {
             text, reference_id, format: 'mp3', sample_rate: SAMPLE_RATE, mp3_bitrate: settings.bitrate,

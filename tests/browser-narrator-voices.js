@@ -63,4 +63,37 @@ export async function runNarratorVoiceChecks({ check, assert, equal, eventually,
             await controller.prepareSpeech(); equal(controller.speech.prepared.segments.map(line => line.character), ['ashley']);
         });
     } finally { controller.dispose(); }
+    await check('narration-interrupted dialogue generates as one utterance and retains every original VN playback beat', async () => {
+        context.chatId = 'joined-dialogue-browser';
+        const source = 'PRIVATE\n/////\nNina: "If you open that door," [angry]\nShe points at the handle.\nNina Weber: "you will regret it." [serious]\nShe lowers her hand.\nNina: "Trust me!" [scared]';
+        context.chat = [{ mes: source }]; mountChat();
+        const joined = makeController(), requests = [];
+        Object.assign(joined.settings, { autoCreateCharacters: false, autoAdvance: false, automaticPlayback: false, typewriterEffect: false });
+        Object.assign(joined.settings.characters, { nina: { voiceId: 'joined-nina', aliases: ['Nina Weber'] }, narrator: { displayName: 'Storyteller', voiceId: 'joined-story' } });
+        Object.assign(joined.settings.tts, { enabled: true, autoGenerate: true, autoPlay: false, narratorEnabled: true, chapterSize: 1 });
+        joined.speech.endpoint = async (path, options) => {
+            if (path === 'status') return Response.json({ configured: true, maxParallelBatches: 5 });
+            const request = JSON.parse(options.body); requests.push(request);
+            const words = speechTokens(request.body.text).map((text, index) => ({ text, start: .1 + index * .1, end: .18 + index * .1 }));
+            return new Response(`data: ${JSON.stringify({ audio_base64: btoa('fixture'), chunk_seq: 0, chunk_audio_offset_sec: 0, alignment: { segments: words } })}\n\n`);
+        };
+        joined.speech.decode = async () => new Float32Array(44100 * 3);
+        joined.speech.process = async chapter => chapter.clips.map(clip => ({ id: clip.id, samples: new Float32Array(4410), notes: [] }));
+        try {
+            await joined.open(0); await eventually(() => joined.speech.job?.status === 'complete');
+            equal(requests.length, 3);
+            const dialogue = requests.find(request => request.body.reference_id.includes('joined-nina'));
+            equal(dialogue.body.text, '<|speaker:0|>[angry] If you open that door, [serious] you will regret it. [scared] Trust me!');
+            const chapter = joined.speech.job.chapters.find(chapter => chapter.kind === 'dialogue');
+            equal(chapter.clips.length, 3); assert(chapter.clips.every(clip => !clip.review));
+            const fragments = [['Nina', 'If you open that door,'], ['Storyteller', 'She points at the handle.'], ['Nina Weber', 'you will regret it.'], ['Storyteller', 'She lowers her hand.'], ['Nina', 'Trust me!']];
+            for (const [index, [speaker, text]] of fragments.entries()) {
+                if (index) await joined.action('next');
+                equal(joined.root.querySelector('.vn-speaker').textContent, speaker);
+                assert(joined.root.querySelector('.vn-text').textContent.includes(text));
+            }
+            assert((await joined.speech.sourceSamples(true)).length > 0);
+            equal(context.chat[0].mes, source);
+        } finally { joined.dispose(); }
+    });
 }

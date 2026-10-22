@@ -142,6 +142,14 @@ Automated checks cover prompt construction, registry names, transcript alignment
 
 ## Whole-language voice batches
 
+When narration separates two fragments from the same character in the same language, Fish receives one continuous
+utterance: `<|speaker:0|>[angry] Open that door, [serious] and you will regret it.` A fragment ending in a full stop
+is joined too. There is no repeated speaker marker or newline between those fragments; each keeps its own emotion
+direction. A joined utterance stays together even across the short-chapter size target. Original VN lines, word
+timestamps, individual clip cuts and narration playback remain separate and retain their story order. Muting narrator
+voicing does not prevent joining. Another character's dialogue (including silent dialogue), thoughts, artifacts, scene
+commands/headers, a language change or deselecting an intermediate fragment ends the join.
+
 Whole non-English utterances automatically start a separate Fish request. Within each narration/dialogue group, consecutive voiced utterances in the same detected language share that request, including different dialogue characters, until the chapter-size limit. English resumes in a new request. Disabling **Split into short chapters** removes the size split; it still keeps languages and narration/dialogue separate. The existing parallel queue, cancellation, timestamp alignment and audio cache preserve each clip's original story position. No new server installation is required.
 
 For example, these lines create three batches: **English / German + German / English**:
