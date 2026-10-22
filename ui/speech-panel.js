@@ -15,9 +15,10 @@ export class SpeechPanel {
         const keyRow = element('label', '', 'vn-setting'); keyRow.append(element('span', 'Fish API key'));
         this.keyInput = element('input'); this.keyInput.type = 'password'; this.keyInput.autocomplete = 'new-password'; this.keyInput.placeholder = 'Saved in SillyTavern’s secret store'; keyRow.append(this.keyInput); this.node.append(keyRow);
         const credentialActions = element('div', '', 'vn-settings-actions');
+        const workbench = element('a', 'Open voice workbench ↗', 'menu_button'); workbench.href = new URL('../playground/index.html', import.meta.url).href; workbench.target = '_blank'; workbench.rel = 'noopener';
         credentialActions.append(this.button('Save API key', async () => { const value = this.keyInput.value; this.keyInput.value = ''; await engine.saveKey(value); }),
             this.button('Remove API key', () => engine.removeKey()), this.button('Check bridge', () => engine.bridgeStatus()),
-            this.button('Check Praat', () => engine.praatStatus())); this.node.append(credentialActions);
+            this.button('Check Praat', () => engine.praatStatus()), workbench); this.node.append(credentialActions);
         const options = element('details'); options.append(element('summary', 'Voice generation and playback'));
         this.fields = new Map();
         for (const definition of [

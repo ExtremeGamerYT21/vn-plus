@@ -68,6 +68,16 @@ Use the SillyTavern application folder containing `config.yaml` and `src/`, not 
 
 Open **Extensions → Visual Novel+ → Fish Audio voices**, check the bridge, save the key, and enable voices. Save/remove controls manage only VN+’s Fish key. The form clears the typed key after submission and never retrieves the stored value.
 
+## Standalone voice workbench
+
+Choose **Open voice workbench** in VN+ voice settings, or open `/scripts/extensions/third-party/vn-plus/playground/index.html` on your SillyTavern server. The separate page uses your existing local bridge and saved Fish key; keep SillyTavern running. No additional server, build, or API-key entry is needed.
+
+Enter a voice ID (or Fish voice-page URL) and sample text, then **Generate original**. The default model is S2.1 Pro Free; the paid model must be selected explicitly. Generation uses the selected model's normal account usage. You can also **Load audio** from a local recording without a Fish call. Audio stays in memory and is cleared when the page closes.
+
+Pitch, formants and pitch variation use the same bounds and local Praat transformation as character `ttsYoungify`. Auto-apply reprocesses the same original after slider changes; turn it off to apply manually. The last few configurations are cached. Original/Processed buttons (or A/B outside text fields) switch listening sources at the same playhead position. The page shows separate waveforms, duration, processing notes and **estimated** median voiced pitch; unvoiced clips may have no pitch estimate. Applying Praat makes no additional Fish request. A failed effect is shown as an error and never passed off as processed audio.
+
+Download original/processed WAV files or **Copy settings** into the character's `properties.json`. The page never edits character files or chat data. It remembers only the voice ID, sample text and selected controls in browser-local preferences; it never reads or stores your API key.
+
 ## Younger character voices with local Praat
 
 Set `ttsYoungify` in the character's `properties.json` (or its registry override). It is off when omitted:
