@@ -1,8 +1,17 @@
 const word = "[\\p{L}][\\p{L}\\p{M}'’.-]*";
 const subject = `${word}(?:[ \\t]+${word}){0,4}`;
-const verb = '(?:said|says|asked|asks|replied|replies|answered|answers|repeated|repeats|added|adds|continued|continues|whispered|whispers|muttered|mutters|murmured|murmurs|shouted|shouts|yelled|yells|snapped|snaps|remarked|remarks|called|calls|noted|notes|responded|responds|exclaimed|exclaims|insisted|insists|explained|explains)';
+const verbs = 'said|says|asked|asks|replied|replies|answered|answers|repeated|repeats|added|adds|continued|continues|whispered|whispers|muttered|mutters|murmured|murmurs|shouted|shouts|yelled|yells|snapped|snaps|remarked|remarks|called|calls|noted|notes|responded|responds|exclaimed|exclaims|insisted|insists|explained|explains'.split('|');
+const verb = `(?:${verbs.join('|')})`;
 const delivery = '(?:quietly|softly|flatly|dryly|sharply|firmly|briskly|calmly|loudly|slowly|quickly|gently|angrily|sadly|happily|wearily|evenly|tersely|simply|again|back)';
 const attribution = new RegExp(`^(?:${subject}(?:[ \\t]+${delivery})?[ \\t]+${verb}|${verb}[ \\t]+${subject})(?:[ \\t]+${delivery}){0,2}[.!?,;:]?$`, 'iu');
+const partialAttribution = new RegExp(`^${subject}[ \\t]+(${word})$`, 'u');
+export function isDialogueAttribution(text, partial = false) {
+    const tail = String(text || '').trim().replace(/^[,—–-]\s*/, '');
+    if (tail.length > 240) return false;
+    if (!partial) return attribution.test(tail);
+    const match = partialAttribution.exec(tail);
+    return !!match && verbs.some(value => value.startsWith(match[1].toLowerCase()) && value !== match[1].toLowerCase());
+}
 
 /** Ignore quote/emphasis wrappers and delivery tags when checking an interrupted utterance. */
 export const endsWithEmDash = text => /—$/.test(String(text || '').replace(/\s*\[[^\]\r\n]*\]\s*$/, '').replace(/[\s"”'’)*_]+$/u, ''));
@@ -29,7 +38,7 @@ export function stripDialogueAttribution(text) {
         let escapes = 0; for (let at = index - 1; value[at] === '\\'; at--) escapes++;
         if (escapes % 2) continue;
         const tail = value.slice(index + 1).trim().replace(/^[,—–-]\s*/, '');
-        return tail.length <= 240 && attribution.test(tail) ? value.slice(0, index + 1) : text;
+        return isDialogueAttribution(tail) ? value.slice(0, index + 1) : text;
     }
     return text;
 }

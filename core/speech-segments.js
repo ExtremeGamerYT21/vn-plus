@@ -94,7 +94,9 @@ export function speechSegments(timeline, registry, sourceId, options = {}) {
         if (line.character === 'narrator') continue;
         if (previousDialogue && line.character === previousDialogue.character && line.voice === previousDialogue.voice && line.language === previousDialogue.language) {
             const between = timeline.beats.slice(previousDialogue.beat + 1, line.beat);
-            if (between.length && between.every(({ token }) => !token.thought && (token.type === 'narration' || token.type === 'dialogue' && registry.isNarrator(token.character)))) line.continuationOf = previousDialogue.id;
+            const group = timeline.beats[line.beat].token.dialogueGroup;
+            const samePassage = group !== undefined && group === timeline.beats[previousDialogue.beat].token.dialogueGroup;
+            if ((between.length || samePassage) && between.every(({ token }) => !token.thought && (token.type === 'narration' || token.type === 'dialogue' && registry.isNarrator(token.character)))) line.continuationOf = previousDialogue.id;
         }
         previousDialogue = line;
     }

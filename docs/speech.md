@@ -150,6 +150,12 @@ timestamps, individual clip cuts and narration playback remain separate and reta
 voicing does not prevent joining. Another character's dialogue (including silent dialogue), thoughts, artifacts, scene
 commands/headers, a language change or deselecting an intermediate fragment ends the join.
 
+Speaker-labelled paragraphs can mix quoted dialogue and unquoted prose on the same line. For example,
+`Professor: "The point," he says, as he points at the door, "is that you listen." He steps back.` becomes separate
+character and narration beats. Only the quoted fragments enter the character's joined Fish utterance; prose uses
+the narrator's voice setting. Simple attributions such as `she repeated` are still omitted. Nested/escaped quotes
+remain inside speech, and unfinished quoted fragments are withheld while streaming. Original chat text is preserved.
+
 Whole non-English utterances automatically start a separate Fish request. Within each narration/dialogue group, consecutive voiced utterances in the same detected language share that request, including different dialogue characters, until the chapter-size limit. English resumes in a new request. Disabling **Split into short chapters** removes the size split; it still keeps languages and narration/dialogue separate. The existing parallel queue, cancellation, timestamp alignment and audio cache preserve each clip's original story position. No new server installation is required.
 
 For example, these lines create three batches: **English / German + German / English**:

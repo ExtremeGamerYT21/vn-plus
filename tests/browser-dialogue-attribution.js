@@ -1,4 +1,5 @@
 import { chapterRequests } from '../core/speech-segments.js';
+import { inlinePassage, inlineDialogue, inlineNarration } from './inline-narration-fixture.js';
 
 export async function runDialogueAttributionChecks({ check, assert, equal, eventually, context, mountChat, makeController }) {
     const raw = 'PRIVATE\n/////\nNina: "Two millimetres," she repeated. [flat]\nYou straighten up.';
@@ -21,4 +22,27 @@ export async function runDialogueAttributionChecks({ check, assert, equal, event
             equal(context.chat[0].mes, raw);
         });
     } finally { controller.dispose(); }
+    await check('mixed quoted paragraphs display and voice their narration separately while character fragments remain one utterance', async () => {
+        const raw = `PRIVATE\n/////\nProfessor: ${inlinePassage} [stern]`;
+        context.chatId = 'inline-narration'; context.chat = [{ mes: raw }]; mountChat();
+        const mixed = makeController();
+        Object.assign(mixed.settings, { reducedMotion: true, typewriterEffect: false, autoAdvance: false, autoCreateCharacters: false });
+        mixed.settings.characters.professor = { displayName: 'Professor', voiceId: 'professor-test' };
+        mixed.settings.characters.narrator = { displayName: 'Storyteller', voiceId: 'story-test' };
+        Object.assign(mixed.settings.tts, { enabled: false, autoGenerate: false, narratorEnabled: true });
+        try {
+            await mixed.open(0);
+            const plan = chapterRequests(mixed.speech.prepared.segments, mixed.settings.tts), dialogue = plan.find(chapter => chapter.kind === 'dialogue');
+            equal(dialogue.body.text.match(/<\|speaker:/g).length, 1); assert(!/says|desk|drops/.test(dialogue.body.text));
+            equal(plan.find(chapter => chapter.kind === 'narration').body.reference_id, ['story-test']);
+            const texts = inlineDialogue.flatMap((text, index) => index < inlineNarration.length ? [text, inlineNarration[index]] : [text]);
+            for (const [index, text] of texts.entries()) {
+                if (index) await mixed.action('next');
+                equal(mixed.root.querySelector('.vn-text').textContent, text);
+                equal(mixed.root.querySelector('.vn-speaker').textContent, index % 2 ? 'Storyteller' : 'Professor');
+            }
+            mixed.panel('transcript'); assert(mixed.root.querySelector('.vn-panel').textContent.includes(inlineNarration[1]));
+            equal(context.chat[0].mes, raw);
+        } finally { mixed.dispose(); }
+    });
 }

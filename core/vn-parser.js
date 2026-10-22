@@ -2,6 +2,7 @@ import { isNarratorName } from './character-registry.js';
 import { parseSceneHeader } from './scene-context.js';
 import { parseJournal } from './journal-format.js';
 import { stripDialogueAttribution } from './dialogue-text.js';
+import { quotedDialogueParts } from './quoted-dialogue.js';
 const COMMANDS = new Set(['BACKGROUND', 'MUSIC', 'AMBIENT', 'SFX', 'FADE', 'FLASH', 'SHAKE', 'TEXT', 'ENTER', 'EXIT', 'MODE', 'CAMERA', 'TINT', 'SCENE', 'VISUAL']);
 const LEGACY = { SOUNDFX: 'SFX' };
 const ROOT_HTML = /^\s*(?:<!doctype\s+html\b|<(?:html|article|section|div|main|svg|table|canvas|figure|pre|p|style|h[1-6]|details)\b)/i;
@@ -19,8 +20,9 @@ function thoughtWrapper(text) {
 }
 function completedDialogue(text) {
     const value = stripDialogueAttribution(text.trim().replace(/\s*\[[^\]\r\n]+\]\s*$/, '')).trim();
-    const closing = { '"': '"', '“': '”', "'": "'", '‘': '’' }[value[0]];
-    return closing ? value.length > 1 && value.endsWith(closing) : thoughtWrapper(value) === true || /\[[^\]]+\]\s*$/.test(text);
+    const quoted = quotedDialogueParts(value);
+    return quoted ? quoted.complete && !(quoted.parts.at(-1)?.type === 'narration' && /[,;:—–]$/.test(quoted.parts.at(-1).text))
+        : thoughtWrapper(value) === true || /\[[^\]]+\]\s*$/.test(text);
 }
 
 /** Only call with splitMessage(...).pov. Never with a raw combined message. */
@@ -40,6 +42,23 @@ export function parsePOV(pov) {
             const tag = /\s*\[([^\]\r\n]+)\][ \t]*(?:\r?\n)?$/.exec(text);
             if (tag) { direction = tag[1].trim(); emotion = direction.toLowerCase(); text = text.slice(0, tag.index); }
             text = stripDialogueAttribution(text);
+            const quoted = quotedDialogueParts(text);
+            if (quoted && !quoted.complete) {
+                errors.push({ line: current.line, message: 'Incomplete quoted dialogue withheld.' }); current = null; return;
+            }
+            if (quoted?.mixed && !isNarratorName(current.character)) {
+                const expanded = [];
+                for (const part of quoted.parts) {
+                    const line = current.line + (text.slice(0, part.offset).match(/\n/g)?.length || 0);
+                    if (part.type === 'narration') { expanded.push({ type: 'narration', text: part.text, line }); continue; }
+                    const internal = thoughtWrapper(part.text.slice(1, -1).trim());
+                    if (internal === null) { errors.push({ line, message: 'Incomplete internal thought withheld.' }); current = null; return; }
+                    const hint = part.direction || direction;
+                    expanded.push({ ...current, text: part.text, line, dialogueGroup: current.line, emotion: hint?.toLowerCase() || emotion,
+                        ...(hint ? { direction: hint } : {}), ...(internal ? { thought: true } : {}) });
+                }
+                tokens.push(...expanded); current = null; return;
+            }
             const quote = text.trim()[0];
             const closing = { '"': '"', '“': '”', "'": "'", '‘': '’' }[quote];
             if (closing && (text.trim().length < 2 || !text.trim().endsWith(closing))) {
