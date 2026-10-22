@@ -87,8 +87,10 @@ test('Praat failure keeps original available and rejects stale/cancelled process
     const chapter = { original: new Float32Array(10), clips: [{ id: 'error:1', line: engine.prepared.segments[1], start: 0, end: 10 / SAMPLE_RATE }], words: [] };
     engine.job = { chapters: [chapter], status: 'complete' };
     try {
-        await assert.rejects(engine.clipSamples('error:1'), /Praat unavailable/);
-        assert.equal(engine.lineStatus(1).state, 'failed'); assert.equal((await engine.clipSamples('error:1', false)).length, 10);
+        assert.equal((await engine.clipSamples('error:1')).length, 10);
+        assert.equal(engine.lineStatus(1).state, 'ready'); assert.equal((await engine.clipSamples('error:1', false)).length, 10);
+        const result = chapter.processed.results.get('error:1'); assert.match(result.youngifyError, /Praat unavailable/);
+        assert.match(result.notes.join(' '), /unmodified voice/); assert.ok(!chapter.processingError);
         h.settings.characters.jason_weber.ttsYoungify = false;
         engine.prepared.segments = speechSegments(h.timeline, h.registry, 'error', h.settings.tts);
         assert.equal(engine.lineStatus(1).state, 'generating'); await engine.ensureProcessed(chapter); assert.equal(engine.lineStatus(1).state, 'ready');

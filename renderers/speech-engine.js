@@ -80,7 +80,7 @@ export class SpeechEngine {
             this.autoAttempts.add(key);
             if (this.autoAttempts.size > 32) this.autoAttempts.delete(this.autoAttempts.values().next().value);
             // One attempt per finalized response/configuration. Failures require an explicit retry.
-            void this.generate().catch(error => { this.notify(error.message); if (this.pending) { this.stop('failed'); this.onEnded?.(); } });
+            void this.generate({ retryEffects: false }).catch(error => { this.notify(error.message); if (this.pending) { this.stop('failed'); this.onEnded?.(); } });
         } catch (error) { this.notify(error.message); }
     }
     lineStatus(beat, next = false) {
@@ -113,7 +113,11 @@ export class SpeechEngine {
     key(plan) { return JSON.stringify([this.prepared.signature, this.settings.tts.model, plan.map(chapter => chapter.body)]); }
     selectCachedJob() { try { this.job = this.cache.get(this.key(this.plan())) || null; } catch { this.job = null; } }
     include(id, value) { if (value) this.excluded.delete(id); else this.excluded.add(id); this.cancel(); this.selectCachedJob(); this.notify(); }
-    async generate() {
+    effectWarning(job) {
+        const count = job.chapters.reduce((sum, chapter) => sum + [...(chapter.processed?.results.values() || [])].filter(result => result.youngifyError).length, 0);
+        return count ? ` ${count} Praat adjustment(s) unavailable; using those characters' unmodified voices. See Voices for details.` : '';
+    }
+    async generate({ retryEffects = true } = {}) {
         if (!this.settings.tts.enabled) throw new Error('Enable Fish Audio voices first.');
         if (this.running) return this.running;
         const plan = this.plan(), key = this.key(plan), settings = speechSettings(this.settings.tts);
@@ -121,13 +125,16 @@ export class SpeechEngine {
         if (!job) { job = { key, sourceId: this.prepared.sourceId, plan, chapters: [], status: 'ready' }; this.cache.set(key, job); this.trimCache(job); }
         this.job = job;
         if (job.chapters.length === plan.length) {
+            if (retryEffects) for (const chapter of job.chapters) {
+                if ([...(chapter.processed?.results.values() || [])].some(result => result.youngifyError)) chapter.processed = null;
+            }
             const abort = new AbortController(); this.abort = abort; job.run = abort;
             const reuse = async () => {
                 try {
                     await Promise.all(job.chapters.map(chapter => this.ensureProcessed(chapter, abort.signal).catch(error => {
                         if (error.name === 'AbortError') throw error;
                     })));
-                    if (!abort.signal.aborted && job.run === abort) { job.status = 'complete'; this.notify('Using the completed voice recording; no new Fish request.'); }
+                    if (!abort.signal.aborted && job.run === abort) { job.status = 'complete'; this.notify('Using the completed voice recording; no new Fish request.' + this.effectWarning(job)); }
                 } finally { if (this.abort === abort) { this.abort = null; this.running = null; } }
                 return job;
             };
@@ -186,7 +193,7 @@ export class SpeechEngine {
                 if (failure) throw failure;
                 if (job.run !== abort) return job;
                 job.status = 'complete'; const reviews = job.chapters.flatMap(chapter => chapter.clips).filter(clip => clip.review).length;
-                publish((reviews ? `Generation complete. ${reviews} dialogue cuts need timing review before playback.` : 'Voices ready. VN playback can use the prepared dialogue clips.') + legacy);
+                publish((reviews ? `Generation complete. ${reviews} dialogue cuts need timing review before playback.` : 'Voices ready. VN playback can use the prepared dialogue clips.') + this.effectWarning(job) + legacy);
             } catch (error) {
                 if (job.run === abort) {
                     job.status = error.name === 'AbortError' ? 'cancelled' : 'failed';
@@ -222,30 +229,63 @@ export class SpeechEngine {
             return await this.youngify(samples, options, signal);
         } finally { this.activeEffects--; this.effectQueue.shift()?.start(); }
     }
-    async ensureProcessed(chapter, signal) {
-        const key = this.processingKey(chapter); if (chapter.processed?.key === key) return chapter.processed;
-        if (chapter.processing?.key === key) return chapter.processing.promise;
-        const settings = speechSettings(this.settings.tts);
-        const effects = new Map(chapter.clips.map(clip => [clip.id, this.lineEffects(clip)]));
-        const promise = this.process(chapter, settings, signal).then(async results => {
-            const adjusted = await Promise.all(results.map(async result => {
-                const options = effects.get(result.id); if (!options) return result;
-                const changed = await this.processVoice(result.samples, options, signal);
-                if (changed.samples.length !== result.samples.length) throw new Error('Praat changed clip duration. Original audio remains available.');
-                // Pitch/formant processing may raise peaks. Retain the configured safety ceiling.
-                let peak = 0; for (const value of changed.samples) { if (!Number.isFinite(value)) throw new Error('Praat returned invalid audio.'); peak = Math.max(peak, Math.abs(value)); }
-                const ceiling = 10 ** (Math.max(-12, Math.min(0, settings.ceiling)) / 20), gain = peak > ceiling ? ceiling / peak : 1;
-                const samples = changed.samples.map(value => value * gain);
-                return { ...result, samples, notes: [...(result.notes || []), ...(changed.notes || [])] };
-            }));
+    async adjustVoice(result, options, settings, signal) {
+        if (!options) return result;
+        try {
+            const changed = await this.processVoice(result.samples, options, signal);
+            if (!(changed.samples instanceof Float32Array) || changed.samples.length !== result.samples.length) throw new Error('Praat changed clip duration.');
+            let peak = 0;
+            for (const value of changed.samples) {
+                if (!Number.isFinite(value)) throw new Error('Praat returned invalid audio.');
+                peak = Math.max(peak, Math.abs(value));
+            }
+            const ceiling = 10 ** (Math.max(-12, Math.min(0, settings.ceiling)) / 20), gain = peak > ceiling ? ceiling / peak : 1;
+            return { ...result, samples: changed.samples.map(value => value * gain), notes: [...(result.notes || []), ...(changed.notes || [])] };
+        } catch (error) {
+            if (signal?.aborted || error.name === 'AbortError') throw error;
+            // A local optional effect must never silence this actor or the other speakers.
+            return { ...result, youngifyError: error.message, notes: [...(result.notes || []), `Praat adjustment skipped; playing this character's unmodified voice. ${error.message}`] };
+        }
+    }
+    ensureProcessed(chapter, signal, id = null) {
+        const key = this.processingKey(chapter);
+        if (chapter.processed?.key === key && (chapter.processed.complete || id && chapter.processed.results.has(id))) {
+            return Promise.resolve(id ? chapter.processed.results.get(id) : chapter.processed);
+        }
+        const lineResult = state => state.ready.then(() => {
+            const line = state.clips.get(id); if (!line) throw new Error('Processed clip is unavailable.'); return line;
+        });
+        if (chapter.processing?.key === key) return id ? lineResult(chapter.processing) : chapter.processing.promise;
+        const settings = speechSettings(this.settings.tts), effects = new Map(chapter.clips.map(clip => [clip.id, this.lineEffects(clip)]));
+        let ready, failed;
+        const state = { key, clips: new Map(), ready: new Promise((resolve, reject) => { ready = resolve; failed = reject; }) };
+        // Either the whole batch or an individual line may be the only consumer.
+        state.ready.catch(() => {});
+        const current = () => {
             if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
             if (key !== this.processingKey(chapter)) throw new Error('Finishing settings changed. Play again to use the new settings.');
-            chapter.processed = { key, results: new Map(adjusted.map(result => [result.id, result])) }; chapter.processingError = null; chapter.processingErrorKey = null; return chapter.processed;
+        };
+        state.promise = Promise.resolve().then(() => { current(); return this.process(chapter, settings, signal); }).then(async results => {
+            current();
+            const processed = { key, results: new Map(), complete: false }; chapter.processed = processed;
+            for (const result of results) {
+                const promise = this.adjustVoice(result, effects.get(result.id), settings, signal).then(adjusted => {
+                    current(); processed.results.set(result.id, adjusted);
+                    if (this.job?.chapters.includes(chapter)) this.notify();
+                    return adjusted;
+                });
+                state.clips.set(result.id, promise);
+            }
+            ready();
+            await Promise.all(state.clips.values()); current();
+            processed.complete = true; chapter.processingError = null; chapter.processingErrorKey = null; return processed;
         }).catch(error => {
+            failed(error);
             if (error.name !== 'AbortError' && key === this.processingKey(chapter)) { chapter.processingError = error.message; chapter.processingErrorKey = key; }
             throw error;
-        }).finally(() => { if (chapter.processing?.key === key) chapter.processing = null; });
-        chapter.processing = { key, promise }; return promise;
+        }).finally(() => { if (chapter.processing === state) chapter.processing = null; });
+        state.promise.catch(() => {});
+        chapter.processing = state; return id ? lineResult(state) : state.promise;
     }
     configurationChanged() {
         this.cancel();
@@ -269,7 +309,7 @@ export class SpeechEngine {
     }
     async clipSamples(id, processed = true) {
         const found = this.clip(id); if (!found || found.clip.review) throw new Error('Review this segment’s timing before playing or exporting a voice clip.');
-        if (processed) { const result = (await this.ensureProcessed(found.chapter)).results.get(id); if (!result) throw new Error('Processed clip is unavailable.'); return result.samples; }
+        if (processed) return (await this.ensureProcessed(found.chapter, undefined, id)).samples;
         return found.chapter.original.slice(Math.round(found.clip.start * SAMPLE_RATE), Math.round(found.clip.end * SAMPLE_RATE));
     }
     async play(id, processed = true, existing = null) {
