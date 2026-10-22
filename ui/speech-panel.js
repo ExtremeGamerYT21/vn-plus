@@ -47,17 +47,19 @@ export class SpeechPanel {
         finishing.append(element('p', 'Optional younger voice: set "ttsYoungify": true in a character’s properties.json. Requires the local Praat installation; Check Praat verifies it. Adjust pitchSemitones (default 4), formantRatio (1.15), and pitchRange (1) with a ttsYoungify options object. Applies per character, including narrator-voice fallback, without changing speed or requesting Fish again. Original audio remains available.', 'vn-hint'));
         const actions = element('div', '', 'vn-settings-actions');
         this.generateButton = this.button('Generate selected dialogue', async () => { await callbacks.prepare(); await engine.generate(); });
+        this.effectsButton = this.button('Apply latest voice effects', async () => { await callbacks.prepare(); await engine.reprocessCachedEffects(); });
+        this.effectsButton.title = 'Reload character properties and rebuild cached voice effects without another Fish synthesis request.';
         actions.append(this.button('Prepare selected dialogue', () => callbacks.prepare()), this.generateButton,
-            this.button('Cancel generation', () => engine.cancel()), this.button('Stop voice', () => engine.stop())); this.node.append(actions);
+            this.effectsButton, this.button('Cancel generation', () => engine.cancel()), this.button('Stop voice', () => engine.stop())); this.node.append(actions);
         this.status = element('p', '', 'vn-speech-status'); this.status.role = 'status'; this.node.append(this.status);
         this.segments = element('div', '', 'vn-speech-segments'); this.recordings = element('div', '', 'vn-speech-recordings'); this.node.append(this.segments, this.recordings);
         this.unsubscribe = engine.onChange(() => this.refresh()); this.refresh();
     }
     button(label, callback) {
         const button = element('button', label); button.type = 'button'; button.addEventListener('click', async () => {
-            button.disabled = true;
+            button.disabled = true; button.dataset.busy = 'true';
             try { await callback(); } catch (error) { this.engine.notify(error.message); }
-            finally { button.disabled = false; }
+            finally { delete button.dataset.busy; button.disabled = false; if (button === this.effectsButton || button === this.generateButton) this.refresh(); }
         }); return button;
     }
     field(container, [key, label, type, min, max]) {
@@ -83,16 +85,21 @@ export class SpeechPanel {
     }
     refresh() {
         const engine = this.engine; this.status.textContent = engine.status;
-        this.generateButton.disabled = !!engine.running;
+        this.generateButton.disabled = !!engine.running || !!this.generateButton.dataset.busy;
+        this.effectsButton.disabled = !!engine.running || !!this.effectsButton.dataset.busy;
         this.generateButton.textContent = engine.job?.chapters.length && engine.job.chapters.length < engine.job.plan.length ? 'Generate remaining chapters' : 'Generate selected dialogue';
         for (const [key, { input, type }] of this.fields) { if (type === 'volume') syncVolumeSlider(input, engine.settings.tts[key]); else if (type === 'checkbox') input.checked = !!engine.settings.tts[key]; else input.value = engine.settings.tts[key]; }
-        const signature = JSON.stringify([engine.prepared?.signature, engine.prepared?.segments.map(line => line.youngify), [...engine.excluded]]);
+        const effectStates = engine.prepared?.segments.map(line => engine.voiceEffectStatus(line.id));
+        const signature = JSON.stringify([engine.prepared?.signature, engine.prepared?.segments.map(line => line.youngify), effectStates, [...engine.excluded]]);
         if (signature !== this.segmentSignature) {
             this.segmentSignature = signature; this.segments.replaceChildren();
             for (const segment of engine.prepared?.segments || []) {
                 const label = element('label', '', 'vn-speech-segment'), input = element('input'); input.type = 'checkbox'; input.checked = !engine.excluded.has(segment.id);
                 input.addEventListener('change', () => engine.include(segment.id, input.checked)); label.append(input, element('span', `${segment.name}: ${segment.text}`));
-                const voice = element('small', `Voice: ${segment.voice} · ${speechLanguageName(segment.language || 'en')}${segment.youngify ? ` · Praat +${segment.youngify.pitchSemitones} semitones` : ''}`, 'vn-hint'); label.append(voice); this.segments.append(label);
+                const voice = element('small', `Voice: ${segment.voice} · ${speechLanguageName(segment.language || 'en')}${segment.youngify ? ` · Praat requested +${segment.youngify.pitchSemitones} semitones` : ''}`, 'vn-hint'); label.append(voice);
+                const effect = engine.voiceEffectStatus(segment.id);
+                if (effect) { const status = element('small', `Praat ${effect.state}: ${effect.note}`, 'vn-hint'); status.dataset.voiceEffect = effect.state; status.dataset.voiceEffectId = segment.id; label.append(status); }
+                this.segments.append(label);
             }
         }
         this.recordings.replaceChildren(); if (!engine.job?.chapters.length) return;

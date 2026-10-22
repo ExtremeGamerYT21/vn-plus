@@ -4,6 +4,7 @@ import { runNarratorVoiceChecks } from './browser-narrator-voices.js';
 import { runManualBackgroundChecks } from './browser-manual-backgrounds.js';
 import { runDialogueTagChecks } from './browser-dialogue-tags.js';
 import { runDialogueEmotionChecks } from './browser-dialogue-emotions.js';
+import { runVoiceEffectChecks } from './browser-voice-effects.js';
 
 export async function runLiveVoiceChecks({ check, assert, equal, eventually, context, mountChat, makeController }) {
     const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -169,4 +170,5 @@ export async function runLiveVoiceChecks({ check, assert, equal, eventually, con
     await runDialogueTagChecks({ check, assert, equal, eventually, context, mountChat, makeController });
     await runDialogueEmotionChecks({ check, assert, equal, eventually, context, mountChat, makeController });
     await runManualBackgroundChecks({ check, assert, equal, eventually, context, mountChat, makeController });
+    await runVoiceEffectChecks({ check, assert, equal, eventually });
 }

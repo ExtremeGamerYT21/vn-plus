@@ -217,6 +217,35 @@ export class SpeechEngine {
         return JSON.stringify([settings, chapter.clips.map(clip => [clip.id, clip.start, clip.end, clip.review, this.lineEffects(clip)]), chapter.noise]);
     }
     lineEffects(clip) { return (this.prepared?.segments.find(line => line.id === clip.id) || clip.line)?.youngify || null; }
+    voiceEffectStatus(id) {
+        const line = this.prepared?.segments.find(line => line.id === id); if (!line?.youngify) return null;
+        const found = this.clip(id), key = found && this.processingKey(found.chapter);
+        if (found?.clip.review) return { state: 'review', note: 'Review this clip’s alignment before applying Praat.' };
+        const result = found && found.chapter.processed?.key === key ? found.chapter.processed.results.get(id) : null;
+        if (result?.youngifyError) return { state: 'fallback', note: `Unmodified voice: ${result.youngifyError}` };
+        if (result) return { state: result.youngifyApplied ? 'applied' : 'unchanged', note: (result.notes || []).filter(note => note.startsWith('Praat:')).join(' ') || 'Praat returned unchanged audio.' };
+        if (found?.chapter.processingError && found.chapter.processingErrorKey === key) return { state: 'failed', note: found.chapter.processingError };
+        return { state: found?.chapter.processing?.key === key ? 'processing' : 'pending', note: 'Requested settings have not yet been applied to this cached clip.' };
+    }
+    async reprocessCachedEffects() {
+        const job = this.job;
+        if (!job?.chapters.length) { this.notify('Latest character voice settings loaded. Generate selected dialogue to create its recording.'); return false; }
+        if (this.running) await this.running;
+        if (this.job !== job) throw new Error('The selected voice recording changed. Apply its settings again.');
+        this.stop(); const abort = new AbortController(); this.abort = abort;
+        const run = async () => {
+            try {
+                this.notify('Applying latest voice effects to cached recordings; no Fish synthesis request.');
+                for (const chapter of job.chapters) {
+                    if ([...(chapter.processed?.results.values() || [])].some(result => result.youngifyError)) chapter.processed = null;
+                }
+                await Promise.all(job.chapters.map(chapter => this.ensureProcessed(chapter, abort.signal)));
+                if (!abort.signal.aborted && this.job === job) this.notify('Latest voice effects applied to cached recordings; no Fish synthesis request.' + this.effectWarning(job));
+                return true;
+            } finally { if (this.abort === abort) { this.abort = null; this.running = null; if (this.job === job) this.notify(); } }
+        };
+        this.running = run(); return this.running;
+    }
     async processVoice(samples, options, signal) {
         await new Promise((resolve, reject) => {
             const entry = { start: () => { signal?.removeEventListener('abort', abort); this.activeEffects++; resolve(); } };
@@ -240,7 +269,8 @@ export class SpeechEngine {
                 peak = Math.max(peak, Math.abs(value));
             }
             const ceiling = 10 ** (Math.max(-12, Math.min(0, settings.ceiling)) / 20), gain = peak > ceiling ? ceiling / peak : 1;
-            return { ...result, samples: changed.samples.map(value => value * gain), notes: [...(result.notes || []), ...(changed.notes || [])] };
+            const youngifyApplied = changed.samples.some((value, index) => value !== result.samples[index]);
+            return { ...result, youngifyApplied, samples: changed.samples.map(value => value * gain), notes: [...(result.notes || []), ...(changed.notes || [])] };
         } catch (error) {
             if (signal?.aborted || error.name === 'AbortError') throw error;
             // A local optional effect must never silence this actor or the other speakers.
