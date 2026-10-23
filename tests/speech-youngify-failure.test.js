@@ -14,7 +14,7 @@ async function until(predicate) {
 }
 function fixture() {
     const settings = structuredClone(DEFAULT_SETTINGS);
-    Object.assign(settings.tts, { enabled: true, narratorEnabled: true, autoGenerate: true, chapterSize: 6 });
+    Object.assign(settings.tts, { enabled: true, narratorEnabled: true, autoGenerate: true, chapterSize: 6, isolateVoices: false });
     settings.characters = { narrator: { voiceId: 'story' }, jason: { voiceId: 'jason' }, daphne: { voiceId: 'daphne', ttsYoungify: true } };
     const registry = new CharacterRegistry({ inventory: {}, json: async () => null }, settings);
     const timeline = compileTimeline(parsePOV('The door opens.\nJason: "Good morning."\nDaphne: "Hello there."').tokens, registry, settings);

@@ -27,6 +27,7 @@ export class SpeechPanel {
             ['narratorEnabled', 'Voice the narrator (off = muted)', 'checkbox'],
             ['syncText', 'Reveal dialogue with voice timing', 'checkbox'],
             ['model', 'Fish model', [{ value: 's2.1-pro-free', label: 'S2.1 Pro Free' }, { value: 's2.1-pro', label: 'S2.1 Pro (paid)' }]],
+            ['isolateVoices', 'Isolate voice IDs into separate batches', 'checkbox'],
             ['splitChapters', 'Split into short chapters', 'checkbox'], ['chapterSize', 'Spoken segments per chapter', 'number', 1, 200],
             ['parallelBatches', 'Parallel voice batches (1 = sequential)', 'number', 1, 5],
             ['temperature', 'Temperature', 'number', 0, 1], ['topP', 'Top P', 'number', 0, 1], ['speed', 'Voice speed', 'number', .5, 2],
@@ -35,6 +36,7 @@ export class SpeechPanel {
             ['timeout', 'Request timeout (seconds)', 'number', 30, 600], ['volume', 'Voice playback volume', 'volume'], ['muted', 'Mute voice playback', 'checkbox'],
         ]) this.field(options, definition);
         options.append(element('p', 'Up to 5 chapters can generate together; default 3 leaves room for other Fish API use. Takes effect on the next generation when the response has multiple chapters. Restart SillyTavern after a bridge update; older bridges use one batch at a time. Rate-limit rejections back off before retrying, with no paid-model fallback.', 'vn-hint'));
+        options.append(element('p', 'Voice isolation is on by default: each request contains one voice ID, with narration in its own track. This prevents the provider from switching between different character references inside one recording. Same-voice dialogue still batches together; parallel generation and original story order are preserved. Turn off to use multi-speaker requests.', 'vn-hint'));
         options.append(element('p', 'Whole non-English lines generate separately from English. Consecutive lines in the same detected language share a batch, within the chapter-size limit, even with chapter splitting off. Short ambiguous replies use nearby speech or the character’s ttsLanguage property. Mixed English lines keep their pronunciation rules.', 'vn-hint'));
         this.node.append(options);
         const finishing = element('details'); finishing.append(element('summary', 'Clip margins and audio finishing'));
@@ -117,6 +119,13 @@ export class SpeechPanel {
         for (const chapter of engine.job.chapters) {
             const section = element('details'); section.open = true; section.append(element('summary', `Chapter ${chapter.index + 1} · ${speechLanguageName(chapter.language || chapter.clips[0]?.line?.language || 'en')} · ${chapter.kind === 'narration' ? 'Narration' : 'Dialogue'} · ${chapter.duration.toFixed(2)} seconds`));
             section.append(this.button('Play original chapter for timing review', () => engine.playChapter(chapter.index)));
+            const request = engine.job.plan?.[chapter.index];
+            if (request) {
+                const routing = element('details', '', 'vn-voice-routing'); routing.append(element('summary', 'Voice routing and request text'));
+                routing.append(element('p', 'Compare the original chapter with its line clips. If the original uses the wrong voice despite the correct ID below, the mismatch is in the generated recording.', 'vn-hint'));
+                const payload = element('pre', JSON.stringify({ reference_id: request.body.reference_id, routing: request.routing || [], text: request.body.text }, null, 2));
+                payload.style.cssText = 'white-space:pre-wrap;overflow-wrap:anywhere;max-height:18rem;overflow:auto'; routing.append(payload); section.append(routing);
+            }
             if (chapter.processingError) section.append(element('p', chapter.processingError, 'vn-hint'));
             const notes = [...new Set([...(chapter.processed?.results.values() || [])].flatMap(result => result.notes))];
             for (const note of notes) section.append(element('p', note, 'vn-hint'));

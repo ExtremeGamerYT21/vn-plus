@@ -498,7 +498,7 @@ await check('Fish settings use property voices, protect credentials and connect 
         const data = new TextEncoder().encode(`data: ${JSON.stringify(payload)}\r\n\r\n`); let offset = 0;
         return new Response(new ReadableStream({ pull(stream) { if (offset >= data.length) return stream.close(); stream.enqueue(data.slice(offset, offset + 4093)); offset += 4093; } }), { headers: { 'Content-Type': 'text/event-stream' } });
     };
-    controller.settings.tts.enabled = true; controller.settings.tts.processing = true; controller.speech.audioFactory = () => new FakeAudio();
+    controller.settings.tts.enabled = true; controller.settings.tts.processing = true; controller.settings.tts.isolateVoices = false; controller.speech.audioFactory = () => new FakeAudio();
     controller.settings.characters = { nina: { voiceId: 'voice-nina' }, ashley: { voiceId: 'https://fish.audio/m/voice-ashley/' } };
     context.chat[0].mes = 'PRIVATE\n/////\nUnknown: "Silent."\nNina: "(Keep quiet.)" [nervous]\nNina: "Hello world." [curious]\nAshley: "Good morning." [happy]\n\nYou take a breath.';
     const stored = chatPayload(context.chat);

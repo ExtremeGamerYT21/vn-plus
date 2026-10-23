@@ -12,7 +12,7 @@ import { DEFAULT_SETTINGS } from '../ui/settings.js';
 import { SpeechEngine } from '../renderers/speech-engine.js';
 
 function fixture(source, characters = { henry: { voiceId: 'henry-voice', aliases: ['Dad'] }, jason: { voiceId: 'jason-voice' } }) {
-    const settings = structuredClone(DEFAULT_SETTINGS); settings.characters = characters; settings.tts.enabled = true;
+    const settings = structuredClone(DEFAULT_SETTINGS); settings.characters = characters; settings.tts.enabled = true; settings.tts.isolateVoices = false;
     const registry = new CharacterRegistry({ inventory: {}, json: async () => null }, settings);
     const timeline = compileTimeline(parsePOV(source).tokens, registry, settings);
     return { settings, registry, timeline, lines: speechSegments(timeline, registry, 'language-fixture', settings.tts) };

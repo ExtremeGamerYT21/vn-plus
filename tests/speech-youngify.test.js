@@ -13,7 +13,7 @@ import { registerPraat, validatePraatRequest, runPraat } from '../server/praat.m
 
 function fixture() {
     const settings = structuredClone(DEFAULT_SETTINGS);
-    Object.assign(settings.tts, { enabled: true, autoGenerate: true, narratorEnabled: true });
+    Object.assign(settings.tts, { enabled: true, autoGenerate: true, narratorEnabled: true, isolateVoices: false });
     settings.characters = { narrator: { voiceId: 'story' }, jason_weber: { aliases: ['Jason'], ttsYoungify: true }, nina: { voiceId: 'nina' } };
     const registry = new CharacterRegistry({ inventory: {}, json: async () => null }, settings);
     const timeline = compileTimeline(parsePOV('The hall is quiet.\nJason: "Hello there."\nNina: "Good morning."').tokens, registry, settings);

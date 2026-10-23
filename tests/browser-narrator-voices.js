@@ -7,7 +7,7 @@ export async function runNarratorVoiceChecks({ check, assert, equal, eventually,
     const controller = makeController(), requests = [];
     Object.assign(controller.settings, { automaticPlayback: false, autoCreateCharacters: false, autoAdvance: false, typewriterEffect: false });
     Object.assign(controller.settings.characters, { narrator: { displayName: 'Storyteller', voiceId: 'story-test' }, nina: { voiceId: 'nina-test' }, ashley: { voiceId: 'ashley-test' } });
-    Object.assign(controller.settings.tts, { enabled: true, autoGenerate: true, autoPlay: false, narratorEnabled: true, splitChapters: false, parallelBatches: 3 });
+    Object.assign(controller.settings.tts, { enabled: true, autoGenerate: true, autoPlay: false, narratorEnabled: true, splitChapters: false, parallelBatches: 3, isolateVoices: false });
     controller.speech.endpoint = async (path, options) => {
         if (path === 'status') return Response.json({ configured: true, maxParallelBatches: 5 });
         const request = JSON.parse(options.body); requests.push(request);

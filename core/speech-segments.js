@@ -6,7 +6,7 @@ import { youngifySettings } from './speech-youngify.js';
 
 export const SAMPLE_RATE = 44100;
 export const SPEECH_DEFAULTS = {
-    enabled: false, autoGenerate: false, narratorEnabled: false, autoPlay: true, syncText: true, model: 's2.1-pro-free', splitChapters: true, chapterSize: 6, parallelBatches: 3,
+    enabled: false, autoGenerate: false, narratorEnabled: false, autoPlay: true, syncText: true, model: 's2.1-pro-free', isolateVoices: true, splitChapters: true, chapterSize: 6, parallelBatches: 3,
     temperature: .7, topP: .7, speed: 1, chunkLength: 300, latency: 'normal', normalize: true,
     conditionPrevious: true, bitrate: 128, timeout: 180, volume: 1, muted: false, lead: .2, tail: .2,
     processing: true, matchVolume: true, targetRms: -20, denoise: 4, soften: 0, ceiling: -1.5, edgeFade: 5,
@@ -110,33 +110,44 @@ export function chapterRequests(segments, settings) {
     if (!segments.length) throw new Error('No voice is available. Add voiceId in character properties or characters/narrator/properties.json.');
     if (segments.length > 200) throw new Error('Select at most 200 spoken segments per generation.');
     const voiceCharacter = line => line.voiceCharacter || line.character;
+    const assigned = new Map();
+    for (const line of segments) {
+        const id = voiceCharacter(line);
+        if (assigned.has(id) && assigned.get(id) !== line.voice) throw new Error(`Conflicting voice IDs for ${line.name || id}. Prepare the scene again.`);
+        assigned.set(id, line.voice);
+    }
     if (new Set(segments.map(voiceCharacter)).size > 8) throw new Error('Select at most eight voiced characters.');
     const count = settings.splitChapters ? Math.max(1, Math.min(200, Math.floor(settings.chapterSize))) : segments.length;
     const groups = [], order = new Map(segments.map((line, index) => [line, index]));
     // Collect each role across the scene; beat IDs restore the individual clips later.
     for (const narration of [true, false]) {
-        const track = segments.filter(line => (line.character === 'narrator') === narration);
-        for (let offset = 0; offset < track.length;) {
-            const language = track[offset].language || 'en';
-            let end = offset + 1;
-            // A narration-interrupted utterance stays intact across the chapter-size target.
-            while (end < track.length && (track[end].language || 'en') === language && (end - offset < count || continuesDialogue(track[end - 1], track[end]))) end++;
-            groups.push({ kind: narration ? 'narration' : 'dialogue', language, lines: track.slice(offset, end) });
-            offset = end;
+        const role = segments.filter(line => (line.character === 'narrator') === narration);
+        const tracks = !narration && settings.isolateVoices ? [...new Set(role.map(line => line.voice))].map(voice => role.filter(line => line.voice === voice)) : [role];
+        for (const track of tracks) {
+            for (let offset = 0; offset < track.length;) {
+                const language = track[offset].language || 'en';
+                let end = offset + 1;
+                // A narration-interrupted utterance stays intact across the chapter-size target.
+                while (end < track.length && (track[end].language || 'en') === language && (end - offset < count || continuesDialogue(track[end - 1], track[end]))) end++;
+                groups.push({ kind: narration ? 'narration' : 'dialogue', language, lines: track.slice(offset, end) });
+                offset = end;
+            }
         }
     }
     groups.sort((a, b) => order.get(a.lines[0]) - order.get(b.lines[0]));
     return groups.map(({ kind, language, lines }, index) => {
         const speakers = [...new Set(lines.map(voiceCharacter))];
-        const reference_id = speakers.map(character => lines.find(line => voiceCharacter(line) === character).voice);
+        const reference_id = settings.isolateVoices ? [lines[0].voice] : speakers.map(character => lines.find(line => voiceCharacter(line) === character).voice);
+        const routing = lines.map(line => ({ id: line.id, beat: line.beat, character: line.character, name: line.name, voice: line.voice,
+            ...(line.voiceCharacter ? { voiceCharacter: line.voiceCharacter } : {}), speaker: settings.isolateVoices ? 0 : speakers.indexOf(voiceCharacter(line)) }));
         const utterances = [];
         for (const [position, line] of lines.entries()) {
             if (position && continuesDialogue(lines[position - 1], line)) utterances[utterances.length - 1] += ` ${line.synthesisText}`;
-            else utterances.push(`<|speaker:${speakers.indexOf(voiceCharacter(line))}|>${line.synthesisText}`);
+            else utterances.push(`<|speaker:${routing[position].speaker}|>${line.synthesisText}`);
         }
         const text = utterances.join('\n');
         if (text.length > 20000) throw new Error('A chapter exceeds the 20,000-character local safeguard. Use smaller chapters.');
-        return { index, kind, language, lines, speakers, body: {
+        return { index, kind, language, lines, speakers, routing, body: {
             text, reference_id, format: 'mp3', sample_rate: SAMPLE_RATE, mp3_bitrate: settings.bitrate,
             temperature: settings.temperature, top_p: settings.topP, chunk_length: settings.chunkLength,
             latency: settings.latency, normalize: settings.normalize, condition_on_previous_chunks: settings.conditionPrevious,

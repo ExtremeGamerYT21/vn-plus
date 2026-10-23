@@ -7,7 +7,7 @@ import { CharacterRegistry } from '../core/character-registry.js';
 import { DEFAULT_SETTINGS } from '../ui/settings.js';
 
 function fixture(source, characters = {}, narration = false) {
-    const settings = structuredClone(DEFAULT_SETTINGS); settings.characters = characters; settings.tts.narratorEnabled = narration;
+    const settings = structuredClone(DEFAULT_SETTINGS); settings.characters = characters; settings.tts.narratorEnabled = narration; settings.tts.isolateVoices = false;
     const registry = new CharacterRegistry({ inventory: {}, json: async () => null }, settings);
     const timeline = compileTimeline(parsePOV(source).tokens, registry, settings);
     const lines = () => speechSegments(timeline, registry, 'fallback', settings.tts);

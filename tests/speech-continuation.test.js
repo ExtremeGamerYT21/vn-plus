@@ -10,7 +10,7 @@ import { DEFAULT_SETTINGS } from '../ui/settings.js';
 
 function fixture(text, { narratorEnabled = true, chapterSize = 6, characters = {} } = {}) {
     const settings = structuredClone(DEFAULT_SETTINGS);
-    Object.assign(settings.tts, { enabled: true, narratorEnabled, chapterSize });
+    Object.assign(settings.tts, { enabled: true, narratorEnabled, chapterSize, isolateVoices: false });
     settings.characters = { narrator: { voiceId: 'story-voice', aliases: ['Storyteller'] }, nina: { voiceId: 'nina-voice', aliases: ['Nina Weber'] },
         ashley: { voiceId: 'ashley-voice' }, ...characters };
     const registry = new CharacterRegistry({ inventory: {}, json: async () => null }, settings);

@@ -11,7 +11,7 @@ import { SpeechEngine } from '../renderers/speech-engine.js';
 const source = 'The hall is quiet.\nNina: "Hello." [curious]\nAshley: "Ready?"\nYou take a breath.\nNarrator: "The door opens."\nNina: "Go."';
 function fixture(text = source, options = {}) {
     const settings = structuredClone(DEFAULT_SETTINGS);
-    Object.assign(settings.tts, { enabled: true, narratorEnabled: true, ...options });
+    Object.assign(settings.tts, { enabled: true, narratorEnabled: true, isolateVoices: false, ...options });
     settings.characters = { narrator: { displayName: 'Storyteller', aliases: ['Story Voice'], voiceId: 'narrator-voice' },
         nina: { voiceId: 'nina-voice' }, ashley: { voiceId: 'ashley-voice' } };
     const registry = new CharacterRegistry({ inventory: {}, json: async () => null }, settings);

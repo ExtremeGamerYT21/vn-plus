@@ -7,7 +7,7 @@ export async function runLanguageVoiceChecks({ check, assert, equal, eventually,
     const controller = makeController(), requests = [];
     Object.assign(controller.settings, { autoCreateCharacters: false, autoAdvance: false, typewriterEffect: false, reducedMotion: true,
         characters: { henry: { voiceId: 'henry-language-fixture' }, jason: { voiceId: 'jason-language-fixture' } } });
-    Object.assign(controller.settings.tts, { enabled: true, autoGenerate: true, autoPlay: false, chapterSize: 6, splitChapters: false, parallelBatches: 3, narratorEnabled: false });
+    Object.assign(controller.settings.tts, { enabled: true, autoGenerate: true, autoPlay: false, chapterSize: 6, splitChapters: false, parallelBatches: 3, narratorEnabled: false, isolateVoices: false });
     controller.speech.endpoint = async (path, options) => {
         if (path === 'status') return Response.json({ configured: true, maxParallelBatches: 5 });
         const request = JSON.parse(options.body); requests.push(request);

@@ -18,7 +18,7 @@ import { validateRequest, registerBridge, SECRET_KEY } from '../server/index.mjs
 
 const settings = () => structuredClone(DEFAULT_SETTINGS);
 const fixture = (text, voices = { nina: { voiceId: 'voice-nina' } }) => {
-    const config = settings(); config.characters = voices; config.tts.enabled = true;
+    const config = settings(); config.characters = voices; config.tts.enabled = true; config.tts.isolateVoices = false;
     const registry = new CharacterRegistry({ inventory: {}, json: async () => null }, config);
     const timeline = compileTimeline(parsePOV(text).tokens, registry, config); return { config, registry, timeline };
 };
@@ -150,11 +150,11 @@ test('only voiced spoken POV dialogue reaches Fish, preserving emotion direction
 });
 test('each short chapter maps only its voiced characters to fresh speaker indices', () => {
     const input = fixture('Nina: "One."\nAshley: "Two."\nAshley: "Three."\nNina: "Four."\nNina: "Five."', { nina: { voiceId: 'n' }, ashley: { voiceId: 'a' } });
-    const plan = chapterRequests(speechSegments(input.timeline, input.registry, 'scene'), { ...SPEECH_DEFAULTS, chapterSize: 2 });
+    const plan = chapterRequests(speechSegments(input.timeline, input.registry, 'scene'), { ...SPEECH_DEFAULTS, isolateVoices: false, chapterSize: 2 });
     assert.deepEqual(plan.map(chapter => chapter.body.reference_id), [['n', 'a'], ['a', 'n'], ['n']]);
     assert.match(plan[1].body.text, /^<\|speaker:0\|>Three\.\n<\|speaker:1\|>Four\./);
     assert.ok(plan.every(chapter => chapter.body.prosody.normalize_loudness));
-    assert.equal(chapterRequests(speechSegments(input.timeline, input.registry, 'scene'), { ...SPEECH_DEFAULTS, splitChapters: false }).length, 1);
+    assert.equal(chapterRequests(speechSegments(input.timeline, input.registry, 'scene'), { ...SPEECH_DEFAULTS, isolateVoices: false, splitChapters: false }).length, 1);
 });
 test('unindexed player aliases resolve to the real character voice instead of a virtual Jason override', async () => {
     const config = settings(); config.characters = { jason: { displayName: 'Jason', assetFolder: 'andrew' } }; let currentVoice = 'jason-voice-one';

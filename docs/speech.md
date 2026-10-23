@@ -142,6 +142,18 @@ Automated checks cover prompt construction, registry names, transcript alignment
 
 ## Whole-language voice batches
 
+**Isolate voice IDs into separate batches** is enabled by default. Each dialogue voice gets its own request track,
+with a single reference ID and speaker index 0. Narration stays in a separate track, even when a character borrows
+its voice. Original beat IDs, alignment, per-character Praat settings, scene exports and parallel generation retain
+story order. Chapter-size and language limits apply within each voice track; narration-interrupted utterances stay
+joined. Disable the option to use the original multi-speaker batching. This removes cross-reference switching from
+the provider request; it does not guarantee a source voice's timbre or acting.
+
+Each completed chapter has **Voice routing and request text** showing its recorded request's voice IDs, canonical
+characters, beat IDs, speaker indices and exact prompt. No API key is included. Compare **Play original chapter for
+timing review** with the individual clips to distinguish a generated-voice mismatch from a clip-boundary issue.
+Conflicting voice IDs for one canonical speaker are rejected before synthesis instead of silently using the first.
+
 When narration separates two fragments from the same character in the same language, Fish receives one continuous
 utterance: `<|speaker:0|>[angry] Open that door, [serious] and you will regret it.` A fragment ending in a full stop
 is joined too. There is no repeated speaker marker or newline between those fragments; each keeps its own emotion
@@ -158,7 +170,7 @@ remain inside speech, and unfinished quoted fragments are withheld while streami
 
 Whole non-English utterances automatically start a separate Fish request. Within each narration/dialogue group, consecutive voiced utterances in the same detected language share that request, including different dialogue characters, until the chapter-size limit. English resumes in a new request. Disabling **Split into short chapters** removes the size split; it still keeps languages and narration/dialogue separate. The existing parallel queue, cancellation, timestamp alignment and audio cache preserve each clip's original story position. No new server installation is required.
 
-For example, these lines create three batches: **English / German + German / English**:
+With voice isolation off, these lines create three batches: **English / German + German / English**:
 
 ```text
 Henry: "Do it as I say, ja?"

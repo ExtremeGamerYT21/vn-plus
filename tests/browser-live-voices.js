@@ -6,6 +6,7 @@ import { runDialogueTagChecks } from './browser-dialogue-tags.js';
 import { runDialogueEmotionChecks } from './browser-dialogue-emotions.js';
 import { runVoiceEffectChecks } from './browser-voice-effects.js';
 import { runVoicePlaygroundChecks } from './browser-voice-playground.js';
+import { runVoiceIsolationChecks } from './browser-voice-isolation.js';
 
 export async function runLiveVoiceChecks({ check, assert, equal, eventually, context, mountChat, makeController }) {
     const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -173,4 +174,5 @@ export async function runLiveVoiceChecks({ check, assert, equal, eventually, con
     await runManualBackgroundChecks({ check, assert, equal, eventually, context, mountChat, makeController });
     await runVoiceEffectChecks({ check, assert, equal, eventually });
     await runVoicePlaygroundChecks({ check, assert, equal, eventually });
+    await runVoiceIsolationChecks({ check, assert, equal, eventually, context, mountChat, makeController });
 }
