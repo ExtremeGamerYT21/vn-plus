@@ -71,7 +71,7 @@ export function parsePOV(pov) {
             }
         }
         if (text.trim()) {
-            if (current.type === 'dialogue' && isNarratorName(current.character)) tokens.push({ type: 'narration', text, line: current.line });
+            if (current.type === 'dialogue' && isNarratorName(current.character)) tokens.push({ type: 'narration', text, line: current.line, ...(direction ? { emotion, direction } : {}) });
             else tokens.push({ ...current, text, ...(current.type === 'dialogue' ? { emotion, ...(direction ? { direction } : {}), ...(thought ? { thought: true } : {}) } : {}) });
         }
         current = null;

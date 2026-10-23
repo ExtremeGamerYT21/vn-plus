@@ -6,7 +6,7 @@ import { youngifySettings } from './speech-youngify.js';
 
 export const SAMPLE_RATE = 44100;
 export const SPEECH_DEFAULTS = {
-    enabled: false, autoGenerate: false, narratorEnabled: false, autoPlay: true, syncText: true, model: 's2.1-pro-free', isolateVoices: true, splitChapters: true, chapterSize: 6, parallelBatches: 3,
+    enabled: false, autoGenerate: false, narratorEnabled: false, narratorDelivery: 'warm, expressive storytelling', autoPlay: true, syncText: true, model: 's2.1-pro-free', isolateVoices: true, splitChapters: true, chapterSize: 6, parallelBatches: 3,
     temperature: .7, topP: .7, speed: 1, chunkLength: 300, latency: 'normal', normalize: true,
     conditionPrevious: true, bitrate: 128, timeout: 180, volume: 1, muted: false, lead: .2, tail: .2,
     processing: true, matchVolume: true, targetRms: -20, denoise: 4, soften: 0, ceiling: -1.5, edgeFade: 5,
@@ -15,6 +15,7 @@ export function speechSettings(value = {}) {
     const result = { ...SPEECH_DEFAULTS };
     // Never copy unknown fields (especially credentials) into persisted settings.
     for (const key of Object.keys(result)) if (typeof value?.[key] === typeof result[key]) result[key] = value[key];
+    result.narratorDelivery = result.narratorDelivery.trim().slice(0, 160);
     result.parallelBatches = Number.isFinite(result.parallelBatches) ? Math.max(1, Math.min(5, Math.floor(result.parallelBatches))) : SPEECH_DEFAULTS.parallelBatches;
     result.volume = Number.isFinite(result.volume) ? Math.max(0, Math.min(1, result.volume)) : SPEECH_DEFAULTS.volume;
     return result;
@@ -85,6 +86,7 @@ export function speechSegments(timeline, registry, sourceId, options = {}) {
         const language = detected || previousByRole.get(narrator) || following || 'en';
         previousByRole.set(narrator, language);
         return { ...line, language, ...compileSpeechText(line.text, { direction: token.direction, emotion: token.emotion, fullNames: narrator ? [] : fullNames,
+            fixedDelivery: narrator ? options.narratorDelivery ?? SPEECH_DEFAULTS.narratorDelivery : '',
             language: language === 'en' ? props.ttsLanguage : language, vocalCues: narrator ? [] : vocalCues.get(line.beat) || [] }) };
     });
     const views = new Map(timeline.views.map((beat, index) => [beat, index]));

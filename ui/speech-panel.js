@@ -25,6 +25,7 @@ export class SpeechPanel {
             ['enabled', 'Enable Fish Audio voices', 'checkbox'], ['autoPlay', 'Play prepared clips during VN dialogue', 'checkbox'],
             ['autoGenerate', 'Automatically generate voices for completed POV responses', 'checkbox'],
             ['narratorEnabled', 'Voice the narrator (off = muted)', 'checkbox'],
+            ['narratorDelivery', 'Narrator delivery tag (blank = source only)', 'text'],
             ['syncText', 'Reveal dialogue with voice timing', 'checkbox'],
             ['model', 'Fish model', [{ value: 's2.1-pro-free', label: 'S2.1 Pro Free' }, { value: 's2.1-pro', label: 'S2.1 Pro (paid)' }]],
             ['isolateVoices', 'Isolate voice IDs into separate batches', 'checkbox'],
@@ -35,6 +36,7 @@ export class SpeechPanel {
             ['normalize', 'Normalize text', 'checkbox'], ['conditionPrevious', 'Voice consistency within each chapter', 'checkbox'],
             ['timeout', 'Request timeout (seconds)', 'number', 30, 600], ['volume', 'Voice playback volume', 'volume'], ['muted', 'Mute voice playback', 'checkbox'],
         ]) this.field(options, definition);
+        options.append(element('p', 'Narrator delivery is added at the start of every narration passage. Use a short direction, with or without brackets, such as warm, expressive storytelling or gentle, curious. Clear the field to use only source tags. Character dialogue keeps its own delivery, including characters borrowing the narrator voice. Changing this setting applies to the next generation; existing audio is unchanged.', 'vn-hint'));
         options.append(element('p', 'Up to 5 chapters can generate together; default 3 leaves room for other Fish API use. Takes effect on the next generation when the response has multiple chapters. Restart SillyTavern after a bridge update; older bridges use one batch at a time. Rate-limit rejections back off before retrying, with no paid-model fallback.', 'vn-hint'));
         options.append(element('p', 'Voice isolation is on by default: each request contains one voice ID, with narration in its own track. This prevents the provider from switching between different character references inside one recording. Same-voice dialogue still batches together; parallel generation and original story order are preserved. Turn off to use multi-speaker requests.', 'vn-hint'));
         options.append(element('p', 'Whole non-English lines generate separately from English. Consecutive lines in the same detected language share a batch, within the chapter-size limit, even with chapter splitting off. Short ambiguous replies use nearby speech or the character’s ttsLanguage property. Mixed English lines keep their pronunciation rules.', 'vn-hint'));
@@ -75,6 +77,7 @@ export class SpeechPanel {
         if (Array.isArray(type)) for (const value of type) {
             const option = element('option', typeof value === 'object' ? value.label : String(value)); option.value = typeof value === 'object' ? value.value : value; input.append(option);
         } else { input.type = type; if (type === 'number') { input.min = min; input.max = max; input.step = max <= 2 ? '.05' : '1'; } }
+        if (key === 'narratorDelivery') { input.maxLength = 160; input.placeholder = 'Blank: use source delivery only'; }
         if (type === 'checkbox') input.checked = this.engine.settings.tts[key]; else input.value = this.engine.settings.tts[key];
         input.addEventListener('change', () => {
             let value = type === 'checkbox' ? input.checked : type === 'number' || key === 'bitrate' ? Number(input.value) : input.value;

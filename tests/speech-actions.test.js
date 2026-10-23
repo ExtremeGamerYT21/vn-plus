@@ -89,7 +89,7 @@ test('scene boundaries artifacts thoughts narrator fallback and narrator rules r
     const thought = fixture('Henry coughs.\nHenry: "(Keep quiet.)"\nHenry: "Hello."');
     assert.equal(thought.lines.length, 1); assert.equal(thought.lines[0].synthesisText, 'Hello.');
     const input = fixture('Henry coughs.\nHenry: "Hello."', { narratorEnabled: true });
-    assert.deepEqual(input.lines.map(line => [line.character, line.synthesisText]), [['narrator', 'Henry coughs.'], ['henry', '[coughing] Hello.']]);
+    assert.deepEqual(input.lines.map(line => [line.character, line.synthesisText]), [['narrator', '[warm, expressive storytelling] Henry coughs.'], ['henry', '[coughing] Hello.']]);
     input.settings.characters.henry.voiceId = '';
     const [fallback] = speechSegments(input.timeline, input.registry, 'fallback', input.settings.tts).filter(line => line.character === 'henry');
     assert.equal(fallback.voice, 'voice-narrator'); assert.equal(fallback.synthesisText, '[coughing] Hello.');

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { speechSegments, chapterRequests, SAMPLE_RATE } from '../core/speech-segments.js';
+import { speechSegments, chapterRequests, speechSettings, SPEECH_DEFAULTS, SAMPLE_RATE } from '../core/speech-segments.js';
 import { speechTokens } from '../core/speech-text.js';
 import { parsePOV } from '../core/vn-parser.js';
 import { compileTimeline } from '../core/scene-timeline.js';
@@ -11,7 +11,7 @@ import { SpeechEngine } from '../renderers/speech-engine.js';
 const source = 'The hall is quiet.\nNina: "Hello." [curious]\nAshley: "Ready?"\nYou take a breath.\nNarrator: "The door opens."\nNina: "Go."';
 function fixture(text = source, options = {}) {
     const settings = structuredClone(DEFAULT_SETTINGS);
-    Object.assign(settings.tts, { enabled: true, narratorEnabled: true, isolateVoices: false, ...options });
+    Object.assign(settings.tts, { enabled: true, narratorEnabled: true, narratorDelivery: '', isolateVoices: false, ...options });
     settings.characters = { narrator: { displayName: 'Storyteller', aliases: ['Story Voice'], voiceId: 'narrator-voice' },
         nina: { voiceId: 'nina-voice' }, ashley: { voiceId: 'ashley-voice' } };
     const registry = new CharacterRegistry({ inventory: {}, json: async () => null }, settings);
@@ -19,6 +19,61 @@ function fixture(text = source, options = {}) {
     const lines = speechSegments(timeline, registry, 'narrator-fixture', settings.tts);
     return { settings, registry, timeline, lines, plan: chapterRequests(lines, settings.tts) };
 }
+
+test('narrator delivery defaults migrate into saved settings and compile as one bounded leading cue', () => {
+    assert.equal(speechSettings({ narratorEnabled: true }).narratorDelivery, SPEECH_DEFAULTS.narratorDelivery);
+    assert.equal(speechSettings({ narratorDelivery: false }).narratorDelivery, SPEECH_DEFAULTS.narratorDelivery);
+    assert.equal(speechSettings({ narratorDelivery: '   ' }).narratorDelivery, '');
+    assert.equal(speechSettings({ narratorDelivery: 'x'.repeat(200) }).narratorDelivery.length, 160);
+    const input = fixture('The hall is quiet. [sad]', { narratorDelivery: '[warm, expressive storytelling]' });
+    assert.equal(input.lines[0].synthesisText, '[warm, expressive storytelling][sad] The hall is quiet.');
+    assert.equal(input.lines[0].text, 'The hall is quiet. [sad]');
+    assert.deepEqual(speechTokens(input.lines[0].synthesisText), speechTokens(input.lines[0].text));
+    const hostile = fixture('The door opens.', { narratorDelivery: '<|speaker:7|>[gentle]\n[curious]' });
+    assert.equal(hostile.lines[0].synthesisText, '[gentle curious] The door opens.');
+    assert.equal((hostile.plan[0].body.text.match(/<\|speaker:/g) || []).length, 1);
+    const named = fixture('Narrator: "Footsteps." [curious]', { narratorDelivery: 'gentle' });
+    assert.equal(named.lines[0].synthesisText, '[gentle][curious] Footsteps.');
+});
+
+test('delivery repeats for actual narrator aliases without affecting borrowed narrator voices or mute', () => {
+    const source = 'The hall is quiet.\nStory Voice: "Footsteps." [curious]\nVisitor: "Stop." [angry]\nNina: "Hello."';
+    const input = fixture(source, { narratorDelivery: SPEECH_DEFAULTS.narratorDelivery });
+    assert.deepEqual(input.lines.map(line => line.character), ['narrator', 'narrator', 'visitor', 'nina']);
+    assert.ok(input.lines.slice(0, 2).every(line => line.synthesisText.startsWith('[warm, expressive storytelling]')));
+    assert.equal(input.lines[1].synthesisText, '[warm, expressive storytelling][curious] Footsteps.');
+    assert.equal(input.lines[2].voice, 'narrator-voice');
+    assert.equal(input.lines[2].synthesisText, '[angry] Stop.');
+    assert.equal(input.lines[3].synthesisText, 'Hello.');
+    const muted = fixture(source, { narratorEnabled: false, narratorDelivery: 'gentle' });
+    assert.deepEqual(muted.lines.map(line => line.character), ['visitor', 'nina']);
+    assert.ok(muted.lines.every(line => !line.synthesisText.includes('[gentle]')));
+});
+
+test('changing or clearing narrator delivery selects a matching recording cache while retaining prose and character cues', async () => {
+    const input = fixture(source, { narratorDelivery: SPEECH_DEFAULTS.narratorDelivery });
+    const requests = [], engine = new SpeechEngine({ request: async (url, options) => {
+        if (url.endsWith('/status')) return Response.json({ configured: true, maxParallelBatches: 5 });
+        const request = JSON.parse(options.body); requests.push(request);
+        const words = speechTokens(request.body.text).map((text, index) => ({ text, start: .05 + index * .08, end: .1 + index * .08 }));
+        return new Response(`data: ${JSON.stringify({ audio_base64: btoa('simulated'), chunk_seq: 0, chunk_audio_offset_sec: 0, alignment: { segments: words } })}\n\n`);
+    } }, input.settings, { decode: async () => new Float32Array(SAMPLE_RATE * 3),
+        process: async chapter => chapter.clips.map(clip => ({ id: clip.id, samples: new Float32Array(100), notes: [] })) });
+    try {
+        const prepare = () => engine.prepare('delivery-fixture', input.timeline, input.registry);
+        prepare(); const original = await engine.generate(), texts = engine.prepared.segments.map(line => line.text);
+        input.settings.tts.narratorDelivery = '[gentle, curious]'; prepare(); assert.equal(engine.job, null);
+        const custom = await engine.generate(); assert.notEqual(custom, original);
+        assert.ok(custom.plan[0].body.text.includes('<|speaker:0|>[gentle, curious] The hall is quiet.'));
+        assert.equal(custom.plan[1].body.text, original.plan[1].body.text);
+        const count = requests.length; input.settings.tts.narratorDelivery = SPEECH_DEFAULTS.narratorDelivery; prepare();
+        assert.ok(engine.job === original); await engine.generate(); assert.equal(requests.length, count);
+        input.settings.tts.narratorDelivery = ''; prepare(); const cleared = await engine.generate();
+        assert.equal(cleared.plan[0].body.text, '<|speaker:0|>The hall is quiet.\n<|speaker:0|>You take a breath.\n<|speaker:0|>The door opens.');
+        assert.deepEqual(engine.prepared.segments.map(line => line.text), texts);
+        assert.ok(original.chapters.every(chapter => chapter.clips.every(clip => !clip.review)));
+    } finally { engine.dispose(); }
+});
 
 test('narration paragraphs clump across intervening dialogue in a separate request with original beat IDs', () => {
     const input = fixture(), { plan } = input;

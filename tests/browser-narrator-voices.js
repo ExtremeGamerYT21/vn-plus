@@ -96,4 +96,51 @@ export async function runNarratorVoiceChecks({ check, assert, equal, eventually,
             equal(context.chat[0].mes, source);
         } finally { joined.dispose(); }
     });
+
+    context.chatId = 'narrator-delivery-browser';
+    const deliverySource = 'PRIVATE\n/////\nThe hall is quiet.\nVisitor: "Stop." [angry]\nNarrator: "Footsteps." [curious]';
+    context.chat = [{ mes: deliverySource }]; mountChat();
+    const directed = makeController(), deliveryRequests = [];
+    Object.assign(directed.settings, { autoCreateCharacters: false, autoAdvance: false, automaticPlayback: false, typewriterEffect: false });
+    directed.settings.characters = { narrator: { voiceId: 'delivery-story' } };
+    Object.assign(directed.settings.tts, { enabled: true, autoGenerate: true, autoPlay: false, narratorEnabled: true, splitChapters: false });
+    directed.speech.endpoint = async (path, options) => {
+        if (path === 'status') return Response.json({ configured: true, maxParallelBatches: 5 });
+        const request = JSON.parse(options.body); deliveryRequests.push(request);
+        const words = speechTokens(request.body.text).map((text, index) => ({ text, start: .05 + index * .1, end: .12 + index * .1 }));
+        return new Response(`data: ${JSON.stringify({ audio_base64: btoa('fixture'), chunk_seq: 0, chunk_audio_offset_sec: 0, alignment: { segments: words } })}\n\n`);
+    };
+    directed.speech.decode = async () => new Float32Array(44100 * 3);
+    directed.speech.process = async chapter => chapter.clips.map(clip => ({ id: clip.id, samples: new Float32Array(100), notes: [] }));
+    try {
+        await check('narrator delivery prefixes narration while borrowed voices retain character emotion and visible prose', async () => {
+            await directed.open(0); await eventually(() => directed.speech.job?.status === 'complete');
+            equal(directed.speechSettingsPanel.fields.get('narratorDelivery').input.value, 'warm, expressive storytelling');
+            equal(deliveryRequests.length, 2);
+            const plan = directed.speech.job.plan;
+            assert(plan[0].body.text.startsWith('<|speaker:0|>[warm, expressive storytelling] The hall is quiet.'));
+            assert(plan[0].body.text.includes('[warm, expressive storytelling][curious] Footsteps.'));
+            equal(plan[1].body.text, '<|speaker:0|>[angry] Stop.');
+            equal(plan[0].body.reference_id, plan[1].body.reference_id);
+            equal(directed.root.querySelector('.vn-text').textContent.trim(), 'The hall is quiet.');
+            equal(context.chat[0].mes, deliverySource);
+        });
+        await check('narrator delivery fields synchronize, accept brackets, clear to source cues and restore the matching cached recording', async () => {
+            const original = directed.speech.job, field = directed.speechSettingsPanel.fields.get('narratorDelivery').input;
+            field.value = '[gentle, curious]'; field.dispatchEvent(new Event('change', { bubbles: true }));
+            await eventually(() => directed.speech.job?.status === 'complete' && directed.speech.job !== original);
+            const custom = directed.speech.job;
+            equal(directed.voicePanel.fields.get('narratorDelivery').input.value, '[gentle, curious]');
+            assert(custom.plan[0].body.text.includes('[gentle, curious] The hall is quiet.'));
+            equal(custom.plan[1].body.text, original.plan[1].body.text);
+            const other = directed.voicePanel.fields.get('narratorDelivery').input;
+            const count = deliveryRequests.length; other.value = 'warm, expressive storytelling'; other.dispatchEvent(new Event('change', { bubbles: true }));
+            await eventually(() => directed.speech.job === original); equal(deliveryRequests.length, count);
+            other.value = ''; other.dispatchEvent(new Event('change', { bubbles: true }));
+            await eventually(() => directed.speech.job?.status === 'complete' && directed.speech.job !== original);
+            equal(field.value, ''); assert(!directed.speech.job.plan[0].body.text.includes('storytelling'));
+            assert(directed.speech.job.plan[0].body.text.includes('[curious] Footsteps.'));
+            equal(context.chat[0].mes, deliverySource);
+        });
+    } finally { directed.dispose(); }
 }

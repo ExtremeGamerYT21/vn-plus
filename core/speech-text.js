@@ -89,7 +89,7 @@ function pronounceSnippets(text, language) {
 }
 
 /** Compile only the Fish prompt. Original words and source offsets remain intact. */
-export function compileSpeechText(text, { direction, emotion, fullNames = [], language, vocalCues = [] } = {}) {
+export function compileSpeechText(text, { direction, emotion, fixedDelivery, fullNames = [], language, vocalCues = [] } = {}) {
     let value = stripSpeakers(text).trim();
     const global = [];
     // Trailing sentence emotions describe the utterance. Timed effects stay put.
@@ -120,7 +120,8 @@ export function compileSpeechText(text, { direction, emotion, fullNames = [], la
         if (!family || authored.has(family)) return false;
         authored.add(family); return true;
     }).map(cue);
-    const opening = [...(explicit ? [explicit] : []), ...global, ...(groups.get(0) || []), ...inferred];
+    const fixed = cue(fixedDelivery);
+    const opening = [...(fixed ? [fixed] : []), ...(explicit ? [explicit] : []), ...global, ...(groups.get(0) || []), ...inferred];
     groups.set(0, delivery(opening, plain, fullNames));
     // Descending insertion preserves the offsets found before any cues are added.
     for (const [at, hints] of [...groups].sort((a, b) => b[0] - a[0])) {
